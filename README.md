@@ -14,7 +14,7 @@ TODO: Add description
 ### 1.2. Create and activate a conda environment with the required packages
 
    ```bash
-   conda create --name chatbot_mini --file requirements.txt
+   conda env create -f chatbot_mini.yml
    conda activate chatbot_mini
    ```
 
