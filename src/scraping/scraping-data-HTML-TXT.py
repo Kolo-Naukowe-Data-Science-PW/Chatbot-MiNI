@@ -1,11 +1,11 @@
 """
 Web crawler for scraping HTML and PDF content from a website.
 
-This module uses BeautifulSoup for HTML parsing and LangChain loaders for
-PDF/website content extraction. All extracted content is saved in TXT and HTML
-format in a temporary directory and then zipped into a single archive.
+This module scrapes website pages and PDF documents separately:
+- HTML pages are saved in the HTML output directory.
+- PDF files (linked or directly visited) are saved in the PDF output directory.
 
-Author: Barbara Gawlik
+Uses BeautifulSoup for HTML parsing and LangChain loaders for content extraction.
 """
 
 
@@ -15,6 +15,7 @@ from langchain_community.document_loaders import WebBaseLoader, PyPDFLoader
 from langchain_core.documents import Document
 import logging
 import os
+import re
 import requests
 import shutil
 from typing import List
@@ -25,10 +26,14 @@ TOTAL_SIZE = 0
 WEBSITE_URL = "https://ww2.mini.pw.edu.pl/"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-OUTPUT_DIR = os.path.join(BASE_DIR, "..", "data", "raw", "ignore", "scraped-temp")
+
+HTML_OUTPUT_DIR = os.path.join(BASE_DIR, "..", "data", "raw", "ignore", "scraped-html")
+PDF_OUTPUT_DIR = os.path.join(BASE_DIR, "..", "data", "raw", "ignore", "scraped-pdf")
 ZIP_PATH = os.path.join(BASE_DIR, "..", "data", "raw", "ignore", "scraped_data.zip")
-os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(HTML_OUTPUT_DIR, exist_ok=True)
+os.makedirs(PDF_OUTPUT_DIR, exist_ok=True)
 os.makedirs(os.path.dirname(ZIP_PATH), exist_ok=True)
+
 
 visited = set()
 to_visit = [WEBSITE_URL]
@@ -58,7 +63,23 @@ def get_safe_name(url: str, max_len: int = 100) -> str:
     return base_name
 
 
-def save_docs(url: str, output_dir: str = OUTPUT_DIR):
+def is_pdf_link(href: str) -> bool:
+    """
+    Return True if a link seems to point to a PDF file.
+    Args:
+        href (str): The URL to scrape.
+    Returns:
+        bool: Whether it's a PDF link.
+    """
+    href_lower = href.lower()
+    return (
+        href_lower.endswith(".pdf")
+        or re.search(r"\.pdf(\?|#|$)", href_lower) is not None
+        or "/download/" in href_lower
+    )
+
+
+def save_docs(url: str):
     """
     Load content from a URL (HTML or PDF) and save as TXT and HTML files.
     Args:
@@ -69,28 +90,25 @@ def save_docs(url: str, output_dir: str = OUTPUT_DIR):
     global TOTAL_SIZE
     safe_name = get_safe_name(url)
     logging.info("Processing URL: %s", url)
+
+    if is_pdf_link(url):
+        output_dir = PDF_OUTPUT_DIR
+    else:
+        output_dir = HTML_OUTPUT_DIR
+    os.makedirs(output_dir, exist_ok=True)
+
     full_text_content = ""
-    documents_to_save: List[Document] = []
     main_title = safe_name
 
     try:
 
-        if url.lower().endswith(".pdf"):
+        if is_pdf_link(url):
             logging.info("Detected PDF. Loading with PyPDFLoader...")
             loader = PyPDFLoader(url)
             documents = loader.load()
             full_text_content = "\n\n".join([doc.page_content for doc in documents])
             full_text_content = "Warning! This is PDF content.\n\n" + full_text_content
-            single_document = Document(
-                page_content=full_text_content,
-                metadata={
-                    "source": url,
-                    "title": f"PDF Content from {safe_name}",
-                    "source_type": "PDF",
-                },
-            )
-            documents_to_save = [single_document]
-            main_title = single_document.metadata.get("title", safe_name)
+            main_title = f"PDF Content from {safe_name}"
 
         else:
             logging.info("Detected website. Loading with WebBaseLoader...")
@@ -99,10 +117,8 @@ def save_docs(url: str, output_dir: str = OUTPUT_DIR):
             if not documents:
                 logging.warning("No content found at URL: %s", url)
                 return
-            main_doc = documents[0]
-            full_text_content = main_doc.page_content
-            documents_to_save = documents
-            main_title = main_doc.metadata.get("title", safe_name)
+            full_text_content = documents[0].page_content
+            main_title = documents[0].metadata.get("title", safe_name)
 
     except Exception as exc:
         logging.error("Failed to load URL %s: %s", url, exc)
@@ -111,11 +127,9 @@ def save_docs(url: str, output_dir: str = OUTPUT_DIR):
     txt_path = os.path.join(output_dir, f"{safe_name}.txt")
 
     try:
-
         with open(txt_path, "w", encoding="utf-8") as f:
             f.write(full_text_content)
         TOTAL_SIZE += os.path.getsize(txt_path)
-
     except Exception as exc:
         logging.error("Failed to save TXT for URL %s: %s", url, exc)
 
@@ -123,7 +137,7 @@ def save_docs(url: str, output_dir: str = OUTPUT_DIR):
 
     try:
 
-        if url.lower().endswith(".pdf"):
+        if is_pdf_link(url):
             html_content = (
                 "<!DOCTYPE html><html><head><meta charset='utf-8'>"
                 f"<title>{main_title}</title></head><body>"
@@ -134,24 +148,29 @@ def save_docs(url: str, output_dir: str = OUTPUT_DIR):
             )
 
         else:
+
             response = requests.get(url, timeout=15)
             response.raise_for_status()
             html_content = response.text
             soup = BeautifulSoup(html_content, "html.parser")
+
             for a_tag in soup.find_all("a", href=True):
                 link = urljoin(url, a_tag["href"])
                 norm_link, _ = urldefrag(link)
-                if (
-                    norm_link.startswith("http")
-                    and not norm_link.startswith("javascript:")
-                    and urlparse(norm_link).netloc == urlparse(WEBSITE_URL).netloc
-                    and norm_link not in visited
-                    and norm_link not in to_visit
-                ):
+                if not norm_link.startswith("http") or norm_link.startswith("javascript:"):
+                    continue
+                if urlparse(norm_link).netloc != urlparse(WEBSITE_URL).netloc:
+                    continue
+                if norm_link in visited or norm_link in to_visit:
+                    continue
+                if is_pdf_link(norm_link):
+                    to_visit.append(norm_link)
+                else:
                     to_visit.append(norm_link)
 
         with open(html_path, "w", encoding="utf-8") as f:
             f.write(html_content)
+
         TOTAL_SIZE += os.path.getsize(html_path)
 
     except Exception as exc:
@@ -161,7 +180,7 @@ def save_docs(url: str, output_dir: str = OUTPUT_DIR):
 
 
 def main():
-    
+
     while to_visit:
         current_url = to_visit.pop(0)
         if current_url in visited:
@@ -169,11 +188,10 @@ def main():
         save_docs(current_url)
         visited.add(current_url)
 
-    logging.info("Packing data into ZIP: %s", ZIP_PATH)
-    shutil.make_archive(ZIP_PATH.replace(".zip", ""), "zip", OUTPUT_DIR)
+    logging.info("Packing scraped data into ZIP: %s", ZIP_PATH)
+    temp_root = os.path.join(BASE_DIR, "..", "data", "raw", "ignore")
+    shutil.make_archive(ZIP_PATH.replace(".zip", ""), "zip", temp_root)
 
-    shutil.rmtree(OUTPUT_DIR)
-    logging.info("Temporary scraped files deleted.")
     logging.info("Scraping completed. Data archived at: %s", ZIP_PATH)
 
 
