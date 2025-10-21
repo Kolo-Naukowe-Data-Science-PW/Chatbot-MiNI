@@ -1,13 +1,6 @@
 """
 Module for cleaning TXT files from scraped data.
-
-This script:
-- Finds all .txt files in the specified input folder (relative path).
-- Cleans each file by removing HTML tags, scripts, styles, and decoding HTML entities.
-- Saves cleaned files in an output folder.
-- Uses your remove_html_tags function exactly as provided.
 """
-
 import os
 from bs4 import BeautifulSoup
 import html
@@ -17,15 +10,6 @@ from typing import Optional
 def remove_html_tags(text: Optional[str]) -> str:
     """
     Remove HTML tags and decode HTML entities from a string.
-
-    Steps:
-    1. Return an empty string if input is None or empty.
-    2. Parse HTML content using BeautifulSoup.
-    3. Remove all <script> and <style> elements.
-    4. Extract visible text from the HTML.
-    5. Decode HTML entities (e.g., &amp; -> &).
-    6. Normalize whitespace by collapsing multiple spaces/newlines into a single space.
-
     Args:
         text (Optional[str]): The input HTML or text content.
 
