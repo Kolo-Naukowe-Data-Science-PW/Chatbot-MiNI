@@ -18,7 +18,13 @@ TODO: Add description
    conda activate chatbot_mini
    ```
 
-### 1.3. Install pre-commit hooks (run once after cloning)
+### 1.3. Adding new packages after installing using pip or conda (in conda environment)
+
+  ```bash
+  conda env export > chatbot_mini.yml
+  ```
+
+### 1.4. Install pre-commit hooks (run once after cloning)
 
    ```bash
    pip install pre-commit
