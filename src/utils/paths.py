@@ -33,6 +33,6 @@ def get_data_dir(*subdirs):
         >>> get_data_dir("raw", "scraper")
         '/path/to/repo/src/data/raw/scraper'
     """
-    
+
     repo_root = find_repo_root()
     return os.path.join(repo_root, "src", "data", *subdirs)

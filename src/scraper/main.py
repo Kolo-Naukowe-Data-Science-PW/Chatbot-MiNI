@@ -1,5 +1,5 @@
-import os
 import logging
+import os
 
 from scraper.modules.fetcher import fetch_file
 from scraper.modules.parser import extract_links
@@ -42,11 +42,11 @@ def scrape_new_files():
         if file_path:
             all_files.append(file_path)
             if file_path.endswith(".html"):
-                with open(file_path, "r", encoding="utf-8") as f:
+                with open(file_path, encoding="utf-8") as f:
                     f.readline()
                     links = extract_links(f.read(), BASE_URL)
                     to_visit.extend(links - visited)
-    
+
     logging.info("Scraping complete. Uploading newly fetched files...")
 
     uploaded_files = save_new_files(all_files, STORAGE_DIR)

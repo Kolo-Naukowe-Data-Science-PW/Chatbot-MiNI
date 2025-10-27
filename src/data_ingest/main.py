@@ -1,10 +1,10 @@
-import os
 import logging
+import os
 
-from data_ingest.modules.cleaner import clean_html
 from data_ingest.modules.chunker import chunk_text
-from data_ingest.modules.extractor import extract_text
+from data_ingest.modules.cleaner import clean_html
 from data_ingest.modules.embedder import Embedder
+from data_ingest.modules.extractor import extract_text
 from data_ingest.modules.vector_db import save_to_vector_db
 from scraper.main import STORAGE_DIR
 
@@ -27,7 +27,7 @@ def ingest_documents():
     for file_path in all_files:
 
         logging.info("Processing file: %s", file_path)
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, encoding="utf-8") as f:
             url_line = f.readline().strip()
             raw_content = extract_text(f)
 
@@ -37,8 +37,10 @@ def ingest_documents():
 
         embeddings = embedder.generate_embeddings(chunks)
 
-        for chunk, embedding in zip(chunks, embeddings):
-            save_to_vector_db(text_chunk=chunk, embedding=embedding, source_url=url_line)
+        for chunk, embedding in zip(chunks, embeddings, strict=False):
+            save_to_vector_db(
+                text_chunk=chunk, embedding=embedding, source_url=url_line
+            )
 
     logging.info("Ingestion complete for all documents.")
 

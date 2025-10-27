@@ -1,6 +1,6 @@
-from datetime import datetime, timedelta
 import logging
 import time
+from datetime import datetime
 
 from scraper.main import scrape_new_files
 

@@ -1,5 +1,6 @@
-from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
+
+from bs4 import BeautifulSoup
 
 
 def extract_links(html_content: str, base_url: str):
