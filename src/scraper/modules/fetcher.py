@@ -1,11 +1,10 @@
-from docx import Document as DocxDocument
-from io import BytesIO
 import logging
 import os
-from PyPDF2 import PdfReader, PdfWriter
-import requests
-from urllib.parse import urlparse
+from io import BytesIO
 
+import requests
+from docx import Document as DocxDocument
+from PyPDF2 import PdfReader, PdfWriter
 
 logging.basicConfig(level=logging.INFO)
 
@@ -52,14 +51,14 @@ def fetch_file(url: str, output_dir: str) -> str:
             original_pdf = PdfReader(BytesIO(response.content))
             writer = PdfWriter()
 
-            from reportlab.pdfgen import canvas
+            import tempfile
+
             from reportlab.lib.pagesizes import letter
             from reportlab.pdfbase import pdfmetrics
             from reportlab.pdfbase.ttfonts import TTFont
-            from reportlab.lib.units import inch
-            import tempfile
+            from reportlab.pdfgen import canvas
 
-            pdfmetrics.registerFont(TTFont('Arial', 'Arial.ttf'))
+            pdfmetrics.registerFont(TTFont("Arial", "Arial.ttf"))
             tmp_path = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf").name
             c = canvas.Canvas(tmp_path, pagesize=letter)
             c.drawString(72, 720, url)

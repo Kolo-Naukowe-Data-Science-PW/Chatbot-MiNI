@@ -1,4 +1,5 @@
 import numpy as np
+
 from data_ingest.modules.embedder import Embedder
 from data_ingest.modules.vector_db import load_vector_db
 from rag_api.modules.config import VECTOR_DB_PATH
@@ -28,11 +29,13 @@ def get_top_k_chunks(query: str, top_k: int = 5):
     query_embedding = embedder.generate_embedding(query)
 
     for chunk in vector_db:
-        chunk['similarity'] = cosine_similarity(query_embedding, chunk['embedding'])
+        chunk["similarity"] = cosine_similarity(query_embedding, chunk["embedding"])
 
-    sorted_chunks = sorted(vector_db, key=lambda x: x['similarity'], reverse=True)
+    sorted_chunks = sorted(vector_db, key=lambda x: x["similarity"], reverse=True)
 
-    top_chunks = [{'text_chunk': c['text_chunk'], 'source_url': c['source_url']} 
-                  for c in sorted_chunks[:top_k]]
+    top_chunks = [
+        {"text_chunk": c["text_chunk"], "source_url": c["source_url"]}
+        for c in sorted_chunks[:top_k]
+    ]
 
     return top_chunks

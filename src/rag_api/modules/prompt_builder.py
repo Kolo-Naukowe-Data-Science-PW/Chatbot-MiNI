@@ -5,7 +5,7 @@ def build_prompt(query: str, context: list) -> str:
 
     labeled = [f"[S{i}]\n{c}" for i, c in enumerate(context, start=1)]
     joined_context = "\n\n---\n\n".join(labeled)
-    
+
     return (
         "Jesteś pomocnym asystentem, który odpowiada na pytania użytkownika "
         "na podstawie dostarczonego kontekstu.\n"
