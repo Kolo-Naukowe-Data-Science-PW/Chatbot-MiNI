@@ -8,6 +8,8 @@ import re
 
 from bs4 import BeautifulSoup
 
+from utils.paths import get_data_dir
+
 
 def remove_html_tags(text: str | None) -> str:
     """
@@ -71,10 +73,8 @@ if __name__ == "__main__":
     # --------------------------
     # Folder paths
     # --------------------------
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    INPUT_DIR = os.path.join(BASE_DIR, "..", "data", "raw", "ignore", "scraped-html")
-    INPUT_DIR = os.path.abspath(INPUT_DIR)
-    OUTPUT_DIR = os.path.join(BASE_DIR, "..", "data", "cleaned")
-    OUTPUT_DIR = os.path.abspath(OUTPUT_DIR)
+
+    INPUT_DIR = get_data_dir("raw", "ignore", "scraped-html")
+    OUTPUT_DIR = get_data_dir("cleaned")
 
     clean_txt_folder(INPUT_DIR, OUTPUT_DIR)
