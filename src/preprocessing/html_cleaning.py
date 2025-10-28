@@ -1,31 +1,17 @@
 """
 Module for cleaning TXT files from scraped data.
-
-This script:
-- Finds all .txt files in the specified input folder (relative path).
-- Cleans each file by removing HTML tags, scripts, styles, and decoding HTML entities.
-- Saves cleaned files in an output folder.
-- Uses your remove_html_tags function exactly as provided.
 """
 
-import os
-from bs4 import BeautifulSoup
 import html
+import os
 import re
-from typing import Optional
 
-def remove_html_tags(text: Optional[str]) -> str:
+from bs4 import BeautifulSoup
+
+
+def remove_html_tags(text: str | None) -> str:
     """
     Remove HTML tags and decode HTML entities from a string.
-
-    Steps:
-    1. Return an empty string if input is None or empty.
-    2. Parse HTML content using BeautifulSoup.
-    3. Remove all <script> and <style> elements.
-    4. Extract visible text from the HTML.
-    5. Decode HTML entities (e.g., &amp; -> &).
-    6. Normalize whitespace by collapsing multiple spaces/newlines into a single space.
-
     Args:
         text (Optional[str]): The input HTML or text content.
 
@@ -57,14 +43,18 @@ def clean_txt_folder(input_dir: str, output_dir: str):
     """
     os.makedirs(output_dir, exist_ok=True)
 
+    print(os.getcwd())
+
     for filename in os.listdir(input_dir):
         if filename.endswith(".txt"):
             input_path = os.path.join(input_dir, filename)
-            output_path = os.path.join(output_dir, filename.replace(".txt", "_clean.txt"))
+            output_path = os.path.join(
+                output_dir, filename.replace(".txt", "_clean.txt")
+            )
 
             print(f"Cleaning: {filename}")
 
-            with open(input_path, "r", encoding="utf-8") as f:
+            with open(input_path, encoding="utf-8") as f:
                 raw_content = f.read()
 
             cleaned_text = remove_html_tags(raw_content)
@@ -82,7 +72,9 @@ if __name__ == "__main__":
     # Folder paths
     # --------------------------
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    INPUT_DIR = os.path.join(BASE_DIR, "../../../src", "data", "raw", "ignore", "scraped-html")
-    OUTPUT_DIR = os.path.join(BASE_DIR, "../../../src", "data", "cleaned")
+    INPUT_DIR = os.path.join(BASE_DIR, "..", "data", "raw", "ignore", "scraped-html")
+    INPUT_DIR = os.path.abspath(INPUT_DIR)
+    OUTPUT_DIR = os.path.join(BASE_DIR, "..", "data", "cleaned")
+    OUTPUT_DIR = os.path.abspath(OUTPUT_DIR)
 
     clean_txt_folder(INPUT_DIR, OUTPUT_DIR)
