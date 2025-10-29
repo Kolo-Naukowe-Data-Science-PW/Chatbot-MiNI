@@ -45,8 +45,6 @@ def clean_txt_folder(input_dir: str, output_dir: str):
     """
     os.makedirs(output_dir, exist_ok=True)
 
-    print(os.getcwd())
-
     for filename in os.listdir(input_dir):
         if filename.endswith(".txt"):
             input_path = os.path.join(input_dir, filename)

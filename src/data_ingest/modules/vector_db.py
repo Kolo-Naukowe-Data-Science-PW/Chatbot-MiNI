@@ -20,7 +20,7 @@ def save_to_vector_db(text_chunk, embedding, source_url, path_to_database):
         path_to_database (str): path to local database
 
     Returns:
-        0 if succed
+        Null
     """
 
     # handle the case when instead of list of values user provide single text chunk
@@ -60,7 +60,6 @@ def save_to_vector_db(text_chunk, embedding, source_url, path_to_database):
         metadatas=[{"url": url} for url in source_url],
         ids=[f"ids_{number_of_docs+i+1}" for i in range(len(text_chunk))],
     )
-    return 0
 
 
 def load_vector_db(path_to_database):
