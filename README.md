@@ -18,7 +18,7 @@ TODO: Add description
    conda activate chatbot_mini
    ```
 
-### 1.3. Adding new packages after installing using pip or conda (in conda environment)
+### 1.3. How to add new packages to the YAML config file, after installing them yourself (in your chatbot_mini environment)
 
   ```bash
   conda env export > chatbot_mini.yml
