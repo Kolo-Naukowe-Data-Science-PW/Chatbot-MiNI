@@ -43,7 +43,7 @@ TODO: Add description
   - `Add requirements.txt`
   - `Fix data loading bug`
   - `Update README`
-- Keep messages concise and focused on **what** was changed (not how).
+- Keep messages concise and focused on **what** was changed, and not how.
 
 ### 2.3. Branches
 
