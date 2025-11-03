@@ -45,7 +45,7 @@ def ingest_documents():
         chunks.extend(chunks_for_doc)
         embeddings.extend(embeddings_for_doc)
         urls.extend([url_line] * len(chunks_for_doc))
-        
+
     save_to_vector_db(chunks, embeddings, urls, DATABASE_PATH)
 
     logging.info("Ingestion complete for all documents.")

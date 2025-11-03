@@ -1,5 +1,7 @@
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+
 # from pathlib import Path
+
 
 def chunk_text(text: str, chunk_size: int = 1000, overlap: int = 200):
     """
@@ -16,17 +18,16 @@ def chunk_text(text: str, chunk_size: int = 1000, overlap: int = 200):
 
     # this splitter uses context/natural boundaries to divide the text into smaller chunks
     splitter = RecursiveCharacterTextSplitter(
-        chunk_size = chunk_size,
-        chunk_overlap = overlap,
+        chunk_size=chunk_size,
+        chunk_overlap=overlap,
     )
 
     chunks = splitter.split_text(text)
     return chunks
 
-
     # bardzo fajne, ale jednak main.py zakłada że przetwarzamy string, a nie folder z plikami TXT
     # ale zachowuję, może i zrobimy to tak że będziemy przetwarzać foldery
-    # 
+    #
     # all_chunks = []
     # were only using txt files
     # for file_path in Path(folder_path).glob("*.txt"):

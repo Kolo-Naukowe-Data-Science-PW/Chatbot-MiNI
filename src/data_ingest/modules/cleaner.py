@@ -5,7 +5,7 @@ Module for cleaning HTML files from scraped data.
 import html
 import os
 import re
-import logging
+
 from bs4 import BeautifulSoup
 
 
