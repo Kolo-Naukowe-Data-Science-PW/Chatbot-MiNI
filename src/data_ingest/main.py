@@ -36,17 +36,15 @@ def ingest_documents():
         logging.info("Processing file: %s", file_path)
         with open(file_path, encoding="utf-8") as f:
             url_line = f.readline().strip()
-            raw_content = extract_text(f)
 
+        raw_content = extract_text(file_path)
         cleaned_text = clean_html(raw_content)
+        chunks_for_doc = chunk_text(cleaned_text)
+        embeddings_for_doc = embedder.generate_embeddings(chunks_for_doc)
 
-        chunk = chunk_text(cleaned_text)
-
-        embedding = embedder.generate_embeddings(chunks)
-
-        chunks.append(chunk)
-        embeddings.append(embedding)
-        urls.append(url_line)
+        chunks.extend(chunks_for_doc)
+        embeddings.extend(embeddings_for_doc)
+        urls.extend([url_line] * len(chunks_for_doc))
 
     save_to_vector_db(chunks, embeddings, urls, DATABASE_PATH)
 
