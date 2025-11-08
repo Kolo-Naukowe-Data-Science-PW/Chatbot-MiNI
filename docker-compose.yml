@@ -1,0 +1,60 @@
+version: "3.9"
+
+volumes:
+  final_storage:
+  chroma_db:
+  hf_cache:
+
+x-env: &env
+  PYTHONUNBUFFERED: "1"
+  HF_HOME: /root/.cache/huggingface
+  PYTHONPATH: /app/src
+
+services:
+  scraper:
+    build: .
+    command: micromamba run -n app python -m src.scraper.main
+    environment: *env
+    volumes:
+      - final_storage:/app/src/data/final_storage
+      - hf_cache:/root/.cache/huggingface
+    read_only: true
+    tmpfs: ["/tmp"]
+    restart: "no"
+
+  ingest:
+    build: .
+    command: micromamba run -n app python -m src.data_ingest.main
+    environment:
+      <<: *env
+      SENTENCE_TRANSFORMER_MODEL: intfloat/multilingual-e5-base
+      EMBEDDINGS_DEVICE: cpu
+      CHROMA_DIR: /app/src/rag_api/chroma_db
+      CHROMA_COLLECTION: mini_site
+    volumes:
+      - final_storage:/app/src/data/final_storage:ro
+      - chroma_db:/app/src/rag_api/chroma_db
+      - hf_cache:/root/.cache/huggingface
+    depends_on:
+      scraper:
+        condition: service_completed_successfully
+    read_only: true
+    tmpfs: ["/tmp"]
+    restart: "no"
+
+  api:
+    build: .
+    command: micromamba run -n app uvicorn src.rag_api.main:app --host 0.0.0.0 --port 8000
+    environment:
+      <<: *env
+      CHROMA_DIR: /app/src/rag_api/chroma_db
+      CHROMA_COLLECTION: mini_site
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+    volumes:
+      - chroma_db:/app/src/rag_api/chroma_db:ro
+    ports:
+      - "8000:8000"
+    depends_on:
+      ingest:
+        condition: service_completed_successfully
+    restart: unless-stopped

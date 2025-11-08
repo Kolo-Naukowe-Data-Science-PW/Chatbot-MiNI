@@ -1,0 +1,13 @@
+.git
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info
+.venv
+.env
+node_modules
+dist
+build
+src/rag_api/chroma_db/
+src/data/final_storage/
