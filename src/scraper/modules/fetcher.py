@@ -28,13 +28,26 @@ def fetch_file(url: str, output_dir: str) -> str:
         response = requests.get(url, stream=True, timeout=20)
         response.raise_for_status()
 
+        content_type = (response.headers.get("Content-Type") or "").lower()
         filename = sanitize_filename(url)
-        if url.lower().endswith(".pdf"):
+        if "application/pdf" in content_type:
             filename += ".pdf"
-        elif url.lower().endswith(".docx"):
+        elif (
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            in content_type
+            or "application/msword" in content_type
+        ):
             filename += ".docx"
-        else:
+        elif "text/html" in content_type or "application/xhtml+xml" in content_type:
             filename += ".html"
+        else:
+            # Fallback to URL suffix if content-type is ambiguous
+            if url.lower().endswith(".pdf"):
+                filename += ".pdf"
+            elif url.lower().endswith(".docx"):
+                filename += ".docx"
+            else:
+                filename += ".html"
 
         os.makedirs(output_dir, exist_ok=True)
         file_path = os.path.join(output_dir, filename)

@@ -51,3 +51,7 @@ def scrape_new_files():
 
     uploaded_files = save_new_files(all_files, STORAGE_DIR)
     logging.info("Successfully uploaded %d new files.", len(uploaded_files))
+
+
+if __name__ == "__main__":
+    scrape_new_files()
