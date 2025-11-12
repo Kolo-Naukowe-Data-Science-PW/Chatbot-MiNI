@@ -1,4 +1,5 @@
 import logging
+
 from data_ingest.modules.embedder import Embedder
 from data_ingest.modules.vector_db import load_vector_db
 from utils.paths import get_data_dir
@@ -20,7 +21,7 @@ def get_top_k_chunks(query: str, top_k: int = 5):
     logger.info("Starting retrieval for top %d chunks. Query: '%s'", top_k, query)
 
     try:
-        logger.debug("Loading vector database from: %s", DATABASE_PATH) # <-- DODANE
+        logger.debug("Loading vector database from: %s", DATABASE_PATH)  # <-- DODANE
         vector_db = load_vector_db(DATABASE_PATH)
 
         logger.debug("Generating embedding for query...")
@@ -37,7 +38,5 @@ def get_top_k_chunks(query: str, top_k: int = 5):
         return top_chunks
 
     except Exception as e:
-        logger.error(
-            "Failed during chunk retrieval: %s", e, exc_info=True
-        )
+        logger.error("Failed during chunk retrieval: %s", e, exc_info=True)
         return {"documents": [[]], "metadatas": [[]], "ids": [[]]}

@@ -7,6 +7,7 @@ ERROR_PROMPT = (
     "Prosimy spróbować ponownie później."
 )
 
+
 def build_prompt(query: str, context: list) -> str:
     """
     Builds a prompt for the LLM based on the provided user query and top-k text chunks.
@@ -17,9 +18,7 @@ def build_prompt(query: str, context: list) -> str:
         labeled = [f"[S{i}]\n{c}" for i, c in enumerate(context, start=1)]
         joined_context = "\n\n---\n\n".join(labeled)
 
-        logger.debug(
-            "Joined %d context chunks into prompt.", len(labeled)
-        )
+        logger.debug("Joined %d context chunks into prompt.", len(labeled))
 
         prompt = (
             "Jesteś pomocnym asystentem, który odpowiada na pytania użytkownika "
@@ -40,7 +39,5 @@ def build_prompt(query: str, context: list) -> str:
         return prompt
 
     except Exception as e:
-        logger.error(
-            "Failed to build prompt: %s", e, exc_info=True
-        )
+        logger.error("Failed to build prompt: %s", e, exc_info=True)
         return ERROR_PROMPT
