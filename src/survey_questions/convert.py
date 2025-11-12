@@ -1,8 +1,9 @@
-import pandas as pd
 import re
+
+import matplotlib.pyplot as plt
+import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-import matplotlib.pyplot as plt
 
 # --- 1. Import ---
 plik = "questions.csv"
@@ -11,7 +12,7 @@ df = pd.read_csv(plik, sep=",", encoding="utf-8-sig", quotechar='"')
 kolumny = [
     "(1/3) Podaj jedno z pytań, na które odpowiedzi najczęściej szukasz.",
     "(2/3) Podaj jedno z pytań, na które odpowiedzi najczęściej szukasz.",
-    "(3/3) Podaj jedno z pytań, na które odpowiedzi najczęściej szukasz."
+    "(3/3) Podaj jedno z pytań, na które odpowiedzi najczęściej szukasz.",
 ]
 
 pytania = df[kolumny].melt(value_name="pytanie")["pytanie"]
@@ -37,119 +38,271 @@ pytania = (
 # --- 3. Categories ---
 kategorie_slowa = {
     "sesja": [
-        "sesja", "egzamin", "egzaminy", "kolokwium", "kolos", "test",
-        "termin egzaminu", "terminy egzaminow", "plan sesji",
-        "termin sesji", "obrona", "zaliczenie", "dzien egzaminu",
-        "termin kolokwium", "terminy kolokwiow","testy","sesji"
+        "sesja",
+        "egzamin",
+        "egzaminy",
+        "kolokwium",
+        "kolos",
+        "test",
+        "termin egzaminu",
+        "terminy egzaminow",
+        "plan sesji",
+        "termin sesji",
+        "obrona",
+        "zaliczenie",
+        "dzien egzaminu",
+        "termin kolokwium",
+        "terminy kolokwiow",
+        "testy",
+        "sesji",
     ],
-
     "plan": [
-        "plan", "zajecia", "plan zajec", "plan studiow",
-        "godzina", "godziny", "grafik", "rozkład", "sala",
-        "dzien", "dni", "zmiana planu", "zamiana dni", "dzien zamieniony",
-        "plan poniedzialkowy", "plan wtorkowy", "o ktorej mam zajecia",
-        "kiedy mam zajecia", "nastepne zajecia", "kolejne zajecia", "sali", "zajęcia", "grupy ćwiczeniowe",
-        "godzinach", "ćwiczenia", "wykłady"
+        "plan",
+        "zajecia",
+        "plan zajec",
+        "plan studiow",
+        "godzina",
+        "godziny",
+        "grafik",
+        "rozkład",
+        "sala",
+        "dzien",
+        "dni",
+        "zmiana planu",
+        "zamiana dni",
+        "dzien zamieniony",
+        "plan poniedzialkowy",
+        "plan wtorkowy",
+        "o ktorej mam zajecia",
+        "kiedy mam zajecia",
+        "nastepne zajecia",
+        "kolejne zajecia",
+        "sali",
+        "zajęcia",
+        "grupy ćwiczeniowe",
+        "godzinach",
+        "ćwiczenia",
+        "wykłady",
     ],
-
     "sylabus/obieralne": [
-        "sylabus", "syllabus", "ects", "kierunek", "semestr", "program studiow", "program studiów"
-        "przedmiot", "przedmioty", "przedmioty obieralne", "obieralne",
-        "obierak", "przedmioty do wyboru", "realizowac", "obowiazuje",
-        "podpiecie", "podpiecia", "podpinac", "plan studiow", "oferta przedmiotow",
-        "katalog", "studia magisterskie", "różnice przedmiotowe", "planu studiów", "ectsow",
-        "róznice przedmiotowe", "obieralnych"
+        "sylabus",
+        "syllabus",
+        "ects",
+        "kierunek",
+        "semestr",
+        "program studiow",
+        "program studiów" "przedmiot",
+        "przedmioty",
+        "przedmioty obieralne",
+        "obieralne",
+        "obierak",
+        "przedmioty do wyboru",
+        "realizowac",
+        "obowiazuje",
+        "podpiecie",
+        "podpiecia",
+        "podpinac",
+        "plan studiow",
+        "oferta przedmiotow",
+        "katalog",
+        "studia magisterskie",
+        "różnice przedmiotowe",
+        "planu studiów",
+        "ectsow",
+        "róznice przedmiotowe",
+        "obieralnych",
     ],
-
     "harmonogram": [
-        "harmonogram", "kalendarz", "rok akademicki", "dni wolne", "dzien wolny",
-        "wolne", "dni rektorskie", "dzien rektorski", "terminarz",
-        "zamiana dni", "zamienione dni", "wolne od zajec", "dni dodatkowo wolne",
-        "swieta", "przerwa swiateczna", "dni podmienione", "przerwa świąteczna",
-        "dzień","dniem", "zmiany planu", "zmiana planu"
+        "harmonogram",
+        "kalendarz",
+        "rok akademicki",
+        "dni wolne",
+        "dzien wolny",
+        "wolne",
+        "dni rektorskie",
+        "dzien rektorski",
+        "terminarz",
+        "zamiana dni",
+        "zamienione dni",
+        "wolne od zajec",
+        "dni dodatkowo wolne",
+        "swieta",
+        "przerwa swiateczna",
+        "dni podmienione",
+        "przerwa świąteczna",
+        "dzień",
+        "dniem",
+        "zmiany planu",
+        "zmiana planu",
     ],
-
     "stypendium": [
-        "stypendium", "stypendia", "rektora", "wniosek o stypendium",
-        "punkty do stypendium", "osiagniecia naukowe", "przyznawanie stypendium",
-        "ile wynosi stypendium", "termin stypendium", "punkty rektorskie", "stypendiów"
+        "stypendium",
+        "stypendia",
+        "rektora",
+        "wniosek o stypendium",
+        "punkty do stypendium",
+        "osiagniecia naukowe",
+        "przyznawanie stypendium",
+        "ile wynosi stypendium",
+        "termin stypendium",
+        "punkty rektorskie",
+        "stypendiów",
     ],
-
     "dziekanat": [
-        "dziekanat", "dziekanaty", "sekretariat", "sekretariaty",
-        "godziny otwarcia dziekanatu", "otwarte", "godziny pracy",
-        "interesant", "przyjecia", "kiedy moge przyjsc",
-        "dokument w dziekanacie", "zaswiadczenie", "odbior dyplomu"
+        "dziekanat",
+        "dziekanaty",
+        "sekretariat",
+        "sekretariaty",
+        "godziny otwarcia dziekanatu",
+        "otwarte",
+        "godziny pracy",
+        "interesant",
+        "przyjecia",
+        "kiedy moge przyjsc",
+        "dokument w dziekanacie",
+        "zaswiadczenie",
+        "odbior dyplomu",
     ],
-
     "pracownik": [
-        "pracownik", "prowadzacy", "kontakt", "profesor", "wykladowca",
-        "prodziekan", "dziekan", "konsultacje", "godziny konsultacji",
-        "numer pokoju", "pokoj", "adres mailowy", "mail do", "u kogo", "tytułów",
-        "tytuł"
+        "pracownik",
+        "prowadzacy",
+        "kontakt",
+        "profesor",
+        "wykladowca",
+        "prodziekan",
+        "dziekan",
+        "konsultacje",
+        "godziny konsultacji",
+        "numer pokoju",
+        "pokoj",
+        "adres mailowy",
+        "mail do",
+        "u kogo",
+        "tytułów",
+        "tytuł",
     ],
-
     "praktyki": [
-        "praktyka", "praktyki", "rozliczenie praktyk", "zaliczenie praktyk",
-        "dokumenty do praktyk", "umowa zlecenie", "termin praktyk",
-        "czy beda praktyki"
+        "praktyka",
+        "praktyki",
+        "rozliczenie praktyk",
+        "zaliczenie praktyk",
+        "dokumenty do praktyk",
+        "umowa zlecenie",
+        "termin praktyk",
+        "czy beda praktyki",
     ],
-
     "warunek": [
-        "warunek", "warunki", "zaliczenie warunkowe", "wznowienie",
-        "koszt warunku", "cena warunku", "ile kosztuje", "oplata za warunek",
-        "warunkowe zaliczenie", "urlop okolicznosciowy", "wznowienie studiow",
-        "warunków", "poprawienie przedmiotów", "poprawianie przedmiotów"
+        "warunek",
+        "warunki",
+        "zaliczenie warunkowe",
+        "wznowienie",
+        "koszt warunku",
+        "cena warunku",
+        "ile kosztuje",
+        "oplata za warunek",
+        "warunkowe zaliczenie",
+        "urlop okolicznosciowy",
+        "wznowienie studiow",
+        "warunków",
+        "poprawienie przedmiotów",
+        "poprawianie przedmiotów",
     ],
-
     "erasmus": [
-        "erasmus", "wymiana", "miedzynarodowa", "wymiana studencka",
-        "wyjazd", "za granice", "zagraniczna", "program erasmus",
-        "regulamin wymian", "wymiana miedzynarodowa", "wymiane"
+        "erasmus",
+        "wymiana",
+        "miedzynarodowa",
+        "wymiana studencka",
+        "wyjazd",
+        "za granice",
+        "zagraniczna",
+        "program erasmus",
+        "regulamin wymian",
+        "wymiana miedzynarodowa",
+        "wymiane",
     ],
-
     "praca_dyplomowa": [
-        "praca dyplomowa", "dyplomowa", "inzynierka", "magisterka",
-        "temat pracy", "promotor", "obrona", "tematy prac", "pisanie pracy", "obronę",
-        "pracy", "inżynierki"
+        "praca dyplomowa",
+        "dyplomowa",
+        "inzynierka",
+        "magisterka",
+        "temat pracy",
+        "promotor",
+        "obrona",
+        "tematy prac",
+        "pisanie pracy",
+        "obronę",
+        "pracy",
+        "inżynierki",
     ],
-
     "wydarzenia": [
-        "wydarzenie", "wydarzenia", "event", "eventy",
-        "juwenalia", "konik", "kucyk", "otrzesiny", "wigilia",
-        "kola naukowe", "spotkania", "wyklady otwarte", "wydarzenia politechniczne",
-        "dzieje się"
+        "wydarzenie",
+        "wydarzenia",
+        "event",
+        "eventy",
+        "juwenalia",
+        "konik",
+        "kucyk",
+        "otrzesiny",
+        "wigilia",
+        "kola naukowe",
+        "spotkania",
+        "wyklady otwarte",
+        "wydarzenia politechniczne",
+        "dzieje się",
     ],
-
     "dokumenty": [
-        "dokument", "dokumenty", "zaswiadczenie", "wniosek", "podanie",
-        "formularz", "druk", "papier", "dostarczyc dokumenty", "badania",
-        "badanie","odbiór","ubezpieczenie"
+        "dokument",
+        "dokumenty",
+        "zaswiadczenie",
+        "wniosek",
+        "podanie",
+        "formularz",
+        "druk",
+        "papier",
+        "dostarczyc dokumenty",
+        "badania",
+        "badanie",
+        "odbiór",
+        "ubezpieczenie",
     ],
-
     "drukarka": [
-        "drukarka", "drukarki", "drukowac", "wydrukowac", "druk", "wydruk",
-        "jak drukowac", "drukowanie", "wydzialowa drukarka", "drukarkę",
-        "drukarce"
+        "drukarka",
+        "drukarki",
+        "drukowac",
+        "wydrukowac",
+        "druk",
+        "wydruk",
+        "jak drukowac",
+        "drukowanie",
+        "wydzialowa drukarka",
+        "drukarkę",
+        "drukarce",
     ],
-
-    "parking": [
-        "parking", "parkingi", "parkowanie", "miejsce parkingowe", "samochod"
-    ],
-
-    "efekty": [
-        "efekt", "efekty", "efekty uczenia", "efekty ksztalcenia"
-    ],
-
+    "parking": ["parking", "parkingi", "parkowanie", "miejsce parkingowe", "samochod"],
+    "efekty": ["efekt", "efekty", "efekty uczenia", "efekty ksztalcenia"],
     "regulamin": [
-        "regulamin", "zasady", "regulamin studiow", "przepisy", "zasady zaliczenia", "obowiązkowe"
+        "regulamin",
+        "zasady",
+        "regulamin studiow",
+        "przepisy",
+        "zasady zaliczenia",
+        "obowiązkowe",
     ],
-
     "inne": [
-        "internet", "wifi", "sieć", "rezerwacja", "palarnia",
-        "wf", "materialy dydaktyczne", "konto", "samorzad", "pokoje do rozmow",
-        "oplata", "ogolne informacje", "system oceniania"
-    ]
+        "internet",
+        "wifi",
+        "sieć",
+        "rezerwacja",
+        "palarnia",
+        "wf",
+        "materialy dydaktyczne",
+        "konto",
+        "samorzad",
+        "pokoje do rozmow",
+        "oplata",
+        "ogolne informacje",
+        "system oceniania",
+    ],
 }
 
 
@@ -163,10 +316,12 @@ def przypisz_kategorie(pytanie):
 
 
 # --- 5. Create base ---
-baza = pd.DataFrame({
-    "id": range(1, len(pytania) + 1),
-    "pytanie": pytania,
-})
+baza = pd.DataFrame(
+    {
+        "id": range(1, len(pytania) + 1),
+        "pytanie": pytania,
+    }
+)
 baza["kategoria"] = baza["pytanie"].map(przypisz_kategorie)
 
 # --- 6. Save as CSV (overwrite) ---
@@ -207,14 +362,20 @@ def znajdz_podobne_pytania(zapytanie, n=5):
 
 # --- 10. Interactive search ---
 while True:
-    zapytanie = input("\nWpisz słowo klucz lub kategorię (lub 'exit' aby zakończyć): ").strip().lower()
+    zapytanie = (
+        input("\nWpisz słowo klucz lub kategorię (lub 'exit' aby zakończyć): ")
+        .strip()
+        .lower()
+    )
     if zapytanie == "exit":
         print("Zakończono program.")
         break
 
     dopasowana_kategoria = None
     for kategoria, slowa in kategorie_slowa.items():
-        if zapytanie == kategoria or any(re.search(rf"\b{slowo}\b", zapytanie) for slowo in slowa):
+        if zapytanie == kategoria or any(
+            re.search(rf"\b{slowo}\b", zapytanie) for slowo in slowa
+        ):
             dopasowana_kategoria = kategoria
             break
 
