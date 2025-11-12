@@ -1,5 +1,6 @@
 import logging
 import os
+
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -19,6 +20,7 @@ tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
 logger.info("Loading model: %s", MODEL_NAME)
 model = AutoModelForCausalLM.from_pretrained(MODEL_NAME)
 logger.info("Model and tokenizer loaded successfully.")
+
 
 def query_llm(prompt: str, max_tokens: int = 300) -> str:
     """
@@ -69,8 +71,9 @@ def main():
     for i, chunk in enumerate(text_chunks, start=1):
         source_info = chunk.get("source_url", "Unknown source")
         print(f"{i}. {source_info}")
-        
+
     logger.info("Script finished successfully.")
+
 
 if __name__ == "__main__":
     main()
