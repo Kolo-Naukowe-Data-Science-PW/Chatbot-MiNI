@@ -4,14 +4,14 @@ import os
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+from rag_api.modules.prompt_builder import build_prompt
+from rag_api.modules.retrieval import get_top_k_chunks
 from src.rag_api.modules.logs import setup_logging
 
 LOG_FILE_PATH = os.getenv("RAG_LOG_FILE", "logs/rag_api.log")
 setup_logging(log_file=LOG_FILE_PATH)
 
 logger = logging.getLogger(__name__)
-from rag_api.modules.prompt_builder import build_prompt
-from rag_api.modules.retrieval import get_top_k_chunks
 
 MODEL_NAME = "bigscience/bloom-560m"
 logger.info("Loading tokenizer: %s", MODEL_NAME)
