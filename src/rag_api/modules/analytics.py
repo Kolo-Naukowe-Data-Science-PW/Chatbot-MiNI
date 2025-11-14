@@ -1,12 +1,16 @@
-import time
 import logging
-from typing import Callable, Any, Dict
+import time
+from collections.abc import Callable
+from typing import Any
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-if not any(isinstance(h, logging.FileHandler) and h.baseFilename.endswith("chatbot_metrics.log")
-           for h in logger.handlers):
+if not any(
+    isinstance(h, logging.FileHandler)
+    and h.baseFilename.endswith("chatbot_metrics.log")
+    for h in logger.handlers
+):
     file_handler = logging.FileHandler("chatbot_metrics.log")
     formatter = logging.Formatter(
         "%(asctime)s | %(levelname)s | %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
@@ -24,7 +28,7 @@ def log_chatbot_metrics(func: Callable[..., Any]) -> Callable[..., Any]:
 
         delta_time = end_time - start_time
 
-        metrics: Dict[str, Any] = {
+        metrics: dict[str, Any] = {
             "metric": "chatbot_response_time",
             "delta_time_seconds": round(delta_time, 4),
             "function": func.__name__,
