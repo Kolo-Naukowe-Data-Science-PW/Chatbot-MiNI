@@ -3,13 +3,14 @@ FastAPI module endpoint (/chat).
 """
 
 import logging
+
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from src.rag_api.modules.logs import setup_logging
-from src.rag_api.modules.retrieval import get_top_k_chunks
-from src.rag_api.modules.prompt_builder import build_prompt
 from src.rag_api.main import query_llm
+from src.rag_api.modules.logs import setup_logging
+from src.rag_api.modules.prompt_builder import build_prompt
+from src.rag_api.modules.retrieval import get_top_k_chunks
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -51,16 +52,21 @@ def chat_endpoint(request: ChatRequest):
 
         if not isinstance(docs, list) or not isinstance(metas, list):
             raise ValueError("Invalid retrieval result format")
-        
+
         if len(docs) != len(metas):
-            raise HTTPException(status_code=500, detail="Invalid retrieval format: docs and metas lengths differ.")
+            raise HTTPException(
+                status_code=500,
+                detail="Invalid retrieval format: docs and metas lengths differ.",
+            )
 
         text_chunks = []
         sources = []
-        for doc, meta in zip(docs, metas):
+        for doc, meta in zip(docs, metas, strict=False):
             source_url = meta.get("source_url", "Unknown source")
             text_chunks.append(doc)
-            sources.append({"source_url": source_url, "text_excerpt": doc[:200] + "..."})
+            sources.append(
+                {"source_url": source_url, "text_excerpt": doc[:200] + "..."}
+            )
 
         prompt = build_prompt(request.query, text_chunks)
         answer = query_llm(prompt)
