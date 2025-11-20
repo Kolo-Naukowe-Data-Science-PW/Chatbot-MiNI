@@ -6,7 +6,6 @@ import logging
 import os
 import sys
 from logging.handlers import RotatingFileHandler
-from typing import Optional
 
 DEFAULT_LOG_FORMAT = "%(asctime)s - %(levelname)-8s - %(name)-15s - %(message)s"
 DEFAULT_LOG_LEVEL = "INFO"
@@ -38,7 +37,7 @@ def _parse_log_level(value: str) -> int:
     return logging.INFO
 
 
-def setup_logging(log_file: Optional[str] = None) -> None:
+def setup_logging(log_file: str | None = None) -> None:
     """
     Configure the root logger for the application.
 
@@ -79,8 +78,6 @@ def setup_logging(log_file: Optional[str] = None) -> None:
         root_logger.addHandler(file_handler)
 
     logger = logging.getLogger(__name__)
-    logger.info(
-        "Logging configured. Level set to %s.", logging.getLevelName(level)
-    )
+    logger.info("Logging configured. Level set to %s.", logging.getLevelName(level))
     if log_file:
         logger.info("Logging to file: %s", log_file)
