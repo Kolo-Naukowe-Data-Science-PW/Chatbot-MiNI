@@ -16,27 +16,133 @@ DATABASE_PATH = "temp_database"
 
 
 def clean_text_structure(text: str) -> str:
-    """
-    Cleans text while preserving important layout structures like
-    lists and paragraph breaks.
-    """
+    """Normalize whitespace while keeping paragraph breaks."""
     if not text:
         return ""
-
     text = re.sub(r"\n\s*\n", "\n\n", text)
-
     lines = text.split("\n")
     cleaned_lines = [re.sub(r"\s+", " ", line).strip() for line in lines]
-
     return "\n".join(cleaned_lines).strip()
+
+
+def looks_like_enumerator(text: str) -> bool:
+    """
+    Detect lines that are likely just list / item markers, e.g.:
+    '1)', '2.', 'a)', 'III.', '§ 1.' etc.
+    These should almost never be standalone chunks.
+    """
+    stripped = text.strip()
+
+    if not stripped:
+        return False
+
+    if re.match(r"^(\d+[\.\)]|[a-zA-Z][\)\.]|[ivxlcdmIVXLCDM]+\.)$", stripped):
+        return True
+
+    if re.match(r"^§\s*\d+\.?$", stripped):
+        return True
+
+    return False
+
+
+def merge_small_docs(
+    docs,
+    min_chunk_chars: int = 150,
+    max_chunk_chars: int = 1500,
+):
+    """
+    Merge very small chunks (including enumerators) into neighbors.
+
+    - Any chunk shorter than `min_chunk_chars` OR that looks like
+      a pure enumerator is considered "too small".
+    - We try to merge with the previous chunk if possible; otherwise
+      it becomes the start of a new buffer and will merge forward.
+    """
+    merged = []
+    buffer_doc = None
+
+    def is_too_small(d) -> bool:
+        text = d.page_content or ""
+        return len(text.strip()) < min_chunk_chars or looks_like_enumerator(text)
+
+    for doc in docs:
+        if buffer_doc is None:
+            buffer_doc = doc
+            continue
+
+        buffer_text = buffer_doc.page_content or ""
+        current_text = doc.page_content or ""
+
+        if is_too_small(buffer_doc) or is_too_small(doc):
+            combined_len = len(buffer_text) + 1 + len(current_text)
+            if combined_len <= max_chunk_chars:
+                buffer_doc.page_content = (
+                    buffer_text.rstrip() + "\n" + current_text.lstrip()
+                ).strip()
+            else:
+                merged.append(buffer_doc)
+                buffer_doc = doc
+        else:
+            merged.append(buffer_doc)
+            buffer_doc = doc
+
+    if buffer_doc is not None:
+        merged.append(buffer_doc)
+
+    return merged
+
+
+def split_documents_hybrid(
+    documents,
+    chunk_size: int = 500,
+    overlap: int = 100,
+    min_chunk_chars: int = 150,
+    max_chunk_chars: int = 1500,
+):
+    """
+    Hybrid splitter:
+      1. Use RecursiveCharacterTextSplitter for initial splitting.
+      2. Merge too-small / enumerator-like chunks with neighbors.
+      3. Clean each chunk's text.
+    """
+    base_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=overlap,
+        separators=["\n\n", "\n", ". ", " ", ""],
+    )
+
+    logging.info(
+        "Initial splitting with chunk_size=%d, overlap=%d",
+        chunk_size,
+        overlap,
+    )
+    raw_chunks = base_splitter.split_documents(documents)
+
+    logging.info("Got %d raw chunks; merging small ones…", len(raw_chunks))
+    merged_chunks = merge_small_docs(
+        raw_chunks,
+        min_chunk_chars=min_chunk_chars,
+        max_chunk_chars=max_chunk_chars,
+    )
+
+    final_chunks = []
+    for doc in merged_chunks:
+        cleaned = clean_text_structure(doc.page_content)
+        if cleaned:
+            doc.page_content = cleaned
+            final_chunks.append(doc)
+
+    logging.info(
+        "After merging and cleaning: %d chunks (min=%d chars, max=%d chars)",
+        len(final_chunks),
+        min_chunk_chars,
+        max_chunk_chars,
+    )
+    return final_chunks
 
 
 def ingest_documents():
     embedder = Embedder()
-
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=500, chunk_overlap=100, separators=["\n\n", "\n", ". ", " ", ""]
-    )
 
     all_files = [
         os.path.join(STORAGE_DIR, f)
@@ -70,14 +176,16 @@ def ingest_documents():
 
         try:
             raw_docs = loader.load()
-            split_docs = text_splitter.split_documents(raw_docs)
 
-            doc_text_contents = []
+            split_docs = split_documents_hybrid(
+                raw_docs,
+                chunk_size=500,
+                overlap=100,
+                min_chunk_chars=150,
+                max_chunk_chars=1500,
+            )
 
-            for doc in split_docs:
-                cleaned_content = clean_text_structure(doc.page_content)
-                if cleaned_content:
-                    doc_text_contents.append(cleaned_content)
+            doc_text_contents = [doc.page_content for doc in split_docs]
 
             if not doc_text_contents:
                 continue
