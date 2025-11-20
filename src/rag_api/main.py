@@ -1,78 +1,88 @@
 import logging
 import os
 
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from dotenv import load_dotenv
+from openai import OpenAI
 
 from rag_api.modules.prompt_builder import build_prompt
 from rag_api.modules.retrieval import get_top_k_chunks
-from src.rag_api.modules.logs import setup_logging
 
-LOG_FILE_PATH = os.getenv("RAG_LOG_FILE", "logs/rag_api.log")
-setup_logging(log_file=LOG_FILE_PATH)
+load_dotenv()
 
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-MODEL_NAME = "bigscience/bloom-560m"
-logger.info("Loading tokenizer: %s", MODEL_NAME)
-tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+if not OPENROUTER_API_KEY:
+    logger.warning("OPENROUTER_API_KEY not found in environment variables.")
 
-logger.info("Loading model: %s", MODEL_NAME)
-model = AutoModelForCausalLM.from_pretrained(MODEL_NAME)
-logger.info("Model and tokenizer loaded successfully.")
+client = OpenAI(
+    base_url="https://openrouter.ai/api/v1",
+    api_key=OPENROUTER_API_KEY,
+)
+# Highly recommended for usage with RAG, because it's free and has a good performance. In order to run it, one needs to
+# create an account on OpenRouter and get the API key. Then put the API key in the .env file
+
+MODEL_NAME = "openai/gpt-oss-20b:free"
 
 
-def query_llm(prompt: str, max_tokens: int = 300) -> str:
+def query_llm(prompt: str) -> str:
     """
-    Generates an answer from a free Hugging Face model.
+    Generates an answer using OpenRouter API.
     """
+    try:
+        logger.debug("Sending request to OpenRouter model: %s", MODEL_NAME)
 
-    inputs = tokenizer(prompt, return_tensors="pt")
-    input_ids = inputs["input_ids"]
-
-    with torch.no_grad():
-        output_ids = model.generate(
-            input_ids,
-            max_new_tokens=max_tokens,
-            do_sample=True,
-            top_p=0.9,
+        completion = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[{"role": "user", "content": prompt}],
             temperature=0.5,
+            max_tokens=500,
         )
 
-    output_text = tokenizer.decode(output_ids[0], skip_special_tokens=True)
+        answer = completion.choices[0].message.content.strip()
+        logger.debug("LLM query successful.")
+        return answer
 
-    answer = output_text[len(prompt) :].strip()
-    logger.debug("LLM query successful, answer generated.")
-    return answer
+    except Exception as e:
+        logger.error("Failed to query OpenRouter: %s", e)
+        return "Sorry, I encountered an error while generating the response."
 
 
 def main():
     logger.info("RAG API script started.")
-    query = input("Enter your query: ").strip()
+    logger.info(f"Using Model: {MODEL_NAME}")
 
-    if not query:
-        logger.error("Query cannot be empty.")
-        return
+    while True:
+        query = input("\nEnter your query (or 'q' to quit): ").strip()
 
-    logger.info("New query received: '%s'", query)
+        if query.lower() == "q":
+            break
+        if not query:
+            logger.error("Query cannot be empty.")
+            continue
 
-    logger.info("Retrieving top K chunks...")
-    sorted_chunks = get_top_k_chunks(query)
+        logger.info("Retrieving top K chunks...")
 
-    text_chunks = [chunk["text_chunk"] for chunk in sorted_chunks]
+        sorted_chunks = get_top_k_chunks(query)
 
-    prompt = build_prompt(query, text_chunks)
+        if not sorted_chunks:
+            print("No relevant information found in the database.")
+            continue
 
-    answer = query_llm(prompt)
+        text_only_chunks = [chunk["text_chunk"] for chunk in sorted_chunks]
+        prompt = build_prompt(query, text_only_chunks)
 
-    print("\n=== Answer ===")
-    print(answer)
-    print("\n=== Sources ===")
-    for i, chunk in enumerate(text_chunks, start=1):
-        source_info = chunk.get("source_url", "Unknown source")
-        print(f"{i}. {source_info}")
+        print("\nThinking...")
+        answer = query_llm(prompt)
 
-    logger.info("Script finished successfully.")
+        print("\n=== Answer ===")
+        print(answer)
+
+        print("\n=== Sources ===")
+        for i, chunk_data in enumerate(sorted_chunks, start=1):
+            source = chunk_data.get("source_url", "Unknown")
+            print(f"{i}. {source}")
 
 
 if __name__ == "__main__":
