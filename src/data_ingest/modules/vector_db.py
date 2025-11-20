@@ -40,12 +40,20 @@ def save_to_vector_db(text_chunk, embedding, source_url, path_to_database):
 
     number_of_docs = collection.count()
 
-    collection.add(
-        documents=text_chunk,
-        embeddings=embedding,
-        metadatas=[{"url": url} for url in source_url],
-        ids=[f"ids_{number_of_docs+i+1}" for i in range(len(text_chunk))],
-    )
+    batch_size = 5000
+    total_docs = len(text_chunk)
+
+    for i in range(0, total_docs, batch_size):
+        batch_texts = text_chunk[i : i + batch_size]
+        batch_embeddings = embedding[i : i + batch_size]
+        batch_urls = source_url[i : i + batch_size]
+
+        collection.add(
+            documents=batch_texts,
+            embeddings=batch_embeddings,
+            metadatas=[{"url": url} for url in batch_urls],
+            ids=[f"ids_{number_of_docs+i+j+1}" for j in range(len(batch_texts))],
+        )
 
 
 def load_vector_db(path_to_database):
