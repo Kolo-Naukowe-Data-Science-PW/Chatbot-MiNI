@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from urllib.parse import urlparse
 
 import requests
 
@@ -14,7 +15,7 @@ def sanitize_filename(url: str) -> str:
     return "".join(c if c.isalnum() or c in "-_." else "_" for c in url)
 
 
-def fetch_file(url: str, output_dir: str) -> str:
+def fetch_file(url: str, output_dir: str, session: requests.Session = None) -> str:
     """
     Download a file from a URL, infer an appropriate file extension, and
     persist both the file and a companion metadata JSON in the given directory.
@@ -26,28 +27,63 @@ def fetch_file(url: str, output_dir: str) -> str:
     Args:
         url: The HTTP(S) URL to fetch.
         output_dir: Directory where the downloaded file and its metadata will be saved.
+        session: Optional requests.Session object for connection reuse.
 
     Returns:
         The filesystem path to the saved file on success; None if the fetch
         or write fails (an error is logged in that case).
     """
+    parsed = urlparse(url)
+    clean_path = parsed.path.lower()
+    if any(
+        clean_path.endswith(ext)
+        for ext in [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".svg", ".ico"]
+    ):
+        logging.info(f"Skipping image URL: {url}")
+        return None
+
+    filename_check = sanitize_filename(url).lower()
+    if any(
+        ext in filename_check
+        for ext in [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"]
+    ):
+
+        if "_bwg_" in filename_check or "photo-gallery" in filename_check:
+            logging.info(f"Skipping suspected gallery image: {url}")
+            return None
+
     try:
         logging.info("Fetching URL: %s", url)
-        response = requests.get(url, stream=True, timeout=20)
+        if session:
+            response = session.get(url, stream=True, timeout=20)
+        else:
+            response = requests.get(url, stream=True, timeout=20)
         response.raise_for_status()
 
         content_type = (response.headers.get("Content-Type") or "").lower()
-        filename_base = sanitize_filename(url)  # Reuse your sanitize function
+
+        if content_type.startswith("image/"):
+            logging.info(f"Skipping image content type: {content_type} for URL: {url}")
+            return None
+
+        filename_base = sanitize_filename(url)
 
         ext = ".html"
         if "application/pdf" in content_type:
             ext = ".pdf"
         elif "wordprocessingml" in content_type or "msword" in content_type:
             ext = ".docx"
-        elif url.lower().endswith(".pdf"):
+        elif (
+            "application/zip" in content_type
+            or "application/x-zip-compressed" in content_type
+        ):
+            ext = ".zip"
+        elif clean_path.endswith(".pdf"):
             ext = ".pdf"
-        elif url.lower().endswith(".docx"):
+        elif clean_path.endswith(".docx"):
             ext = ".docx"
+        elif clean_path.endswith(".zip"):
+            ext = ".zip"
 
         filename = filename_base + ext
         os.makedirs(output_dir, exist_ok=True)
