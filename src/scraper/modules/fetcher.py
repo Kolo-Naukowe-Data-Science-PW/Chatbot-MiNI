@@ -1,10 +1,9 @@
+import json
 import logging
 import os
-from io import BytesIO
+from urllib.parse import urlparse
 
 import requests
-from docx import Document as DocxDocument
-from PyPDF2 import PdfReader, PdfWriter
 
 logging.basicConfig(level=logging.INFO)
 
@@ -16,85 +15,95 @@ def sanitize_filename(url: str) -> str:
     return "".join(c if c.isalnum() or c in "-_." else "_" for c in url)
 
 
-def fetch_file(url: str, output_dir: str) -> str:
+def fetch_file(url: str, output_dir: str, session: requests.Session = None) -> str:
     """
-    Downloads an HTML, a PDF or a DOCX file ans saves it.
-    First line of the saved file contains the URL.
+    Download a file from a URL, infer an appropriate file extension, and
+    persist both the file and a companion metadata JSON in the given directory.
+
+    The function determines the file extension using the HTTP Content-Type header
+    and, as a fallback, the URL suffix. It writes the response body to disk and
+    creates a JSON file alongside it containing basic provenance metadata.
+
+    Args:
+        url: The HTTP(S) URL to fetch.
+        output_dir: Directory where the downloaded file and its metadata will be saved.
+        session: Optional requests.Session object for connection reuse.
+
+    Returns:
+        The filesystem path to the saved file on success; None if the fetch
+        or write fails (an error is logged in that case).
     """
+    parsed = urlparse(url)
+    clean_path = parsed.path.lower()
+    if any(
+        clean_path.endswith(ext)
+        for ext in [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".svg", ".ico"]
+    ):
+        logging.info(f"Skipping image URL: {url}")
+        return None
+
+    filename_check = sanitize_filename(url).lower()
+    if any(
+        ext in filename_check
+        for ext in [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"]
+    ):
+
+        if "_bwg_" in filename_check or "photo-gallery" in filename_check:
+            logging.info(f"Skipping suspected gallery image: {url}")
+            return None
 
     try:
-
         logging.info("Fetching URL: %s", url)
-        response = requests.get(url, stream=True, timeout=20)
+        if session:
+            response = session.get(url, stream=True, timeout=20)
+        else:
+            response = requests.get(url, stream=True, timeout=20)
         response.raise_for_status()
 
         content_type = (response.headers.get("Content-Type") or "").lower()
-        filename = sanitize_filename(url)
+
+        if content_type.startswith("image/"):
+            logging.info(f"Skipping image content type: {content_type} for URL: {url}")
+            return None
+
+        filename_base = sanitize_filename(url)
+
+        ext = ".html"
         if "application/pdf" in content_type:
-            filename += ".pdf"
+            ext = ".pdf"
+        elif "wordprocessingml" in content_type or "msword" in content_type:
+            ext = ".docx"
         elif (
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            in content_type
-            or "application/msword" in content_type
+            "application/zip" in content_type
+            or "application/x-zip-compressed" in content_type
         ):
-            filename += ".docx"
-        elif "text/html" in content_type or "application/xhtml+xml" in content_type:
-            filename += ".html"
-        else:
-            # Fallback to URL suffix if content-type is ambiguous
-            if url.lower().endswith(".pdf"):
-                filename += ".pdf"
-            elif url.lower().endswith(".docx"):
-                filename += ".docx"
-            else:
-                filename += ".html"
+            ext = ".zip"
+        elif clean_path.endswith(".pdf"):
+            ext = ".pdf"
+        elif clean_path.endswith(".docx"):
+            ext = ".docx"
+        elif clean_path.endswith(".zip"):
+            ext = ".zip"
 
+        filename = filename_base + ext
         os.makedirs(output_dir, exist_ok=True)
+
         file_path = os.path.join(output_dir, filename)
+        meta_path = os.path.join(output_dir, filename_base + ".json")
 
-        if filename.endswith(".html"):
+        with open(file_path, "wb") as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
 
-            content = response.text
-            content = f"{url}\n{content}"
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(content)
+        metadata = {
+            "source_url": url,
+            "content_type": content_type,
+            "original_filename": filename,
+        }
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump(metadata, f, indent=2)
 
-        elif filename.endswith(".pdf"):
-
-            original_pdf = PdfReader(BytesIO(response.content))
-            writer = PdfWriter()
-
-            import tempfile
-
-            from reportlab.lib.pagesizes import letter
-            from reportlab.pdfbase import pdfmetrics
-            from reportlab.pdfbase.ttfonts import TTFont
-            from reportlab.pdfgen import canvas
-
-            pdfmetrics.registerFont(TTFont("Arial", "Arial.ttf"))
-            tmp_path = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf").name
-            c = canvas.Canvas(tmp_path, pagesize=letter)
-            c.drawString(72, 720, url)
-            c.showPage()
-            c.save()
-            tmp_reader = PdfReader(tmp_path)
-            writer.add_page(tmp_reader.pages[0])
-
-            for page in original_pdf.pages:
-                writer.add_page(page)
-
-            with open(file_path, "wb") as f:
-                writer.write(f)
-
-        elif filename.endswith(".docx"):
-            doc = DocxDocument()
-            doc.add_paragraph(url)
-            tmp_doc = DocxDocument(BytesIO(response.content))
-            for para in tmp_doc.paragraphs:
-                doc.add_paragraph(para.text)
-            doc.save(file_path)
-
-        logging.info("Saved file: %s", file_path)
+        logging.info(f"Saved {filename} and metadata.")
         return file_path
 
     except Exception as e:

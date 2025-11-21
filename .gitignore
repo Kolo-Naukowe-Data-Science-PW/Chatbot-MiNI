@@ -1,5 +1,4 @@
-src/data/raw/ignore/
-src/data/final_storage/
+src/data
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
