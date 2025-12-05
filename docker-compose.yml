@@ -9,22 +9,20 @@ x-env: &env
   PYTHONUNBUFFERED: "1"
   HF_HOME: /root/.cache/huggingface
   PYTHONPATH: /app/src
+  OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
 
 services:
   scraper:
     build: .
-    command: micromamba run -n app python -m src.scraper.main
+    command: ["micromamba", "run", "-n", "app", "python", "-m", "src.scraper.main"]
     environment: *env
     volumes:
       - final_storage:/app/src/data/final_storage
       - hf_cache:/root/.cache/huggingface
-    read_only: true
-    tmpfs: ["/tmp"]
-    restart: "no"
 
   ingest:
     build: .
-    command: micromamba run -n app python -m src.data_ingest.main
+    command: ["micromamba", "run", "-n", "app", "python", "-m", "src.data_ingest.main"]
     environment:
       <<: *env
       SENTENCE_TRANSFORMER_MODEL: intfloat/multilingual-e5-base
@@ -38,23 +36,28 @@ services:
     depends_on:
       scraper:
         condition: service_completed_successfully
-    read_only: true
-    tmpfs: ["/tmp"]
-    restart: "no"
 
   api:
     build: .
-    command: micromamba run -n app uvicorn src.rag_api.main:app --host 0.0.0.0 --port 8000
+    command: micromamba run -n app uvicorn src.rag_api.api:app --host 0.0.0.0 --port 8000
     environment:
       <<: *env
       CHROMA_DIR: /app/src/rag_api/chroma_db
       CHROMA_COLLECTION: mini_site
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
     volumes:
       - chroma_db:/app/src/rag_api/chroma_db:ro
+    expose:
+      - "8000"
+    restart: always
+
+  frontend:
+    build: .
+    command: micromamba run -n app streamlit run src/frontend/app.py --server.port 8501 --server.address 0.0.0.0
+    environment:
+      <<: *env
+      API_URL: "http://api:8000/chat"
     ports:
-      - "8000:8000"
+      - "80:8501"
     depends_on:
-      ingest:
-        condition: service_completed_successfully
-    restart: unless-stopped
+      - api
+    restart: always
