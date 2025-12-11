@@ -1,17 +1,21 @@
+import logging
+
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from rag_api.modules.retrieval import get_top_k_chunks
+
+from rag_api.main import query_llm
 from rag_api.modules.prompt_builder import build_prompt
-from rag_api.main import query_llm 
-import logging
+from rag_api.modules.retrieval import get_top_k_chunks
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
+
 class QueryRequest(BaseModel):
     query: str
+
 
 @app.post("/chat")
 def chat_endpoint(request: QueryRequest):
@@ -22,11 +26,11 @@ def chat_endpoint(request: QueryRequest):
     logger.info(f"Received query: {query}")
 
     sorted_chunks = get_top_k_chunks(query)
-    
+
     if not sorted_chunks:
         return {
             "answer": "Przepraszam, nie znalazłem w bazie informacji na ten temat.",
-            "sources": []
+            "sources": [],
         }
 
     text_only_chunks = [chunk["text_chunk"] for chunk in sorted_chunks]

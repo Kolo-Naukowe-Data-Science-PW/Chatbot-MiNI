@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-from utils.paths import get_data_dir
 import re
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -10,6 +9,7 @@ from data_ingest.modules.embedder import Embedder
 from data_ingest.modules.extractor import get_loader_for_file
 from data_ingest.modules.vector_db import save_to_vector_db
 from scraper.main import STORAGE_DIR
+from utils.paths import get_data_dir
 
 logging.basicConfig(level=logging.INFO)
 

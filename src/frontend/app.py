@@ -1,6 +1,7 @@
-import streamlit as st
-import requests
 import os
+
+import requests
+import streamlit as st
 
 API_URL = os.getenv("API_URL", "http://api:8000/chat")
 
@@ -27,13 +28,17 @@ if prompt := st.chat_input("O co chcesz zapytać?"):
                     data = response.json()
                     answer = data.get("answer", "Błąd braku odpowiedzi.")
                     sources = list(set(data.get("sources", [])))
-                    
+
                     full_response = answer
                     if sources:
-                        full_response += "\n\n**Źródła:**\n" + "\n".join([f"- {s}" for s in sources])
-                    
+                        full_response += "\n\n**Źródła:**\n" + "\n".join(
+                            [f"- {s}" for s in sources]
+                        )
+
                     st.markdown(full_response)
-                    st.session_state.messages.append({"role": "assistant", "content": full_response})
+                    st.session_state.messages.append(
+                        {"role": "assistant", "content": full_response}
+                    )
                 else:
                     st.error(f"Błąd API: {response.status_code}")
             except Exception as e:
