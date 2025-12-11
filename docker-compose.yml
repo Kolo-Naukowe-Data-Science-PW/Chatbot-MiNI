@@ -9,55 +9,96 @@ x-env: &env
   PYTHONUNBUFFERED: "1"
   HF_HOME: /root/.cache/huggingface
   PYTHONPATH: /app/src
-  OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+  OPENROUTER_API_KEY: "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"
 
 services:
   scraper:
+    user: root
     build: .
-    command: ["micromamba", "run", "-n", "app", "python", "-m", "src.scraper.main"]
+    command:
+      - micromamba
+      - run
+      - -n
+      - app
+      - python
+      - -m
+      - scraper.main
     environment: *env
     volumes:
       - final_storage:/app/src/data/final_storage
       - hf_cache:/root/.cache/huggingface
 
   ingest:
+    user: root
     build: .
-    command: ["micromamba", "run", "-n", "app", "python", "-m", "src.data_ingest.main"]
+    command:
+      - micromamba
+      - run
+      - -n
+      - app
+      - python
+      - -m
+      - data_ingest.main
     environment:
       <<: *env
       SENTENCE_TRANSFORMER_MODEL: intfloat/multilingual-e5-base
       EMBEDDINGS_DEVICE: cpu
-      CHROMA_DIR: /app/src/rag_api/chroma_db
-      CHROMA_COLLECTION: mini_site
+      CHROMA_DIR: /app/src/data/chroma_db
     volumes:
       - final_storage:/app/src/data/final_storage:ro
-      - chroma_db:/app/src/rag_api/chroma_db
+      - chroma_db:/app/src/data/chroma_db
       - hf_cache:/root/.cache/huggingface
     depends_on:
       scraper:
         condition: service_completed_successfully
 
   api:
+    user: root
     build: .
-    command: micromamba run -n app uvicorn src.rag_api.api:app --host 0.0.0.0 --port 8000
+    command:
+      - micromamba
+      - run
+      - -n
+      - app
+      - uvicorn
+      - rag_api.api:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
     environment:
       <<: *env
-      CHROMA_DIR: /app/src/rag_api/chroma_db
-      CHROMA_COLLECTION: mini_site
+      CHROMA_DIR: /app/src/data/chroma_db
     volumes:
-      - chroma_db:/app/src/rag_api/chroma_db:ro
+      - chroma_db:/app/src/data/chroma_db
     expose:
       - "8000"
     restart: always
 
   frontend:
+    user: root
     build: .
-    command: micromamba run -n app streamlit run src/frontend/app.py --server.port 8501 --server.address 0.0.0.0
+    command:
+      - micromamba
+      - run
+      - -n
+      - app
+      - streamlit
+      - run
+      - src/frontend/app.py
+      - --server.port
+      - "8501"
+      - --server.address
+      - "0.0.0.0"
+      - --server.enableCORS
+      - "false"
+      - --server.enableXsrfProtection
+      - "false"
     environment:
       <<: *env
       API_URL: "http://api:8000/chat"
     ports:
-      - "80:8501"
+      - "8501:8501"
     depends_on:
       - api
     restart: always

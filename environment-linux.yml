@@ -1,24 +1,39 @@
 name: chatbot_mini
 channels:
   - conda-forge
+
 dependencies:
   - python=3.11
   - pip
   - pytorch-cpu
-  - sentence-transformers
+  - torchvision
+  - sentence-transformers>=3.0.1
+  - transformers>=4.41.0
+  - scikit-learn=1.3.2
+  - numpy=1.26.4
+  - pandas=2.1.4
   - pip:
-      - requests
-      - beautifulsoup4
-      - python-dotenv
-      - chromadb
-      - openai
+      - huggingface_hub>=0.23.0
+      - langchain-huggingface>=0.1.7
+      - protobuf>=3.20
+      - pyarrow<15.0.0
+      - streamlit==1.50.0
+      - fastapi
+      - uvicorn
       - langchain
       - langchain-community
       - langchain-text-splitters
+      - chromadb
       - pypdf
       - python-docx
+      - pdfminer.six
       - unstructured
+      - unstructured-inference
+      - pi_heif
+      - pikepdf
+      - pdf2image
+      - requests
+      - beautifulsoup4
+      - python-dotenv
       - networkx
-      - streamlit
-      - fastapi
-      - uvicorn
+      - openai

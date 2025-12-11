@@ -4,8 +4,8 @@ import os
 
 API_URL = os.getenv("API_URL", "http://api:8000/chat")
 
-st.set_page_config(page_title="Chatbot MiNI", page_icon="🎓")
-st.title("Chatbot Wydziału MiNI PW 🎓")
+st.set_page_config(page_title="Chatbot MiNI", page_icon="đźŽ“")
+st.title("Chatbot Wydziału MiNI PW“")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []

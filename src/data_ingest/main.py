@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from utils.paths import get_data_dir
 import re
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -12,7 +13,7 @@ from scraper.main import STORAGE_DIR
 
 logging.basicConfig(level=logging.INFO)
 
-DATABASE_PATH = "temp_database"
+DATABASE_PATH = os.getenv("CHROMA_DIR", get_data_dir("temp_database"))
 
 
 def clean_text_structure(text: str) -> str:
@@ -28,7 +29,7 @@ def clean_text_structure(text: str) -> str:
 def looks_like_enumerator(text: str) -> bool:
     """
     Detect lines that are likely just list / item markers, e.g.:
-    '1)', '2.', 'a)', 'III.', '§ 1.' etc.
+    '1)', '2.', 'a)', 'III.', 'Â§ 1.' etc.
     These should almost never be standalone chunks.
     """
     stripped = text.strip()
@@ -39,7 +40,7 @@ def looks_like_enumerator(text: str) -> bool:
     if re.match(r"^(\d+[\.\)]|[a-zA-Z][\)\.]|[ivxlcdmIVXLCDM]+\.)$", stripped):
         return True
 
-    if re.match(r"^§\s*\d+\.?$", stripped):
+    if re.match(r"^Â§\s*\d+\.?$", stripped):
         return True
 
     return False
@@ -118,7 +119,7 @@ def split_documents_hybrid(
     )
     raw_chunks = base_splitter.split_documents(documents)
 
-    logging.info("Got %d raw chunks; merging small ones…", len(raw_chunks))
+    logging.info("Got %d raw chunks; merging small onesâ€¦", len(raw_chunks))
     merged_chunks = merge_small_docs(
         raw_chunks,
         min_chunk_chars=min_chunk_chars,

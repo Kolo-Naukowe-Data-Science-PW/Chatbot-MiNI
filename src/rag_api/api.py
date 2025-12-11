@@ -1,8 +1,8 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from src.rag_api.modules.retrieval import get_top_k_chunks
-from src.rag_api.modules.prompt_builder import build_prompt
-from src.rag_api.main import query_llm 
+from rag_api.modules.retrieval import get_top_k_chunks
+from rag_api.modules.prompt_builder import build_prompt
+from rag_api.main import query_llm 
 import logging
 
 logging.basicConfig(level=logging.INFO)

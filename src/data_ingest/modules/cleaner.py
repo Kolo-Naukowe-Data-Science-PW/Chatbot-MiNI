@@ -34,7 +34,7 @@ def clean_html(text: str | None) -> str:
     return cleaned
 
 
-# raczej nie będzie używane
+# raczej nie będzie używane, ale zostawiam na wszelki wypadek
 def clean_txt_folder(input_dir: str, output_dir: str):
     """
     Clean all .txt files in input_dir and save results in output_dir.
