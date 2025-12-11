@@ -9,7 +9,7 @@ x-env: &env
   PYTHONUNBUFFERED: "1"
   HF_HOME: /root/.cache/huggingface
   PYTHONPATH: /app/src
-  OPENROUTER_API_KEY: "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"
+  OPENROUTER_API_KEY: #NOTHING IN HERE
 
 services:
   scraper:
