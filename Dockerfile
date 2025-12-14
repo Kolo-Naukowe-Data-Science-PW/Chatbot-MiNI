@@ -8,6 +8,8 @@ SHELL ["micromamba", "run", "-n", "app", "/bin/bash", "-lc"]
 WORKDIR /app
 COPY . /app
 
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONNOUSERSITE=1 \
+    PYTHONPATH=/app/src
 
-ENV PYTHONUNBUFFERED=1 PYTHONNOUSERSITE=1 PYTHONPATH=/app/src
 CMD ["micromamba", "run", "-n", "app", "python", "-c", "print('image ready')"]
