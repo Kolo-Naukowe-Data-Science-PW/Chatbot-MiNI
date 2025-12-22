@@ -1,11 +1,12 @@
-import os
 import json
-from pipeline.common import get_llm_client, logger, MODEL_WORKER, get_config, CURRENT_VERSION
+from .common import get_llm_client, logger, MODEL_WORKER, get_config, CURRENT_VERSION
+import os
+
 
 config = get_config()
 
-INPUT_DIR = "new_pipeline/data/processed_text"
-OUTPUT_DIR = "new_pipeline/data/facts"
+INPUT_DIR = "src/data/processed_text"
+OUTPUT_DIR = "src/data/facts"
 
 SYSTEM_PROMPT = """
     Jesteś inteligentnym asystentem z Wydziału MiNI PW, który pomaga wyodrębniać fakty z różnych dokumentów.
@@ -29,14 +30,16 @@ def extract_facts_list(text, filename):
     """
 
     if not config["use_llm_for_facts"]:
-        return [text.strip()] 
+        return [text.strip()]
 
     client = get_llm_client()
 
     try:
         chunk_size = 15000
-        text_chunks = [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
-        
+        text_chunks = [
+            text[i : i + chunk_size] for i in range(0, len(text), chunk_size)
+        ]
+
         raw_facts_strings = []
 
         for chunk in text_chunks:
@@ -44,22 +47,22 @@ def extract_facts_list(text, filename):
                 model=MODEL_WORKER,
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": f"Tekst:\n{chunk}"}
+                    {"role": "user", "content": f"Tekst:\n{chunk}"},
                 ],
-                temperature=0.1
+                temperature=0.1,
             )
             content = response.choices[0].message.content.strip()
-            
+
             if content.startswith("```"):
                 content = content.replace("```json", "").replace("```", "")
-            
+
             try:
                 parsed = json.loads(content)
                 if isinstance(parsed, list):
                     raw_facts_strings.extend(parsed)
             except json.JSONDecodeError:
                 logger.error(f"Error processing: {filename}")
-        
+
         return raw_facts_strings
 
     except Exception as e:
@@ -76,43 +79,44 @@ def main():
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    mode_info = "LLM extraction" if config["use_llm_for_facts"] else "Raw text passthrough"
+    mode_info = (
+        "LLM extraction" if config["use_llm_for_facts"] else "Raw text passthrough"
+    )
     logger.info(f"Starting extraction. Version: {CURRENT_VERSION} | Mode: {mode_info}")
-    
+
     files = [f for f in os.listdir(INPUT_DIR) if f.endswith(".txt")]
-    
+
     for txt_file in files:
         base_name = os.path.splitext(txt_file)[0]
         txt_path = os.path.join(INPUT_DIR, txt_file)
-        
+
         meta_path = os.path.join(INPUT_DIR, f"{txt_file.replace('.txt', '.json')}")
         if not os.path.exists(meta_path):
             meta_path = os.path.join(INPUT_DIR, f"{base_name}.json")
 
         source_url = txt_file
         if os.path.exists(meta_path):
-            with open(meta_path, "r", encoding="utf-8") as f:
+            with open(meta_path, encoding="utf-8") as f:
                 meta = json.load(f)
                 source_url = meta.get("source_url", txt_file)
-    
+
         logger.info(f"Processing: {txt_file} (Source: {source_url})")
-        
-        with open(txt_path, "r", encoding="utf-8") as f:
+
+        with open(txt_path, encoding="utf-8") as f:
             text_content = f.read()
-            
+
         content_list = extract_facts_list(text_content, txt_file)
-        
+
         if content_list:
 
             structured_output = [
-                {"source": source_url, "fact": item}
-                for item in content_list
+                {"source": source_url, "fact": item} for item in content_list
             ]
-            
+
             out_path = os.path.join(OUTPUT_DIR, f"{base_name}_facts.json")
             with open(out_path, "w", encoding="utf-8") as f:
                 json.dump(structured_output, f, indent=2, ensure_ascii=False)
-                
+
             logger.info(f"Saved {len(structured_output)} items to {out_path}")
 
 

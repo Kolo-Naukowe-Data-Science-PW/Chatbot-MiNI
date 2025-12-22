@@ -1,38 +1,39 @@
 import logging
 import os
+
 from dotenv import load_dotenv
 from openai import OpenAI
 
-load_dotenv() 
+load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 MODEL_NAME = "openai/gpt-4o-mini"
 
-CURRENT_VERSION = 1 
+CURRENT_VERSION = 1
 
 PIPELINE_CONFIG = {
     1: {
         "process_complex_files": False,
         "use_llm_for_facts": False,
-        "chunking_strategy": "file_as_chunk"
+        "chunking_strategy": "file_as_chunk",
     },
     2: {
         "process_complex_files": False,
         "use_llm_for_facts": True,
-        "chunking_strategy": "fact_based"
+        "chunking_strategy": "fact_based",
     },
     3: {
         "process_complex_files": True,
         "use_llm_for_facts": True,
-        "chunking_strategy": "fact_based"
+        "chunking_strategy": "fact_based",
     },
     4: {
         "process_complex_files": True,
         "use_llm_for_facts": True,
-        "chunking_strategy": "fact_based"
-    }
+        "chunking_strategy": "fact_based",
+    },
 }
 
 
