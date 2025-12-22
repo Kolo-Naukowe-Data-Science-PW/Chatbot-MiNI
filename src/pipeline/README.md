@@ -2,6 +2,7 @@ This branch contains files needed for deployment BUT with new scraping & ingesti
 
 ---
 
+```
 chatbot-mini/
 │
 ├── .gitignore                     <-- modified
@@ -46,7 +47,7 @@ chatbot-mini/
     │
     └── utils/
         └── paths.py
-
+```
 ---
 
 Version description in the `common.py` file:
