@@ -13,8 +13,8 @@ chatbot-mini/
 ├── README.md
 ├── chatbot_mini.yml
 ├── docker-compose.yml             <-- modified
-├── environment-linux.yml     
-├── pyproject.toml            
+├── environment-linux.yml
+├── pyproject.toml
 │
 └── src/
     │
@@ -24,7 +24,7 @@ chatbot-mini/
     │   ├── complex_files/         <-- raw scraped complex files
     │   ├── facts/                 <-- JSON files containing facts
     │   ├── chroma_db/
-    │   └── final_storage/    
+    │   └── final_storage/
     |
     ├── data_ingest/
     |   └── modules/

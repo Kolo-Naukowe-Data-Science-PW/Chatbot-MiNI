@@ -1,9 +1,10 @@
 import json
 import os
+
 import pandas as pd
 from docx import Document
 
-from src.pipeline.common import logger, get_config, CURRENT_VERSION
+from src.pipeline.common import CURRENT_VERSION, get_config, logger
 
 config = get_config()
 

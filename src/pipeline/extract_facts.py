@@ -1,7 +1,7 @@
 import json
-from .common import get_llm_client, logger, MODEL_WORKER, get_config, CURRENT_VERSION
 import os
 
+from .common import CURRENT_VERSION, MODEL_WORKER, get_config, get_llm_client, logger
 
 config = get_config()
 
