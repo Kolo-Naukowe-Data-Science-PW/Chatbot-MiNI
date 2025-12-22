@@ -9,7 +9,7 @@ x-env: &env
   PYTHONUNBUFFERED: "1"
   HF_HOME: /root/.cache/huggingface
   PYTHONPATH: /app/src
-  OPENROUTER_API_KEY: ${OPENROUTER_API_KEY} 
+  OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
 
 services:
 
@@ -104,4 +104,4 @@ services:
     depends_on:
       - api
     restart: always
-    
+

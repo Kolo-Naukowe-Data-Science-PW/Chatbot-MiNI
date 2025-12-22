@@ -1,8 +1,9 @@
-import os
 import json
+import os
+
 import pandas as pd
+from common import CURRENT_VERSION, get_config, logger
 from docx import Document
-from common import logger, get_config, CURRENT_VERSION
 
 config = get_config()
 
@@ -24,11 +25,11 @@ def process_xlsx(path):
             df = pd.read_excel(xls, sheet_name=sheet)
             text += df.to_markdown(index=False)
         return text
-    
+
     except Exception as e:
         logger.error(f"Error processing {path}: {e}")
         return None
-    
+
 
 def process_docx(path):
     """
@@ -41,7 +42,7 @@ def process_docx(path):
         text = f"Source: Word document {os.path.basename(path)}\n"
         text += "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
         return text
-    
+
     except Exception as e:
         logger.error(f"Error processing {path}: {e}")
         return None
@@ -54,13 +55,13 @@ def save_text_and_meta(filename, text):
     """
 
     base_name = filename
-    
+
     txt_path = os.path.join(OUTPUT_DIR, f"{base_name}.txt")
     with open(txt_path, "w", encoding="utf-8") as f:
         f.write(text)
-        
+
     meta_path = os.path.join(OUTPUT_DIR, f"{base_name}.json")
-    meta_data = {"source_url": filename} # SHOULD BE CHANGED TO THE ACTUAL URL
+    meta_data = {"source_url": filename}  # SHOULD BE CHANGED TO THE ACTUAL URL
     with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(meta_data, f, indent=2)
 
@@ -76,7 +77,9 @@ def main():
     """
 
     if not config["process_complex_files"]:
-        logger.info(f"SKIP: Pipeline Version {CURRENT_VERSION} does not support complex files (XLSX/DOCX).")
+        logger.info(
+            f"SKIP: Pipeline Version {CURRENT_VERSION} does not support complex files (XLSX/DOCX)."
+        )
         return
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -87,7 +90,7 @@ def main():
     for filename in os.listdir(INPUT_DIR):
         file_path = os.path.join(INPUT_DIR, filename)
         content = None
-        
+
         if filename.endswith(".xlsx"):
             logger.info(f"Processing a XLSX file: {filename}")
             content = process_xlsx(file_path)
@@ -96,7 +99,7 @@ def main():
             content = process_docx(file_path)
         # in the future, more file types can be added here
         # for example scan PDFs, images, etc.
-        
+
         if content:
             save_text_and_meta(filename, content, file_path)
 
