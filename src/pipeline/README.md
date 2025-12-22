@@ -5,9 +5,14 @@ This branch contains files needed for deployment BUT with new scraping & ingesti
 ```
 chatbot-mini/
 │
+├── .dockerignore
 ├── .gitignore                     <-- modified
+├── .pre-commit-config.yaml
+├── Dockerfile
+├── LICENSE
+├── README.md
+├── chatbot_mini.yml
 ├── docker-compose.yml             <-- modified
-├── Dockerfile                
 ├── environment-linux.yml     
 ├── pyproject.toml            
 │
@@ -35,7 +40,8 @@ chatbot-mini/
     |    ├── parse_html_pdf.py     <-- **TODO** extracts text content from HTML and PDF files
     |    ├── describe_files.py     <-- extracts text content from XLSX and DOCX files *if needed*
     |    ├── extract_facts.py      <-- extracts facts from text using the LLM *if needed*
-    |    └── ingest_facts.py       <-- loads facts from JSON files into the ChromaDB vector database
+    |    ├── ingest_facts.py       <-- loads facts from JSON files into the ChromaDB vector database
+    |    └── README.md
     │
     ├── rag_api/
     │   ├── modules/
