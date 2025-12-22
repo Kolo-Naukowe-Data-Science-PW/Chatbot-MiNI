@@ -2,7 +2,7 @@ import os
 import json
 import pandas as pd
 from docx import Document
-from common import logger, get_config, CURRENT_VERSION
+from pipeline.common import logger, get_config, CURRENT_VERSION
 
 config = get_config()
 

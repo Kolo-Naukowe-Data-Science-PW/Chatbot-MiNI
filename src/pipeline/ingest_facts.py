@@ -2,7 +2,7 @@ import sys
 import os
 import json
 import logging
-from common import CURRENT_VERSION
+from pipeline.common import CURRENT_VERSION
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
 

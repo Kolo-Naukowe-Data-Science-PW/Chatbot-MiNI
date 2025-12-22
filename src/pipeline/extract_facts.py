@@ -1,6 +1,6 @@
 import os
 import json
-from common import get_llm_client, logger, MODEL_WORKER, get_config, CURRENT_VERSION
+from pipeline.common import get_llm_client, logger, MODEL_WORKER, get_config, CURRENT_VERSION
 
 config = get_config()
 
