@@ -51,9 +51,13 @@ chatbot-mini/
 ---
 
 Version description in the `common.py` file:
+
 1 = 15 URLs + only HTML/PDF + 1 file in 1 chunk + no LLM
+
 2 = 15 URLs + only HTML/PDF + 1 fact in 1 chunk + with LLM
+
 3 = MiNI website + all files + 1 fact in 1 chunk + filtering by hand + with LLM
+
 4 = all sources + all files + 1 fact in 1 chunk + filtering by hand + with LLM
 
 ---
