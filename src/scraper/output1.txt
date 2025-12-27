@@ -1,0 +1,9 @@
+---
+title: Matematyka i Analiza Danych
+url: https://ww2.mini.pw.edu.pl/studia/inzynierskie-i-licencjackie/matematyka-i-analiza-danych/
+hostname: mini.pw.edu.pl
+sitename: ww2.mini.pw.edu.pl
+date: 2015-01-01
+---
+Opis kierunku
+Program nowego kierunku MAD zapewnia zdobycie gruntownego wykształcenia matematycznego ze szczególnym uwzględnieniem statystyki matematycznej i analizy danych (Data Science). To propozycja dla kandydatów, którzy chcą w przyszłości efektywnie wykorzystywać wszechstronną wiedzę matematyczną oraz współczesne metody uczenia maszynowego do analizy dużych zbiorów danych, tworzyć oryginalne narzędzia analizy danych, a także programować w różnych językach oraz stosować pakiety matematyczne i statystyczne w zadaniach analizy danych, modelowania i prognozy.

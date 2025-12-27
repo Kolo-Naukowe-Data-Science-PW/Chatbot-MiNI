@@ -1,0 +1,61 @@
+---
+title: Harmonogram roku akademickiego
+url: http://www.pw.edu.pl/studia/harmonogram-roku-akademickiego
+hostname: pw.edu.pl
+description: Uczelnia, dla ludzi, którzy są #zawszeciekawi
+sitename: Politechnika Warszawska
+date: 2025-10-01
+---
+Harmonogram roku akademickiego
+Kiedy zaczynają się zajęcia? W jakich terminach są sesje? Które dni są wolne? Zobacz harmonogram roku akademickiego 2025/2026. Każdy z punktów możesz dodać do swojego kalendarza online, klikając znak „+”. Na dole strony jest dostępny także plik z całym harmonogramem do pobrania i dodania do kalendarza online.
+Październik 2025
+Początek roku akademickiego
+Uroczysta inauguracja roku akademickiego
+Początek zajęć semestru zimowego
+Listopad 2025
+Dzień wolny od zajęć dydaktycznych
+Zajęcia zgodnie z planem poniedziałkowym
+Dzień PW
+Grudzień 2025
+Początek wakacji zimowych
+Styczeń 2026
+Ostatni dzień wakacji zimowych
+Zajęcia zgodnie z planem wtorkowym
+Luty 2026
+Koniec zajęć semestru zimowego
+Początek zimowej sesji egzaminacyjnej
+Egzamin uczelniany z języków obcych na poziomie B2/C1 Academic
+Termin przekazania pracy dyplomowej na studiach I stopnia
+Ostatni dzień zimowej sesji egzaminacyjnej
+Termin przekazania pracy dyplomowej na studiach II stopnia
+Początek okresu rejestracyjnego
+Ostatni dzień okresu rejestracyjnego, koniec semestru zimowego
+Początek semestru letniego, początek zajęć semestru letniego
+Kwiecień 2026
+Początek wakacji wiosennych
+Ostatni dzień wakacji wiosennych
+Zajęcia zgodnie z planem piątkowym
+Maj 2026
+Zajęcia zgodnie z planem piątkowym
+Juwenalia w Warszawie – to dzień wolny od zajęć dydaktycznych w Warszawie
+Juwenalia Płockie – to dzień wolny od zajęć dydaktycznych w Płocku
+Czerwiec 2026
+Zajęcia zgodnie z planem piątkowym
+Dzień wolny od zajęć dydaktycznych
+Koniec zajęć semestru letniego
+Początek letniej sesji egzaminacyjnej
+Egzamin uczelniany z języków obcych na poziomie B2/C1 Academic
+Ostatni dzień letniej sesji egzaminacyjnej
+Lipiec 2026
+Początek wakacji letnich
+Sierpień 2026
+Ostatni dzień wakacji letnich
+Wrzesień 2026
+Początek jesiennej sesji egzaminacyjnej
+Egzamin uczelniany z języków obcych na poziomie B2/C1 Academic
+Termin przekazania pracy dyplomowej na studiach I stopnia
+Ostatni dzień jesiennej sesji egzaminacyjnej
+Termin przekazania pracy dyplomowej na studiach II stopnia
+Początek okresu rejestracyjnego
+Ostatni dzień okresu rejestracyjnego
+Ostatni dzień roku akademickiego, koniec semestru letniego

@@ -1,0 +1,38 @@
+---
+title: Dla dyplomantów i promotorów
+url: https://ww2.mini.pw.edu.pl/studia/dziekanat/dla-dyplomantow-i-promotorow/
+hostname: mini.pw.edu.pl
+sitename: ww2.mini.pw.edu.pl
+date: 2023-12-08
+---
+UWAGA: Zaleca się, aby promotor wpisał swoją opinię o pracy zaraz po jej zaakceptowaniu.
+Zgodnie z Regulaminem studiów w PW promotor oraz recenzent zamieszczają recenzje pracy dyplomowej w systemie APD co najmniej 3 dni przed terminem egzaminu dyplomowego.
+Informacje dot. pracy dyplomowej i egzaminu dyplomowego
+Jednolity System Antyplagiatowy - filmy instruktażowe
+Ośrodek Przetwarzania Informacji – Państwowy Instytut Badań (OPIIB) na swoim kanale na youtubie umieścił dla Państwa pięć filmów instruktażowych dotyczących Jednolitego Systemu Antyplagiatowego.
+Sugerowana kolejność oglądania (aczkolwiek każdy film można oglądać niezależnie):
+- Jednolity System Antyplagiatowy – wprowadzenie,
+- Badanie plików w JSA – informacje podstawowe,
+- Badanie plików w JSA – czynności w systemie,
+- Raport w systemie JSA,
+- Raport z JSA do pobrania w pdf.
+dokumenty do pobrania dla Promotorów i Recenzentów
+Informatyka i Systemy Informacyjne
+Studia inżynierskie
+Studia magisterskie
+Computer Science and Information Systems
+Studia inżynierskie
+Studia magisterskie
+Matematyka
+Studia licencjackie
+Studia magisterskie
+Inżynieria i Analiza Danych
+Studia inżynierskie
+Data Science
+Studia magisterskie
+Matematyka i Analiza Danych
+Studia licencjackie
+Studia magisterskie
+Propozycje tematów prac dyplomowych
+dla kierunków Informatyka i Systemy Informacyjne, Computer Science and Information Systems, Inżynieria i Analiza Danych i Data Science
+tematy dostępne są na platformie MS Teams:
