@@ -1,6 +1,7 @@
 import logging
 import os
 import time
+from dataclasses import dataclass
 
 from dotenv import load_dotenv
 from firecrawl import Firecrawl
@@ -11,14 +12,21 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class ScrapedPage:
+    url: str
+    text: str
+    links: list[str]
+
+
 def clean_headnote(text: str) -> str:
     """
-    Removes headnote from scraped content from website
+    Removes headnote from scraped content from website.
+    Args:
+        text (str): text to clean
 
-    :param text: text to clean
-    :type text: str
-    :return: cleaned text
-    :rtype: str
+    Returns:
+        str: cleaned text
     """
 
     marker = "![](https://ww2.mini.pw.edu.pl/wp-content/uploads/WMiNI-01.png)"
@@ -30,11 +38,11 @@ def clean_headnote(text: str) -> str:
 def clean_footnote(text: str) -> str:
     """
     Removes footnote from scraped content from website
+    Args:
+        text (str): text to clean
 
-    :param text: text to clean
-    :type text: str
-    :return: cleaned text
-    :rtype: str
+    Returns:
+        str: cleaned text
     """
 
     marker = "#### Zaloguj się"
@@ -45,11 +53,13 @@ def clean_footnote(text: str) -> str:
 
 def scrap_data() -> dict:
     """
-    Scrap content from mini website.
-    For now only for 15 links.
+    Scrap content from mini website. For now only for 15 links.
 
-    :return: Description
-    :rtype: dict
+    Args:
+        None
+
+    Returns:
+        str: cleaned text
     """
 
     FIRECRAWL_API_KEY = os.getenv("FIRECRAWL_API_KEY")
@@ -77,7 +87,7 @@ def scrap_data() -> dict:
         "https://ww2.mini.pw.edu.pl/wydzial/uchwaly-rw/",
     ]
 
-    output = {}
+    output = []
 
     for url in urls:
         try:
@@ -92,8 +102,8 @@ def scrap_data() -> dict:
             )
             text = clean_headnote(result.markdown)
             text = clean_footnote(text)
-            output[url] = {"text": clean_footnote(text), "links": result.links}
-            time.wait(1)
+            output.append(ScrapedPage(url=url, text=text, links=result.links))
+            time.sleep(1)
         except Exception:
             logger.warning(f"Couldn't get content from {url}.")
 
