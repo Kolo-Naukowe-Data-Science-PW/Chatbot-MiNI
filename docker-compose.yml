@@ -20,12 +20,12 @@ services:
     user: root
     build: .
     command: [
-      "micromamba", 
-      "run", 
-      "-n", 
-      "app", 
-      "python", 
-      "-m", 
+      "micromamba",
+      "run",
+      "-n",
+      "app",
+      "python",
+      "-m",
       "pipeline.scraper"
     ]
     environment: *env
@@ -38,8 +38,8 @@ services:
     build: .
     command: >
       micromamba run -n app /bin/bash -c "
-      python -m pipeline.describe_files && 
-      python -m pipeline.extract_facts && 
+      python -m pipeline.describe_files &&
+      python -m pipeline.extract_facts &&
       python -m pipeline.ingest_facts"
     environment: *env
     volumes:
@@ -53,15 +53,15 @@ services:
     user: root
     build: .
     command: [
-      "micromamba", 
-      "run", 
-      "-n", 
-      "app", 
-      "uvicorn", 
-      "rag_api.api:app", 
-      "--host", 
-      "0.0.0.0", 
-      "--port", 
+      "micromamba",
+      "run",
+      "-n",
+      "app",
+      "uvicorn",
+      "rag_api.api:app",
+      "--host",
+      "0.0.0.0",
+      "--port",
       "8000"
     ]
     environment: *env
@@ -75,16 +75,16 @@ services:
     user: root
     build: .
     command: [
-      "micromamba", 
-      "run", 
-      "-n", 
-      "app", 
-      "streamlit", 
-      "run", 
-      "src/frontend/app.py", 
-      "--server.port", 
-      "8501", 
-      "--server.address", 
+      "micromamba",
+      "run",
+      "-n",
+      "app",
+      "streamlit",
+      "run",
+      "src/frontend/app.py",
+      "--server.port",
+      "8501",
+      "--server.address",
       "0.0.0.0"
     ]
     environment: *env

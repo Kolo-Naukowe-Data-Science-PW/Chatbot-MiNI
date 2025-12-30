@@ -15,7 +15,9 @@ embedder = Embedder()
 logger.info("Embedder loaded.")
 
 
-def get_top_k_chunks(query: str, top_k: int = 5) -> list[dict[str, Any]]:   # previously top_k: int = 15
+def get_top_k_chunks(
+    query: str, top_k: int = 5
+) -> list[dict[str, Any]]:  # previously top_k: int = 15
     """
     Retrieves the top-k most relevant text chunks.
     Returns a list of dicts: [{'text_chunk': str, 'source_url': str}, ...]
