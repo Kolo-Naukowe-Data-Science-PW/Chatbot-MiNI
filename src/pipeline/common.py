@@ -9,9 +9,9 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-MODEL_NAME = "openai/gpt-4o-mini"
+CURRENT_VERSION = int(os.getenv("PIPELINE_VERSION", 1))
+MODEL_WORKER = os.getenv("MODEL_NAME", "openai/gpt-4o-mini")
 
-CURRENT_VERSION = 1
 
 PIPELINE_CONFIG = {
     1: {
