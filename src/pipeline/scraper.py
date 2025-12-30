@@ -72,7 +72,7 @@ def scrap_data() -> list[ScrapedPage]:
     output = []
 
     if CURRENT_VERSION <= 2:
-        
+
         # first 15 urls to test results
         urls = [
             "https://ww2.mini.pw.edu.pl/studia/dziekanat/informacje-dziekanatu/",
@@ -90,8 +90,6 @@ def scrap_data() -> list[ScrapedPage]:
             "https://ww2.mini.pw.edu.pl/studia/magisterskie/inzynieria-i-analiza-danych/",
             "https://ww2.mini.pw.edu.pl/wp-content/uploads/uchwala_rady_21_02_2019.pdf",
             "https://ww2.mini.pw.edu.pl/wydzial/uchwaly-rw/",
-
-
         ]
 
         logger.info(f"V{CURRENT_VERSION}: Scraping limited list of {len(urls)} URLs.")
@@ -100,7 +98,10 @@ def scrap_data() -> list[ScrapedPage]:
             try:
                 result = app.scrape(
                     url,
-                    formats=["markdown","links",],  # markdown - for cleaned page content; links - for all links displayed on given url
+                    formats=[
+                        "markdown",
+                        "links",
+                    ],  # markdown - for cleaned page content; links - for all links displayed on given url
                     only_main_content=False,
                     timeout=120000,
                 )
@@ -110,39 +111,32 @@ def scrap_data() -> list[ScrapedPage]:
                 time.sleep(1)
             except Exception:
                 logger.warning(f"Couldn't get content from {url}.")
-    
+
     else:
 
         logger.info(f"V{CURRENT_VERSION}: Starting full crawl of MiNI PW website.")
         root_urls = ["https://ww2.mini.pw.edu.pl/"]
-        
+
         if CURRENT_VERSION == 4:
-            root_urls.extend([
-                "https://repo.pw.edu.pl/index.seam?lang=pl"
-            ])
-            
+            root_urls.extend(["https://repo.pw.edu.pl/index.seam?lang=pl"])
+
         logger.info(f"V{CURRENT_VERSION}: Starting crawl for roots: {root_urls}")
-        
+
         for root in root_urls:
 
             try:
-                
+
                 crawl_result = app.crawl_url(
                     root,
-                    params={
-                        "limit": 1000,
-                        "scrapeOptions": {"formats": ["markdown"]}
-                    }
+                    params={"limit": 1000, "scrapeOptions": {"formats": ["markdown"]}},
                 )
-                
+
                 for page in crawl_result.get("data", []):
                     raw_text = page.get("markdown", "")
                     clean_text = clean_footnote(clean_headnote(raw_text))
-                    output.append(ScrapedPage(
-                        url=page.get("url"),
-                        text=clean_text,
-                        links=[]
-                    ))
+                    output.append(
+                        ScrapedPage(url=page.get("url"), text=clean_text, links=[])
+                    )
 
             except Exception as e:
 
@@ -155,16 +149,16 @@ def main():
 
     logger.info(f"Starting scraper pipeline V{CURRENT_VERSION}")
     scraped_data = scrap_data()
-    
+
     output_dir = "src/data/scraped_raw"
     os.makedirs(output_dir, exist_ok=True)
-    
+
     for i, page in enumerate(scraped_data):
         safe_name = page.url.replace("https://", "").replace("/", "_").strip("_")
         file_path = os.path.join(output_dir, f"{safe_name}.txt")
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(f"URL: {page.url}\n\n{page.text}")
-    
+
     logger.info(f"Successfully saved {len(scraped_data)} pages to {output_dir}")
 
 

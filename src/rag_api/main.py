@@ -23,7 +23,7 @@ client = OpenAI(
 # Highly recommended for usage with RAG, because it's free and has a good performance. In order to run it, one needs to
 # create an account on OpenRouter and get the API key. Then put the API key in the .env file
 
-MODEL_NAME = "mistralai/mistral-7b-instruct:free" #"openai/gpt-oss-20b:free"
+MODEL_NAME = "mistralai/mistral-7b-instruct:free"  # "openai/gpt-oss-20b:free"
 
 
 def query_llm(prompt: str) -> str:
