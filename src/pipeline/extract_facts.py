@@ -1,7 +1,13 @@
 import json
 import os
 
-from .common import CURRENT_VERSION, MODEL_WORKER, get_config, get_llm_client, logger
+from pipeline.common import (
+    CURRENT_VERSION,
+    MODEL_WORKER,
+    get_config,
+    get_llm_client,
+    logger,
+)
 
 config = get_config()
 
@@ -79,45 +85,52 @@ def main():
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
+    input_folders = ["src/data/scraped_raw", "src/data/processed_text"]
+
     mode_info = (
         "LLM extraction" if config["use_llm_for_facts"] else "Raw text passthrough"
     )
     logger.info(f"Starting extraction. Version: {CURRENT_VERSION} | Mode: {mode_info}")
 
-    files = [f for f in os.listdir(INPUT_DIR) if f.endswith(".txt")]
+    for folder in input_folders:
 
-    for txt_file in files:
-        base_name = os.path.splitext(txt_file)[0]
-        txt_path = os.path.join(INPUT_DIR, txt_file)
+        if not os.path.exists(folder):
+            logger.warning(f"Input folder does not exist: {folder}")
+            continue
 
-        meta_path = os.path.join(INPUT_DIR, f"{txt_file.replace('.txt', '.json')}")
-        if not os.path.exists(meta_path):
-            meta_path = os.path.join(INPUT_DIR, f"{base_name}.json")
+        files = [f for f in os.listdir(folder) if f.endswith(".txt")]
 
-        source_url = txt_file
-        if os.path.exists(meta_path):
-            with open(meta_path, encoding="utf-8") as f:
-                meta = json.load(f)
-                source_url = meta.get("source_url", txt_file)
+        for txt_file in files:
+            base_name = os.path.splitext(txt_file)[0]
+            txt_path = os.path.join(folder, txt_file)
+            meta_path = os.path.join(INPUT_DIR, f"{txt_file.replace('.txt', '.json')}")
+            if not os.path.exists(meta_path):
+                meta_path = os.path.join(INPUT_DIR, f"{base_name}.json")
 
-        logger.info(f"Processing: {txt_file} (Source: {source_url})")
+            source_url = txt_file
+            if os.path.exists(meta_path):
+                with open(meta_path, encoding="utf-8") as f:
+                    meta = json.load(f)
+                    source_url = meta.get("source_url", txt_file)
 
-        with open(txt_path, encoding="utf-8") as f:
-            text_content = f.read()
+            logger.info(f"Processing: {txt_file} (Source: {source_url})")
 
-        content_list = extract_facts_list(text_content, txt_file)
+            with open(txt_path, encoding="utf-8") as f:
+                text_content = f.read()
 
-        if content_list:
+            content_list = extract_facts_list(text_content, txt_file)
 
-            structured_output = [
-                {"source": source_url, "fact": item} for item in content_list
-            ]
+            if content_list:
 
-            out_path = os.path.join(OUTPUT_DIR, f"{base_name}_facts.json")
-            with open(out_path, "w", encoding="utf-8") as f:
-                json.dump(structured_output, f, indent=2, ensure_ascii=False)
+                structured_output = [
+                    {"source": source_url, "fact": item} for item in content_list
+                ]
 
-            logger.info(f"Saved {len(structured_output)} items to {out_path}")
+                out_path = os.path.join(OUTPUT_DIR, f"{base_name}_facts.json")
+                with open(out_path, "w", encoding="utf-8") as f:
+                    json.dump(structured_output, f, indent=2, ensure_ascii=False)
+
+                logger.info(f"Saved {len(structured_output)} items to {out_path}")
 
 
 if __name__ == "__main__":

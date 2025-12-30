@@ -36,8 +36,7 @@ chatbot-mini/
     |
     ├── pipeline/                  <-- **OUR NEW MODULE**
     |    ├── common.py             <-- model config from OpenRouterAI and version config
-    |    ├── scraper.py            <-- **TODO** scrapes stuff (at first only 15 URLs, then everything)
-    |    ├── parse_html_pdf.py     <-- **TODO** extracts text content from HTML and PDF files
+    |    ├── scraper.py            <-- scrapes stuff (at first only 15 URLs, then everything)
     |    ├── describe_files.py     <-- extracts text content from XLSX and DOCX files *if needed*
     |    ├── extract_facts.py      <-- extracts facts from text using the LLM *if needed*
     |    ├── ingest_facts.py       <-- loads facts from JSON files into the ChromaDB vector database
@@ -46,7 +45,7 @@ chatbot-mini/
     ├── rag_api/
     │   ├── modules/
     |   |   ├── logs.py
-    |   |   ├── prompt_builder.py  <-- **TODO**
+    |   |   ├── prompt_builder.py
     |   |   └── retrieval.py
     │   ├── api.py
     │   └── main.py

@@ -4,7 +4,7 @@ import os
 import pandas as pd
 from docx import Document
 
-from src.pipeline.common import CURRENT_VERSION, get_config, logger
+from pipeline.common import CURRENT_VERSION, get_config, logger
 
 config = get_config()
 

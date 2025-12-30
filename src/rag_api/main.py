@@ -23,7 +23,7 @@ client = OpenAI(
 # Highly recommended for usage with RAG, because it's free and has a good performance. In order to run it, one needs to
 # create an account on OpenRouter and get the API key. Then put the API key in the .env file
 
-MODEL_NAME = "openai/gpt-oss-20b:free"
+MODEL_NAME = "mistralai/mistral-7b-instruct:free"  # "openai/gpt-oss-20b:free"
 
 
 def query_llm(prompt: str) -> str:
@@ -78,11 +78,6 @@ def main():
 
         print("\n=== Answer ===")
         print(answer)
-
-        print("\n=== Sources ===")
-        for i, chunk_data in enumerate(sorted_chunks, start=1):
-            source = chunk_data.get("source_url", "Unknown")
-            print(f"{i}. {source}")
 
 
 if __name__ == "__main__":

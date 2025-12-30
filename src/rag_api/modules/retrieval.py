@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import Any
 
 from data_ingest.modules.embedder import Embedder
@@ -7,14 +8,16 @@ from utils.paths import get_data_dir
 
 logger = logging.getLogger(__name__)
 
-DATABASE_PATH = get_data_dir("temp_database")
+DATABASE_PATH = os.environ.get("CHROMA_DIR", get_data_dir("chroma_db"))
 
 logger.info("Loading Embedder model for retrieval...")
 embedder = Embedder()
 logger.info("Embedder loaded.")
 
 
-def get_top_k_chunks(query: str, top_k: int = 15) -> list[dict[str, Any]]:
+def get_top_k_chunks(
+    query: str, top_k: int = 5
+) -> list[dict[str, Any]]:  # previously top_k: int = 15
     """
     Retrieves the top-k most relevant text chunks.
     Returns a list of dicts: [{'text_chunk': str, 'source_url': str}, ...]

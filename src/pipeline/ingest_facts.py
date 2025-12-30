@@ -2,10 +2,10 @@ import json
 import logging
 import os
 
-from src.data_ingest.modules.embedder import Embedder
-from src.data_ingest.modules.vector_db import save_to_vector_db
-from src.pipeline.common import CURRENT_VERSION
-from src.utils.paths import get_data_dir
+from data_ingest.modules.embedder import Embedder
+from data_ingest.modules.vector_db import save_to_vector_db
+from pipeline.common import CURRENT_VERSION
+from utils.paths import get_data_dir
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
