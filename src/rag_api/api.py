@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -14,11 +15,46 @@ app = FastAPI()
 
 
 class QueryRequest(BaseModel):
+    """
+    Pydantic model representing the incoming chat request.
+
+    Attributes
+    ----------
+    query : str
+        The question or text input provided by the user.
+    """
+
     query: str
 
 
 @app.post("/chat")
-def chat_endpoint(request: QueryRequest):
+def chat_endpoint(request: QueryRequest) -> dict[str, Any]:
+    """
+    Handles chat interactions by retrieving context and generating an LLM response.
+
+    1. Validates the input query.
+    2. Retrieves the top-k relevant text chunks from the vector database.
+    3. Builds a prompt using the retrieved context.
+    4. Queries the LLM to generate an answer.
+    5. Returns the answer along with source URLs.
+
+    Parameters
+    ----------
+    request : QueryRequest
+        The request body containing the user's query.
+
+    Returns
+    -------
+    dict[str, Any]
+        A dictionary containing:
+        - 'answer': The generated response string.
+        - 'sources': A list of source URLs used for the context.
+
+    Raises
+    ------
+    HTTPException
+        If the query is empty (400 Bad Request).
+    """
     query = request.query
     if not query:
         raise HTTPException(status_code=400, detail="Query cannot be empty")

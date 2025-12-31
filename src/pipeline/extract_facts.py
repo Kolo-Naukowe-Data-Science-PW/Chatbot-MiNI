@@ -28,13 +28,25 @@ SYSTEM_PROMPT = """
 """
 
 
-def extract_facts_list(text, filename):
+def extract_facts_list(text: str, filename: str) -> list[str]:
     """
     Decides whether to use LLM or return raw text based on config.
+
     With LLM, it retrieves a list of fact strings from the provided text using the LLM client.
     Each fact is expected to be a complete sentence extracted from the text.
-    """
 
+    Parameters
+    ----------
+    text : str
+        The raw input text from which to extract facts.
+    filename : str
+        The name of the file being processed (used for error logging).
+
+    Returns
+    -------
+    list[str]
+        A list of strings, where each string is a fact (or the whole text if LLM is disabled).
+    """
     if not config["use_llm_for_facts"]:
         return [text.strip()]
 
@@ -76,13 +88,21 @@ def extract_facts_list(text, filename):
         return []
 
 
-def main():
+def main() -> None:
     """
-    Main function to extract facts from text files (if needed) and save them as structured JSON.
-    Processes all .txt files in the INPUT_DIR, extracts facts using the LLM (if needed),
-    and saves them in OUTPUT_DIR with associated source URLs.
-    """
+    Main function to extract facts from text files and save them as structured JSON.
 
+    Processes all .txt files in the input folders, extracts facts using the LLM (if configured),
+    and saves them in the output directory with associated source URLs.
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    -------
+    None
+    """
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     input_folders = ["src/data/scraped_raw", "src/data/processed_text"]
@@ -103,6 +123,8 @@ def main():
         for txt_file in files:
             base_name = os.path.splitext(txt_file)[0]
             txt_path = os.path.join(folder, txt_file)
+            
+            # Logic: Look for metadata JSON in INPUT_DIR regardless of source folder
             meta_path = os.path.join(INPUT_DIR, f"{txt_file.replace('.txt', '.json')}")
             if not os.path.exists(meta_path):
                 meta_path = os.path.join(INPUT_DIR, f"{base_name}.json")
@@ -121,7 +143,6 @@ def main():
             content_list = extract_facts_list(text_content, txt_file)
 
             if content_list:
-
                 structured_output = [
                     {"source": source_url, "fact": item} for item in content_list
                 ]

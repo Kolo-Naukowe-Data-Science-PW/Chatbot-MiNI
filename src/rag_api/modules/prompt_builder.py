@@ -10,7 +10,7 @@ ERROR_PROMPT = (
 STATIC_FAQ = (
     "Wiedza ogólna i najczęstsze pytania (użyj tych informacji, jeśli brak ich w Kontekście):\n"
     "- Władze Wydziału: Dziekan: prof. dr hab. Grzegorz Świątek "
-    "Prodziekan ds. Studenckich: dr hab. inż. Agata Pilitowska, prof. uczelni"
+    "Prodziekan ds. Studenckich: dr hab. inż. Agata Pilitowska, prof. uczelni "
     "Prodziekan ds. Nauczania: dr inż. Krzysztof Kaczmarski "
     "Prodziekan ds. Nauki: prof. dr hab. Janina Kotus "
     "Prodziekan ds. Ogólnych: dr hab. Wojciech Matysiak, prof. uczelni "
@@ -24,9 +24,9 @@ STATIC_FAQ = (
     "- Kierunki studiów II stopnia (magisterskie): "
     "1. Informatyka i Systemy Informacyjne (ISI), "
     "2. Matematyka, "
-    "3. Matematyka i Analiza Danych"
+    "3. Matematyka i Analiza Danych, "
     "4. Data Science (studia w j. angielskim).\n"
-    "- Godziny otwarcia dziekanatu: PONIEDZIAŁEK, WTOREK, CZWARTEK, PIĄTEK	11:00-14:00, ŚRODA NIECZYNNE\n"
+    "- Godziny otwarcia dziekanatu: PONIEDZIAŁEK, WTOREK, CZWARTEK, PIĄTEK 11:00-14:00, ŚRODA NIECZYNNE\n"
     "- Harmonogram roku akademickiego i sesji: Sprawdź aktualny kalendarz akademicki na stronie uczelni. https://www.pw.edu.pl/studia/harmonogram-roku-akademickiego \n"
     "- Punkty ECTS: Szczegóły w regulaminie. https://ww2.mini.pw.edu.pl/wp-content/uploads/Warunki-rejestracji-na-kolejny-semestr-rok-studiow-22.11.2023.pdf \n"
     "- Oferta przedmiotów obieralnych: Zależy od kierunku, dostępne w systemie USOS. https://ww2.mini.pw.edu.pl/wp-content/uploads/katalog-obieralne-2023.pdf \n"
@@ -35,11 +35,32 @@ STATIC_FAQ = (
 
 
 def build_prompt(
-    query: str, context: list, field_of_study: str = None, semester: str = None
+    query: str,
+    context: list[str],
+    field_of_study: str | None = None,
+    semester: str | None = None,
 ) -> str:
     """
-    Builds a prompt for the LLM based on the provided user query, top-k text chunks,
-    and optional student metadata (field of study, semester).
+    Builds a prompt for the LLM based on the provided user query and context.
+
+    Constructs a formatted string including system instructions, static FAQ knowledge,
+    retrieved context chunks, and optional student metadata (field of study, semester).
+
+    Parameters
+    ----------
+    query : str
+        The user's question or input.
+    context : list[str]
+        A list of text chunks retrieved from the vector database.
+    field_of_study : str | None, optional
+        The student's field of study (e.g., "Informatyka"), by default None.
+    semester : str | None, optional
+        The student's current semester, by default None.
+
+    Returns
+    -------
+    str
+        The fully formatted prompt string ready to be sent to the LLM.
     """
     logger.info(
         "Building prompt for query: '%s', Field: %s, Sem: %s",

@@ -16,6 +16,19 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ScrapedPage:
+    """
+    Data class representing a scraped webpage.
+
+    Attributes
+    ----------
+    url : str
+        The URL of the scraped page.
+    text : str
+        The cleaned text content of the page.
+    links : list[str]
+        A list of links found on the page.
+    """
+
     url: str
     text: str
     links: list[str]
@@ -23,57 +36,71 @@ class ScrapedPage:
 
 def clean_headnote(text: str) -> str:
     """
-    Removes headnote from scraped content from website.
-    Args:
-        text (str): text to clean
+    Removes the standard headnote from scraped content.
 
-    Returns:
-        str: cleaned text
+    Parameters
+    ----------
+    text : str
+        The raw text content to clean.
+
+    Returns
+    -------
+    str
+        The text content with the headnote removed.
     """
-
     marker = "![](https://ww2.mini.pw.edu.pl/wp-content/uploads/WMiNI-01.png)"
-    text = text.split(marker, 1)[1]
+    if marker in text:
+        text = text.split(marker, 1)[1]
 
     return text
 
 
 def clean_footnote(text: str) -> str:
     """
-    Removes footnote from scraped content from website
-    Args:
-        text (str): text to clean
+    Removes the standard footnote from scraped content.
 
-    Returns:
-        str: cleaned text
+    Parameters
+    ----------
+    text : str
+        The raw text content to clean.
+
+    Returns
+    -------
+    str
+        The text content with the footnote removed.
     """
-
     marker = "#### Zaloguj się"
-    text = text.split(marker, 1)[0]
+    if marker in text:
+        text = text.split(marker, 1)[0]
 
     return text
 
 
 def scrap_data() -> list[ScrapedPage]:
     """
-    Scrapes data from MiNI PW website using Firecrawl API.
+    Scrapes data from the MiNI PW website using the Firecrawl API.
 
-    Args:
-        None
+    Depending on the CURRENT_VERSION, it either scrapes a limited list of URLs
+    or performs a full crawl of the website.
 
-    Returns:
-        list[ScrapedPage]: list of scraped pages
+    Parameters
+    ----------
+    None
+
+    Returns
+    -------
+    list[ScrapedPage]
+        A list of ScrapedPage objects containing URL, cleaned text, and links.
     """
-
-    FIRECRAWL_API_KEY = os.getenv("FIRECRAWL_API_KEY")
-    if not FIRECRAWL_API_KEY:
+    firecrawl_api_key = os.getenv("FIRECRAWL_API_KEY")
+    if not firecrawl_api_key:
         logger.warning("FIRECRAWL_API_KEY not found in environment variables.")
 
-    app = Firecrawl(api_key=FIRECRAWL_API_KEY)
+    app = Firecrawl(api_key=firecrawl_api_key)
     output = []
 
     if CURRENT_VERSION <= 2:
-
-        # first 15 urls to test results
+        # first 15 URLs to test the results
         urls = [
             "https://ww2.mini.pw.edu.pl/studia/dziekanat/informacje-dziekanatu/",
             "https://ww2.mini.pw.edu.pl/wydzial/dziekani/",
@@ -101,7 +128,7 @@ def scrap_data() -> list[ScrapedPage]:
                     formats=[
                         "markdown",
                         "links",
-                    ],  # markdown - for cleaned page content; links - for all links displayed on given url
+                    ],  # markdown — for cleaned page content; links — for all links displayed on given url
                     only_main_content=False,
                     timeout=120000,
                 )
@@ -109,11 +136,10 @@ def scrap_data() -> list[ScrapedPage]:
                 text = clean_footnote(text)
                 output.append(ScrapedPage(url=url, text=text, links=result.links))
                 time.sleep(1)
-            except Exception:
-                logger.warning(f"Couldn't get content from {url}.")
+            except Exception as e:
+                logger.warning(f"Couldn't get content from {url}. Error: {e}")
 
     else:
-
         logger.info(f"V{CURRENT_VERSION}: Starting full crawl of MiNI PW website.")
         root_urls = ["https://ww2.mini.pw.edu.pl/"]
 
@@ -123,9 +149,7 @@ def scrap_data() -> list[ScrapedPage]:
         logger.info(f"V{CURRENT_VERSION}: Starting crawl for roots: {root_urls}")
 
         for root in root_urls:
-
             try:
-
                 crawl_result = app.crawl_url(
                     root,
                     params={"limit": 1000, "scrapeOptions": {"formats": ["markdown"]}},
@@ -139,14 +163,26 @@ def scrap_data() -> list[ScrapedPage]:
                     )
 
             except Exception as e:
-
                 logger.error(f"Crawl failed for {root}: {e}")
 
     return output
 
 
-def main():
+def main() -> None:
+    """
+    Main function to run the scraper pipeline.
 
+    Scrapes data, creates the output directory, and saves the cleaned
+    content to text files.
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    -------
+    None
+    """
     logger.info(f"Starting scraper pipeline V{CURRENT_VERSION}")
     scraped_data = scrap_data()
 
