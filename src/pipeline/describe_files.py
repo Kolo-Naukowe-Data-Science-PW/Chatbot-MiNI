@@ -1,6 +1,5 @@
 import json
 import os
-from typing import Optional
 
 import pandas as pd
 from docx import Document
@@ -13,7 +12,7 @@ INPUT_DIR = "src/data/complex_files"
 OUTPUT_DIR = "src/data/processed_text"
 
 
-def process_xlsx(path: str) -> Optional[str]:
+def process_xlsx(path: str) -> str | None:
     """
     Ingests Excel files, extracting text from each sheet.
 
@@ -42,7 +41,7 @@ def process_xlsx(path: str) -> Optional[str]:
         return None
 
 
-def process_docx(path: str) -> Optional[str]:
+def process_docx(path: str) -> str | None:
     """
     Ingests Word documents, extracting text from paragraphs.
 

@@ -123,7 +123,7 @@ def main() -> None:
         for txt_file in files:
             base_name = os.path.splitext(txt_file)[0]
             txt_path = os.path.join(folder, txt_file)
-            
+
             # Logic: Look for metadata JSON in INPUT_DIR regardless of source folder
             meta_path = os.path.join(INPUT_DIR, f"{txt_file.replace('.txt', '.json')}")
             if not os.path.exists(meta_path):

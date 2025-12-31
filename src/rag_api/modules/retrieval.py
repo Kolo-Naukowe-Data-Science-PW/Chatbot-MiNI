@@ -15,9 +15,7 @@ embedder = Embedder()
 logger.info("Embedder loaded.")
 
 
-def get_top_k_chunks(
-    query: str, top_k: int = 5
-) -> list[dict[str, Any]]:
+def get_top_k_chunks(query: str, top_k: int = 5) -> list[dict[str, Any]]:
     """
     Retrieves the top-k most relevant text chunks from the vector database.
 
