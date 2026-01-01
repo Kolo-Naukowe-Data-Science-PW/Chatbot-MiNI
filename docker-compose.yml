@@ -9,48 +9,49 @@ x-env: &env
   PYTHONUNBUFFERED: "1"
   HF_HOME: /root/.cache/huggingface
   PYTHONPATH: /app/src
-  OPENROUTER_API_KEY: #NOTHING IN HERE
+  OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
 
 services:
-  scraper:
-    user: root
-    build: .
-    command:
-      - micromamba
-      - run
-      - -n
-      - app
-      - python
-      - -m
-      - scraper.main
-    environment: *env
-    volumes:
-      - final_storage:/app/src/data/final_storage
-      - hf_cache:/root/.cache/huggingface
 
-  ingest:
-    user: root
-    build: .
-    command:
-      - micromamba
-      - run
-      - -n
-      - app
-      - python
-      - -m
-      - data_ingest.main
-    environment:
-      <<: *env
-      SENTENCE_TRANSFORMER_MODEL: intfloat/multilingual-e5-base
-      EMBEDDINGS_DEVICE: cpu
-      CHROMA_DIR: /app/src/data/chroma_db
-    volumes:
-      - final_storage:/app/src/data/final_storage:ro
-      - chroma_db:/app/src/data/chroma_db
-      - hf_cache:/root/.cache/huggingface
-    depends_on:
-      scraper:
-        condition: service_completed_successfully
+  #scraper:
+    #user: root
+    #build: .
+    #command:
+      #- micromamba
+      #- run
+      #- -n
+      #- app
+      #- python
+      #- -m
+      #- scraper.main
+    #environment: *env
+    #volumes:
+      #- final_storage:/app/src/data/final_storage
+      #- hf_cache:/root/.cache/huggingface
+
+  #ingest:
+    #user: root
+    #build: .
+    #command:
+      #- micromamba
+      #- run
+      #- -n
+      #- app
+      #- python
+      #- -m
+      #- data_ingest.main
+    #environment:
+      #<<: *env
+      #SENTENCE_TRANSFORMER_MODEL: intfloat/multilingual-e5-base
+      #EMBEDDINGS_DEVICE: cpu
+      #CHROMA_DIR: /app/src/data/chroma_db
+    #volumes:
+      #- final_storage:/app/src/data/final_storage:ro
+      #- chroma_db:/app/src/data/chroma_db
+      #- hf_cache:/root/.cache/huggingface
+    #depends_on:
+      #scraper:
+        #condition: service_completed_successfully
 
   api:
     user: root
@@ -71,6 +72,7 @@ services:
       CHROMA_DIR: /app/src/data/chroma_db
     volumes:
       - chroma_db:/app/src/data/chroma_db
+      - ./new_pipeline:/app/new_pipeline
     expose:
       - "8000"
     restart: always
