@@ -20,15 +20,27 @@ client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
     api_key=OPENROUTER_API_KEY,
 )
-# Highly recommended for usage with RAG, because it's free and has a good performance. In order to run it, one needs to
-# create an account on OpenRouter and get the API key. Then put the API key in the .env file
+# Highly recommended for usage with RAG, because it's free and has a good performance.
+# In order to run it, one needs to create an account on OpenRouter and get the API key.
+# Then put the API key in the .env file
 
-MODEL_NAME = "openai/gpt-oss-20b:free"
+MODEL_NAME = "mistralai/mistral-7b-instruct:free"  # "openai/gpt-oss-20b:free"
 
 
 def query_llm(prompt: str) -> str:
     """
-    Generates an answer using OpenRouter API.
+    Generates an answer using the OpenRouter API.
+
+    Parameters
+    ----------
+    prompt : str
+        The full prompt string containing the system instructions,
+        context, and user query.
+
+    Returns
+    -------
+    str
+        The generated text response from the LLM.
     """
     try:
         logger.debug("Sending request to OpenRouter model: %s", MODEL_NAME)
@@ -49,7 +61,21 @@ def query_llm(prompt: str) -> str:
         return "Sorry, I encountered an error while generating the response."
 
 
-def main():
+def main() -> None:
+    """
+    Runs the interactive command-line interface (CLI) for the RAG API.
+
+    Loops indefinitely, accepting user queries via stdin, retrieving context,
+    generating answers, and printing them to stdout.
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    -------
+    None
+    """
     logger.info("RAG API script started.")
     logger.info(f"Using Model: {MODEL_NAME}")
 
@@ -78,11 +104,6 @@ def main():
 
         print("\n=== Answer ===")
         print(answer)
-
-        print("\n=== Sources ===")
-        for i, chunk_data in enumerate(sorted_chunks, start=1):
-            source = chunk_data.get("source_url", "Unknown")
-            print(f"{i}. {source}")
 
 
 if __name__ == "__main__":

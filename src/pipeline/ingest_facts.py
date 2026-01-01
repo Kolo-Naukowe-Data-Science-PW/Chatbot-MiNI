@@ -2,10 +2,10 @@ import json
 import logging
 import os
 
-from src.data_ingest.modules.embedder import Embedder
-from src.data_ingest.modules.vector_db import save_to_vector_db
-from src.pipeline.common import CURRENT_VERSION
-from src.utils.paths import get_data_dir
+from data_ingest.modules.embedder import Embedder
+from data_ingest.modules.vector_db import save_to_vector_db
+from pipeline.common import CURRENT_VERSION
+from utils.paths import get_data_dir
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -14,16 +14,22 @@ INPUT_DIR = "src/data/facts"
 DB_PATH = os.environ.get("CHROMA_DIR", get_data_dir("chroma_db"))
 
 
-def main():
+def main() -> None:
     """
-    Main function to ingest facts from JSON files, generate embeddings, and save them to ChromaDB.
-    1. Reads all JSON files from the INPUT_DIR.
-    2. Extracts fact text and source URL from each entry.
-    3. Generates embeddings for the fact texts.
-    4. Saves the texts, embeddings, and URLs to ChromaDB.
-    5. Logs progress and any errors encountered.
-    """
+    Ingests facts from JSON files, generates embeddings, and saves them to ChromaDB.
 
+    This function reads all JSON files from the configured input directory, extracts
+    facts and source URLs, generates vector embeddings for each fact, and stores
+    everything in the vector database. It also logs progress and any errors encountered.
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    -------
+    None
+    """
     logger.info(f"Starting ingestion for pipeline version: {CURRENT_VERSION}")
 
     embedder = Embedder()
@@ -35,11 +41,9 @@ def main():
     logger.info(f"Found {len(files)} files with facts to ingest.")
 
     for filename in files:
-
         path = os.path.join(INPUT_DIR, filename)
 
         try:
-
             with open(path, encoding="utf-8") as f:
                 facts_list = json.load(f)
 
