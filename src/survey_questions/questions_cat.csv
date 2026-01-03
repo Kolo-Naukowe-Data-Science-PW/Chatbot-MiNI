@@ -1,0 +1,321 @@
+﻿id,pytanie,kategoria
+1,jaki jest harmonogram stypendium rektora,harmonogram
+2,jakie są przedmioty obieralne pasujące mi do planu,sylabus/obieralne
+3,jakie przedmioty realizowane sa na danym kierunku w danym semestrze,sylabus/obieralne
+4,jakie przedmioty są w danym semestrze,sylabus/obieralne
+5,gdzie znajdę podanie o zmianę grupyzapis na przedmiot,dokumenty
+6,jaki jest plan studiów dla kierunku wpsisz dowolny kierunek na mini,plan
+7,jaki jest plan studiów magisterskich na kierunku informatyka i systemy informacyjne,plan
+8,jak wypadają dni rektorskie w tym roku akademickim,plan
+9,jaki jest plan sesji,sesja
+10,jakie dni są podmienione na inne dni tygodnia w tym roku akademickim,plan
+11,kiedy mam egzaminy w tej sesji,sesja
+12,czy muszę realizować w ramach mojego planu studiów przedmiot x,sylabus/obieralne
+13,co dzieje się w ten weekend na politechnice warszawskiej,wydarzenia
+14,jaki jest harmonogram roku akademickiego,harmonogram
+15,kiedy zaczyna się sesja,sesja
+16,w jakich godzinach mam jutro zajęcia,plan
+17,parking na mini,parking
+18,kiedy są zajęcia innych grup z danego przedmiotu,plan
+19,czy x jest dniem wolnym od zajęć,harmonogram
+20,jakie jest konto wydziału dla opłaty w euro,inne
+21,jakie przedmioty mam na x semestrze studiów i ile jest wtedy godzin,sylabus/obieralne
+22,ile ects aby zdać semestr,sylabus/obieralne
+23,gdzie zajęcia ma dany prowadzący lub inna grupa,plan
+24,jakie przedmioty będę mieć w tym semestrze,sylabus/obieralne
+25,plan zajęć,plan
+26,godziny otwarcia,plan
+27,dni wolne od zajęć,plan
+28,gdzie mogę znaleźć pracowanika x i w jakich godzinach,plan
+29,sprawdzanie stopni i tytułów naukowych prowadzących,pracownik
+30,jak korzystać z drukarki ,drukarka
+31,ogólny plan zajęć,plan
+32,jaki jest kontakt do poszczególnych osób w dziekanacie,pracownik
+33,jakie sa terminy uplywaja w tym tygodniu,inne
+34,gdzie znaleźć syllabus przedmiotu,sylabus/obieralne
+35,jacy profesorowie są w zakładzie równań funkcyjnych,inne
+36,jebać ai,inne
+37,jakie są godziny otwarcia dziekanatu,plan
+38,jaki jest plan sesji w tym semestrze,sesja
+39,w której sali są zajęcia,plan
+40,jakie przedmioty obieralne mogę wybrać w danym semestrze,sylabus/obieralne
+41,czy po iadzie można pójść na data science by zaliczyć jakiś przedmiot bez pełnego i absolutorium i obrony,inne
+42,szczegóły dotyczące stypendiów,stypendium
+43,jak wydrukować coś na drukarce wydziałowej z własnego urządzenia,drukarka
+44,czy w konkretnym dniu są godziny dziekańskie,plan
+45,gdzie znaleźć syllabus dla studiów magisterskich,sylabus/obieralne
+46,jaki jest regulamin przedmiotu,regulamin
+47,u kogo mogę napisać pracę dyplomową,pracownik
+48,w jakie dni danego semestru wypadają dni rektorskie,plan
+49,kiedy mam egzaminy,sesja
+50,harmonogram roku akademickiego kiedy sa dni wolne,plan
+51,jak wygląda system oceniania na danym przedmiocie,inne
+52,o której prodziekan do spraw nauczania ma godziny przyjęć interesantów,plan
+53,kiedy w tym roku akademickim występuje wymiana jednego dnia tygodnia na inny,erasmus
+54,zmiany w planie studiów na kierunku x,inne
+55,plan zajęć w kolejnym semestrze,plan
+56,kiedy mogę przyjść do dziekanatu i zadać pytanie lub dostać dokument od ręki np zaświadczenie o byciu studentem,dokumenty
+57,czy data jest dniem wolnym od zajęć dydaktycznych,harmonogram
+58,jaki jest plan zajęć na dany semestr,plan
+59,w jakich godzinach jest otwarty dziekanat,plan
+60,gdzie odbywają się ćwiczenia lub wykłady,plan
+61,plan zajęc dla kierunku informatyka i systemy informacyjne,plan
+62,do kiedy trzeba zaliczyć praktyki,praktyki
+63,kiedy mam następne kolokwium,sesja
+64,jakie przedmioty są na roku x kierunku y,sylabus/obieralne
+65,jak wygląda plan sesji,sesja
+66,efekty uczenia się danych przedmiotów na mini,efekty
+67,do kiedy należy dostarczyć badania lekarskie,dokumenty
+68,jake przedmioty obieralne są dostępne w bieżącym semestrze,sylabus/obieralne
+69,jakie są moje obowiązki co muszę zrobić w danym terminie,inne
+70,jakie eventy na mini się zbliżają,wydarzenia
+71,na czym polega podpinanie przedmiotów,inne
+72,w jakiej sali mam teraz zajęcia,plan
+73,do kogo zgłosić się w konkretnej sprawie np ips odbiór dyplomu itp,dokumenty
+74,kiedy wypadają w semestrze dni wolne od zajęć,plan
+75,jakie będę mieć przedmioty na kolejnym semestrze,sylabus/obieralne
+76,zmiany planu np czwartek to pon,harmonogram
+77,jaki jest plan sesji dla informatyki i systemów informacyjnych,sesja
+78,jaki jest plan sesji dla studiów magisterskich,sesja
+79,jaka jest aktualna oferta przedmiotów obieralnych,sylabus/obieralne
+80,jak wyglada plan sesji,sesja
+81,które dni w bieżącym roku akademickim są wolne od zajęć,plan
+82,jakie dni są wolne podczas roku akademickiego,plan
+83,jak wygląda mój plan zajęć,plan
+84,jakie są warunki zaliczenia przedmiotów,warunek
+85,kiedy są egzaminy w sesji,sesja
+86,jakie przedmioty są na danym kierunku,sylabus/obieralne
+87,will university provide opportunity for students who wants to do internship,inne
+88,ile kosztuje warunek,warunek
+89,ile do kiedy i jak muszę zapłacić za ubezpieczenie,dokumenty
+90,w jakich godzinach i dniach otwarty jesf dziekanat,plan
+91,gdzie mogę znaleźć informację o godzinach otwarcia dziekanatu,plan
+92,jakie będę miał przedmioty w tym semestrze,sylabus/obieralne
+93,godziny otwarcia dziekanatu,plan
+94,kiedy kolokwium,sesja
+95,kiedy są zajęcia,plan
+96,do kogo i jakie podanie napisać żeby zapisać się na przedmiot spoza podstawowego kierunku studiów,dokumenty
+97,może godziny konsultacji z konkretnymi prowadzącymi ,plan
+98,w jakie dni następuje zmiana planu zajęć np plan poniedziałkowy w czwartek,plan
+99,kiedy są najbliższe dni wolne,plan
+100,kiedy pojawi się plan sesji,sesja
+101,jaki jest aktualny plan studiów iadu,plan
+102,czy mam wolne danego dnia,harmonogram
+103,do kiedy trzeba zrealizować praktyki studenckie,praktyki
+104,jaki jest mój dzisiejszy plan zajęć,plan
+105,ile przedmiotów jest w danym roku w sesji,sesja
+106,jaki jest harmonogram sesji,sesja
+107,jakie są przedmioty obowiązkowe na semestrze x kierunku y,sylabus/obieralne
+108,jaki jest plan studiów,plan
+109,w jakich salach mam dzisiaj zajecia,plan
+110,ile jest podejść do egzaminućwiczeń,inne
+111,harmonogram roku akademickiego,harmonogram
+112,jakie obieraki są dla mnie dostępne i które z nich należą do bloków obowiązkowych,inne
+113,kiedy mamy wolne,harmonogram
+114,jaki tytuł naukowy ma dany wykładowcaćwiczeniowiec,pracownik
+115,w jakich dniach i o której mam egzaminy,sesja
+116,które dni w kalenadrzu akademickim mają zmieniony plan,plan
+117,kiedy są dni wolne w ciągu roku akademickiego,plan
+118,gdzie znajdę listę dostępnych przedmiotów obieralnych w najbliższej turze zapisów,sylabus/obieralne
+119,jakie dokumenty potrzebne są do zaliczenia praktyk studenckich,dokumenty
+120,jakie są zasady zaliczania przedmiotów według regulaminu studiów pw,regulamin
+121,jak wyglada plan studiów mojego kierunku,plan
+122,jakie są wymagania odnośnie pisania inżynierki,praca_dyplomowa
+123,kiedy i gdzie jest pierwszy termin egzaminu pisemnego ze statystyki,sesja
+124,jak rozliczyć praktyki,praktyki
+125,kiedy wypadają dni wolne od studiowania,plan
+126,jaki jest plan zajęć dla informatyki na trzecim semestrze,plan
+127,kiedy są wolne dni od zajęć,plan
+128,plan sesji,sesja
+129,kiedy są zajęcia w inny dzień tygodnia niż naprawdę jest np środa w piątek,plan
+130,jakie przedmioty mnie obowiązują w tym semestrze,sylabus/obieralne
+131,jakie są opcje dla pracy magisterskiej,praca_dyplomowa
+132,czy już jest plan zajęć na początku nowego semestru,plan
+133,gdzie znajdują się drukarki wydziałowe,drukarka
+134,kiedy są wolne dni,plan
+135,w których godzinach otwarty jest dziekanat i kiedy,plan
+136,plan studiów,plan
+137,wydarzenia,wydarzenia
+138,kiedy mogę wejść do dziekanatu,inne
+139,jakie przedmioty obieralne są dostępne dla mnie pod względem zainteresowań planu mojego i zajęć wydziału,sylabus/obieralne
+140,gdzie są materiały dydaktyczne dla algebry liniowej,inne
+141,wydarzenia politechniczne,wydarzenia
+142,jakie dokumenty potrzebne są do rozliczenia praktyk,dokumenty
+143,co będzie sie działo w najstepnym tygodniu,inne
+144,gdzie znaleźć syllabus studiów,sylabus/obieralne
+145,kiedy jest najbliższe posiedzenie rady wydziału,inne
+146,w jakich godzinach otwarty jest dziekanat,plan
+147,kiedy kolos,sesja
+148,jakie dni są wolne w danym semestrze,plan
+149,czy przedmioty obieralne bonusowe zaliczone na inżynierce można przepisać na magisterkę robić awansem,sylabus/obieralne
+150,lista przedmiotow plan zajec,plan
+151,jakie dokumenty należy dostarczyć do dziekanatu w sprawie xyz,dokumenty
+152,ile punktów ects potrzeba do zaliczenia pełnego lub warukowego semestru,sylabus/obieralne
+153,jakie sa warunki zdania danego przedmiotu,warunek
+154,czy został już opublikowany plan sesji,sesja
+155,jak złożyć wniosek o stypendium,stypendium
+156,jakie przedmioty sa w przyszlych semestrach,sylabus/obieralne
+157,w której sali mam następne zajęcia,plan
+158,ile ects ma przedmiot x na kierunku studiów y,sylabus/obieralne
+159,w jakie dni tygodnia i w jakich godzinach otwarty jest dziekanat,plan
+160,plan zajęć dla kierunku x,plan
+161,za ile ects jest dany przedmiot,sylabus/obieralne
+162,jakie i kiedy ma egzaminy informatyka,sesja
+163,jaki jest plan zajęć mad,plan
+164,ile punktów mam z jakiegoś testu,inne
+165,jakie warunki trzeba spełnić żeby otrzymać stypendium,stypendium
+166,jaka jest oferta przedmiotów obieralnych dla studentów kierunków anglojęzycznych,sylabus/obieralne
+167,ile trzeba mieć punktów ects na zdanie,sylabus/obieralne
+168,w jakim terminie można składać podanie o stypendium rektora,stypendium
+169,kiedy otwarty jest dziekanat,dziekanat
+170,kiedy są juwenaliakonikkucykotrzęsiny itp,inne
+171,kiedy należy zapłacić za warunek,warunek
+172,na czym polegają co się robi na danych przedmiotach obieralnych,sylabus/obieralne
+173,kiedy będę miał jakieś egzaminy,sesja
+174,jaki obierak mam w następnym semestrze do wyboru i o czym jest,sylabus/obieralne
+175,jak wyglada warunkowe zaliczenie przedmiotu,sesja
+176,kiedy jest otwarty dziekanat,dziekanat
+177,jak zarezerwować salę na mini,inne
+178,jakie są róznice przedmiotowe między kierunkami matematyka a matematyka i analiza danych,sylabus/obieralne
+179,kiedy się odbywa jakiś event,wydarzenia
+180,w jakiej sali jest dany egzaminprzedmiot,plan
+181,ile ects mają obecnie przedmioty na ntym semestrze isi oraz jakie przedmioty będą na kolejnych semestrach,sylabus/obieralne
+182,jakie są zasady przyznawania stypendium rektora,stypendium
+183,jakie wymagania na erasmus,erasmus
+184,ile ects mają dane przedmioty,sylabus/obieralne
+185,jaki jest termin sesji w tym roku,sesja
+186,kiedy będzie wydziałowa wigilia,wydarzenia
+187,terminy sesji,sesja
+188,co to są punkty ects,sylabus/obieralne
+189,jaki jest plan zajęć na następny semestr,plan
+190,jakie są przedmioty obieralne,sylabus/obieralne
+191,which financial opportunities will be provided for students who wants to do erasmus on abroad,erasmus
+192,jakie są warunki wznowienia,warunek
+193,ile muszę zapłacić za poprawianie przedmiotów,warunek
+194,gdzie mogę znaleźć harmonogram roku akademickiego,harmonogram
+195,kiedy zaczynają się moje następne zajęcia,plan
+196,o której mam zajęcia,plan
+197,jakie ceny warunków,warunek
+198,katalog ects i efekty uczenia,sylabus/obieralne
+199,harmonogramkalendarz wydarzeń na politechnice koła naukowe spotkania wykłady,plan
+200,jakie są dostępne przedmioty obieralne dla mojego kierunku,sylabus/obieralne
+201,kiedy są dni dodatkowo wolne od zajęć,plan
+202,jakie są wymagania i punktacja stypendiów,stypendium
+203,o czas wolny,inne
+204,jaki jest syllabus przedmiotu xyz,sylabus/obieralne
+205,jak zainstalować oprogramowanie dostarczane przez nasz wydział,inne
+206,jak można zrealizować praktyki studenckie,praktyki
+207,jak wygląda harmonogram roku akademickiego które dni są wolne a w które mamy zmieniony plan,plan
+208,konkretne terminy egzaminów w sesji,sesja
+209,jaki jest regulamin praktyk na mini,regulamin
+210,jakie są zasady oceniania przedmiotu x,regulamin
+211,jak wygląda kalendarz akademicki w tym semestrze,harmonogram
+212,w jakie dni nie ma zajęć na wydziale jest zmiana dnia,plan
+213,czy przedmioty obowiązkowe też mogę traktować jako obierak,sylabus/obieralne
+214,jak działa ta głupia drukarka xd,drukarka
+215,jakie przedmioty mam na danym roku studiów,sylabus/obieralne
+216,jaki stopień naukowy mają poszczególni pracownicy,inne
+217,jak wygląda plan na przyszły semestr,plan
+218,jakie zajęcia odbywaja sie w danej sali w danym terminie,plan
+219,co oznaczają podpięcia i czykiedy muszę podpinać przedmioty,sylabus/obieralne
+220,jakie są opcje i warunki wyjazdu na erasmusa na wydziale,warunek
+221,jaki jest adres mailowy do prodziekana ds nauczania,pracownik
+222,kto jest dziekanem od ,inne
+223,ile ects muszę wyrobić w ramach przedmiotów obieralnych na 1 semestrze data science,sylabus/obieralne
+224,kiedy jest najbliższy dodatkowy dzień wolny,harmonogram
+225,jakie są warunki urlopu okolicznościowego,warunek
+226,jak skontaktować się z samorządem,inne
+227,gdzie są pokoje do rozmów,inne
+228,ile wynosi stypendium,stypendium
+229,w które dni zmienia się plan zajęć,plan
+230,oferta przedmiotów obieralnych,sylabus/obieralne
+231,czy dzień x jest dniem wolnym od zajęć,harmonogram
+232,jakie i w jakich godzinach są inne grupy zajęciowećwiczeniowe tego samego przedmiotu,plan
+233,jaki jest plan zajęć,plan
+234,kiedy są dni wolne,plan
+235,jak obsłużyć drukarkę wydziałową,drukarka
+236,jakie wydarzenia będą w ciągu najbliższych dni,plan
+237,które dni mamy wolne,plan
+238,wydarzenia wydziałowe,wydarzenia
+239,ects,sylabus/obieralne
+240,jak obsługiwać drukarkę wydziałową,drukarka
+241,co konkretnie muszę wyrobić na kierunku ism,inne
+242,czy ćwiczenia są obowiązkowe,plan
+243,jakie są dostępne zgłoszone tematy prac dyplomowych,praca_dyplomowa
+244,jak drukowac i polaczyc sie do internetu,drukarka
+245,gdzie znaleźć plan zajęć wszystkich grup na kierunku,plan
+246,jaki jest program studiów magisterskich smad,inne
+247,jak wygląda plan studiów mojego kierunku,plan
+248,jaki jest numer pokoju danego profesora,pracownik
+249,jaki jest regulamin studiów,regulamin
+250,kiedy zaczyna się i kończy sesja,sesja
+251,jaki jest harmonogram roku kiedy środa jest piątkiem itd,harmonogram
+252,godziny otwarcia dziekanatow sekretariatow,plan
+253,kiedy są dni wolne i kiedy są zamienione dni np plan wtorkowy w piątek,plan
+254,jakie są warunki wymiany międzynarodowej,warunek
+255,kiedy będzie dostępny plan zajęć na przyszły semestr,plan
+256,ile ectsow ma dany przedmiot,sylabus/obieralne
+257,jakie mam przedmioty w kolejnym semestrze,sylabus/obieralne
+258,czy został już opublikowany plan zajęć kierunku,plan
+259,gdzie jest palarnia,inne
+260,co mozna wybrac na wf,inne
+261,czy w tym semestrze muszę rejestrować się na przedmioty obieralne,sylabus/obieralne
+262,za co mogę dostać dodatkowe punkty do stypendium rektora,stypendium
+263,jaki jest harmonogram najbliższej sesji,sesja
+264,grupy ćwiczeniowe dla przedmiotu x,plan
+265,jakie dokumenty potrzebne są do dostarczenia jeżeli chce zaliczyć praktyki studenckie na podstawie umwowy zlecenie,praktyki
+266,jak podłączyć się do sieci wydziałowej,inne
+267,regulamin wymian miedzynarodowych,erasmus
+268,jakie są terminy egzaminów w sesji,sesja
+269,kiedy są testy,sesja
+270,ile ects jest za analize i ile potrzebuję żeby zdać semestr,sylabus/obieralne
+271,za jakie osiągnięcia naukowe przsługuje ile punktów do stypendium,stypendium
+272,ile trzeba mieć punktów ects na maksymalną ocenę,sylabus/obieralne
+273,kiedy rozpoczyna się i kończy sesja w tym semestrze,sesja
+274,jakie przedmioty są w moim planie studiów,sylabus/obieralne
+275,które dni są wolne od zajęćo zmienionym planie na dzieńterminy kolokwiów i egzaminów,plan
+276,o co chodzi z podpięciami przedmiotów i ogólnie jak to robić,inne
+277,jakie są bieżące wydarzenia na mini,wydarzenia
+278,jakie są nadchodzące wydarzenia zarówno te naukowe jak i socjalne,wydarzenia
+279,kiedy plan jest zmieniony np poniedziałek w czwartek,plan
+280,czego potrzeba aby pojechać na wymiane studencka,erasmus
+281,jakie mam jutro zajęcia,plan
+282,czy konkretne osiągnięcie naukowe może zostać uznane do zgłoszenia do stypendium rektora,stypendium
+283,jakie przedmioty będę musiał zaliczyć w przyszłości,sylabus/obieralne
+284,za ile ects jest jakis przedmiot obieralny,sylabus/obieralne
+285,jakie wydarzenia będą odbywać się na mini w najbliższych 2 tygodniach,wydarzenia
+286,jakie przedmioty na danym kierunku będą za semestr,sylabus/obieralne
+287,co znaczy przypinać przedmiot,inne
+288,ile godzin tygodniowo maja dane przedmioty,sylabus/obieralne
+289,jaki jest plan studiów danego kierunku,plan
+290,jaki jest plan kierunku iad,plan
+291,jakie są nadchodzące wydarzenia politechniczne,wydarzenia
+292,kiedy czy będą praktyki,praktyki
+293,kiedy zaczyna się przerwa świąteczna,harmonogram
+294,czy jest parking dla studentów,parking
+295,does university provide taking multiple language courses at the same time for polyglot students ,inne
+296,lista pytań na obronę,praca_dyplomowa
+297,czy mogę mieć więcejmniej ects niż jest przewidziane na dany semestrrok,sylabus/obieralne
+298,jaki jest plan studiow,plan
+299,gdzie mogę znaleźć ogólne informacje dotyczące wydziału,inne
+300,w jakiej sali mam kolejne zajęcia,plan
+301,na co zapisać się na wf,inne
+302,kiedy w trakcie studiów ma być pewien przedmiot,inne
+303,jakie są dostępne przedmioty do wyboru i jak będą pasować do planu,sylabus/obieralne
+304,harmonogram terminy sesji,sesja
+305,za ile punktów ects muszę wybrać przedmioty obieralne,sylabus/obieralne
+306,kiedy będę miał egzaminy dzień przedmiot i godzina,sesja
+307,jak dzialaja procesy zwiazane z jezykami i zajeciami wf,inne
+308,na którym semestrze jest przedmiot xyz,inne
+309,jakie progi punktowe były na dany kierunek studiów w poprzednich latach,sylabus/obieralne
+310,jaki jest terminarz sesji,sesja
+311,jak wygląda zaliczenie danego przedmiotu,sesja
+312,jakie są dni wolne w danym semestrze akademickim,plan
+313,jaki jest plan studiów iad na mini,plan
+314,jakie są dostępne przedmioty obieralne dla kierunku x na semestrze y,sylabus/obieralne
+315,jakie są godziny otwarcia budynku i dziekanatu,plan
+316,jakie dokumenty należy przygotować aby zaliczyć praktyki,praktyki
+317,jaki jest plan budynku mini pw,plan
+318,zmiany planu zajęć w najbliższym czasie,harmonogram
+319,jakie przedmioty są w danych semestrach,sylabus/obieralne
+320,jaka jest procedura zapisów na przedmioty obieralne i lektoraty,sylabus/obieralne
