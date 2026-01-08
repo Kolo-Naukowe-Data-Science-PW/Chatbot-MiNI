@@ -1,4 +1,8 @@
 import logging
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.rag_api.models import Message
 
 logger = logging.getLogger(__name__)
 
@@ -34,17 +38,20 @@ STATIC_FAQ = (
 )
 
 
-def build_prompt(
+def build_messages(
     query: str,
     context: list[str],
     field_of_study: str | None = None,
     semester: str | None = None,
-) -> str:
+    conversation_history: list[Message] | None = None,
+) -> list[dict[str, str]]:
     """
-    Builds a prompt for the LLM based on the provided user query and context.
+    Builds a messages array for the LLM based on the provided user query and context.
 
-    Constructs a formatted string including system instructions, static FAQ knowledge,
-    retrieved context chunks, and optional student metadata (field of study, semester).
+    Constructs a properly formatted messages array with:
+    - System message: Instructions, static FAQ, and retrieved context
+    - Conversation history: Previous user/assistant exchanges (including rag retrieved context for each user question)
+    - Current query: As the latest user message
 
     Parameters
     ----------
@@ -56,56 +63,69 @@ def build_prompt(
         The student's field of study (e.g., "Informatyka"), by default None.
     semester : str | None, optional
         The student's current semester, by default None.
+    conversation_history : list[Message] | None, optional
+        Previous conversation exchanges as Message objects, by default None.
 
     Returns
     -------
-    str
-        The fully formatted prompt string ready to be sent to the LLM.
+    list[dict[str, str]]
+        A list of message dicts with 'role' and 'content' keys, ready for the LLM API.
     """
     logger.info(
-        "Building prompt for query: '%s', Field: %s, Sem: %s",
+        "Building messages for query: '%s', Field: %s, Sem: %s, History: %d messages",
         query,
         field_of_study,
         semester,
+        len(conversation_history) if conversation_history else 0,
     )
 
     try:
         labeled = [f"[S{i}]\n{c}" for i, c in enumerate(context, start=1)]
         joined_context = "\n\n---\n\n".join(labeled)
 
-        logger.debug("Joined %d context chunks into prompt.", len(labeled))
+        logger.debug("Joined %d context chunks into system message.", len(labeled))
 
         student_info = ""
         if field_of_study and semester:
             student_info = (
                 f"Informacja o użytkowniku: Użytkownik studiuje na kierunku '{field_of_study}', "
                 f"semestr {semester}. Wykorzystaj tę wiedzę przy pytaniach o plan zajęć, "
-                "przedmioty, sale wykładowe lub egzaminy."
+                "przedmioty, sale wykładowe lub egzaminy.\n\n"
             )
         elif field_of_study:
-            student_info = f"Informacja o użytkowniku: Użytkownik studiuje na kierunku '{field_of_study}'."
+            student_info = f"Informacja o użytkowniku: Użytkownik studiuje na kierunku '{field_of_study}'.\n\n"
 
-        prompt = (
+        # Build system message with instructions and FAQ only (static)
+        system_message = (
             "Jesteś pomocnym asystentem o imieniu MiNIonek. Odpowiadasz na pytania studentów i pracowników Wydziału Matematyki i Nauk Informacyjnych (MiNI).\n"
-            "Stworzyli Cię członkowie Koła Naukowego Data Science (KNDS), działającego przy Wydziale MiNI PW. Projekt merytorycznie nadzorowała dr inż. Anna Wróblewska.\n"
+            "Stworzyli Cię członkowie Koła Naukowego Data Science (KNDS), działającego przy Wydziale MiNI PW. Projekt merytorycznie nadzorowała dr inż. Anna Wróblewska.\n\n"
             "ZASADY ODPOWIADANIA:\n"
-            "1. Priorytetyzacja wiedzy: Opieraj swoją odpowiedź głównie na informacjach z sekcji 'Kontekst'. Wybierz z niej maksymalnie 5 najbardziej trafnych fragmentów [Sx] i na nich zbuduj odpowiedź."
+            "1. Priorytetyzacja wiedzy: Opieraj swoją odpowiedź głównie na informacjach z sekcji 'Kontekst' podanej przez użytkownika. Wybierz z niej maksymalnie 5 najbardziej trafnych fragmentów [Sx] i na nich zbuduj odpowiedź. "
             "Jeśli nie znajdziesz tam odpowiedzi, sprawdź sekcję 'Wiedza ogólna'. "
             "Możesz korzystać z własnej wiedzy tylko wtedy, gdy informacji brakuje w obu powyższych źródłach.\n"
-            "2. Styl: Odpowiadaj krótko, rzeczowo i po polsku.\n"
-            "3. WAŻNE: Odpowiadaj ZAWSZE w języku POLSKIM. Twoja odpowiedź zostanie automatycznie przetłumaczona na język wybrany przez użytkownika. Nie mieszaj języków i nie dodawaj komentarzy o tłumaczeniu.\n"
-            # "3. Źródła: Na samym końcu odpowiedzi dodaj sekcję 'Źródła:' i wymień w niej maksymalnie 2 najważniejsze identyfikatory (np. [S1], [S2]), na których się opierasz. "
-            # "Nie wymieniaj wszystkich dostępnych fragmentów, jeśli z nich nie korzystasz.\n\n"
-            f"{student_info}\n\n"
-            f"---\n{STATIC_FAQ}\n---\n\n"
-            f"---\nKontekst:\n{joined_context}\n---\n\n"
-            f"Pytanie: {query}\n\n"
-            "Odpowiedź:"
+            "2. Kontekst rozmowy: Uwzględnij historię rozmowy - użytkownik może nawiązywać do wcześniejszych pytań lub odpowiedzi.\n"
+            "3. Styl: Odpowiadaj krótko, rzeczowo i po polsku.\n"
+            "4. WAŻNE: Odpowiadaj ZAWSZE w języku POLSKIM. Twoja odpowiedź zostanie automatycznie przetłumaczona na język wybrany przez użytkownika. Nie mieszaj języków i nie dodawaj komentarzy o tłumaczeniu.\n\n"
+            f"{student_info}"
+            f"---\n{STATIC_FAQ}\n---"
         )
 
-        logger.info("Prompt built successfully.")
-        return prompt
+        # Build context message for current query
+        context_message = f"---\nKontekst (informacje, które mogą - ale nie muszą - okazać się przydatne przy odpowiadaniu na bieżące pytanie):\n{joined_context}\n---"
+
+        # Build messages array: system + history + context + query
+        messages = (
+            [{"role": "system", "content": system_message}]
+            + [msg.model_dump() for msg in (conversation_history or [])]
+            + [
+                {"role": "user", "content": context_message},
+                {"role": "user", "content": query},
+            ]
+        )
+
+        logger.info("Messages built successfully. Total messages: %d", len(messages))
+        return messages
 
     except Exception as e:
-        logger.error("Failed to build prompt: %s", e, exc_info=True)
-        return ERROR_PROMPT
+        logger.error("Failed to build messages: %s", e, exc_info=True)
+        raise

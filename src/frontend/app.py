@@ -25,6 +25,9 @@ st.title("Chatbot Wydziału MiNI PW 🎓")
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
+if "conversation_history" not in st.session_state:
+    st.session_state.conversation_history = []
+
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
@@ -73,12 +76,22 @@ if prompt := st.chat_input(t("placeholders", selected_lang)):
         with st.spinner(t("thinking", selected_lang)):
             try:
                 response = requests.post(
-                    API_URL, json={"query": prompt, "language": selected_lang}
+                    API_URL,
+                    json={
+                        "query": prompt,
+                        "language": selected_lang,
+                        "conversation_history": st.session_state.conversation_history,
+                    },
                 )
                 if response.status_code == 200:
                     data = response.json()
                     answer = data.get("answer", t("no_answer", selected_lang))
                     sources = list(dict.fromkeys(data.get("sources", [])[:5]))
+
+                    # Update conversation history from API response
+                    st.session_state.conversation_history = data.get(
+                        "conversation_history", []
+                    )
 
                     full_response = answer
                     if sources:
@@ -88,15 +101,13 @@ if prompt := st.chat_input(t("placeholders", selected_lang)):
                             + ":**\n"
                             + "\n".join([f"- {s}" for s in sources])
                         )
-                    else:
-                        st.error(
-                            f"{t('api_error', selected_lang)}: {response.status_code}"
-                        )
 
                     st.markdown(full_response)
                     st.session_state.messages.append(
                         {"role": "assistant", "content": full_response}
                     )
+                else:
+                    st.error(f"{t('api_error', selected_lang)}: {response.status_code}")
 
             except Exception as e:
                 st.error(f"{t('connection_error', selected_lang)} {e}")
