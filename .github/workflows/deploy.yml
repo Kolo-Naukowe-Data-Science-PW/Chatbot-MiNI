@@ -12,6 +12,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Validate secrets
+        run: |
+          if [ -z "${{ secrets.OPENROUTER_API_KEY }}" ]; then
+            echo "❌ OPENROUTER_API_KEY is not set!"
+            exit 1
+          fi
+          if [ -z "${{ secrets.FIRECRAWL_API_KEY }}" ]; then
+            echo "❌ FIRECRAWL_API_KEY is not set!"
+            exit 1
+          fi
+          echo "✅ All secrets are configured"
+
       - name: Create .env file
         run: |
           echo "OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}" > .env
