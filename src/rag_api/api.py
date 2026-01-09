@@ -87,9 +87,10 @@ def chat_endpoint(request: QueryRequest) -> dict[str, Any]:
         final_msg = translate_text(polish_msg, lang) if lang != "pl" else polish_msg
 
         # Update conversation history even when no results found
+        # Store Polish versions to match what LLM processes
         updated_history = conversation_history + [
-            Message(role="user", content=query),
-            Message(role="assistant", content=final_msg),
+            Message(role="user", content=processing_query),
+            Message(role="assistant", content=polish_msg),
         ]
 
         return {
@@ -113,9 +114,10 @@ def chat_endpoint(request: QueryRequest) -> dict[str, Any]:
     sources = [chunk.get("source_url", "Unknown") for chunk in sorted_chunks[:5]]
 
     # Update conversation history with new exchange
+    # Store Polish versions to match what LLM processes
     updated_history = conversation_history + [
-        Message(role="user", content=query),
-        Message(role="assistant", content=final_answer),
+        Message(role="user", content=processing_query),
+        Message(role="assistant", content=polish_answer),
     ]
 
     return {
