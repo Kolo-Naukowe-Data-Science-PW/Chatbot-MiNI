@@ -97,7 +97,7 @@ def scrap_data() -> list[ScrapedPage]:
         logger.warning("FIRECRAWL_API_KEY not found in environment variables.")
 
     app = Firecrawl(api_key=firecrawl_api_key)
-    output = []
+    output: list[ScrapedPage] = []
 
     if CURRENT_VERSION <= 2:
         # first 15 URLs to test the results
@@ -140,30 +140,85 @@ def scrap_data() -> list[ScrapedPage]:
                 logger.warning(f"Couldn't get content from {url}. Error: {e}")
 
     else:
+
         logger.info(f"V{CURRENT_VERSION}: Starting full crawl of MiNI PW website.")
         root_urls = ["https://ww2.mini.pw.edu.pl/"]
 
-        if CURRENT_VERSION == 4:
-            root_urls.extend(["https://repo.pw.edu.pl/index.seam?lang=pl"])
+        if CURRENT_VERSION >= 4:
+            root_urls.append("https://repo.pw.edu.pl/index.seam?lang=pl")
 
-        logger.info(f"V{CURRENT_VERSION}: Starting crawl for roots: {root_urls}")
+        for root_url in root_urls:
 
-        for root in root_urls:
-            try:
-                crawl_result = app.crawl_url(
-                    root,
-                    params={"limit": 1000, "scrapeOptions": {"formats": ["markdown"]}},
+            logger.info(f"Starting crawl for: {root_url}")
+
+            crawl_job = app.crawl(
+                url=root_url,
+                params={
+                    "limit": 5000,
+                    "scrapeOptions": {"formats": ["markdown"]},
+                    "allowBackwardLinks": False,
+                    "allowExternalLinks": False,
+                },
+            )
+
+            job_id = crawl_job["jobId"]
+            logger.info(f"Crawl job started: {job_id}")
+
+            while True:
+                status = app.get_crawl_status(job_id)
+
+                if status["status"] == "completed":
+                    logger.info(f"Crawl completed for {root_url}")
+                    break
+
+                if status["status"] == "failed":
+                    logger.error(f"Crawl failed for {root_url}: {status}")
+                    break
+
+                logger.info(
+                    f"Crawl status: {status['status']} "
+                    f"({status.get('completed', 0)}/{status.get('total', '?')})"
+                )
+                time.sleep(2)
+
+            for page in status.get("data", []):
+                raw_text = page.get("markdown", "")
+                clean_text = clean_footnote(clean_headnote(raw_text))
+
+                if not clean_text.strip():
+                    continue
+
+                output.append(
+                    ScrapedPage(
+                        url=page.get("url"),
+                        text=clean_text,
+                        links=[],
+                    )
                 )
 
-                for page in crawl_result.get("data", []):
-                    raw_text = page.get("markdown", "")
-                    clean_text = clean_footnote(clean_headnote(raw_text))
-                    output.append(
-                        ScrapedPage(url=page.get("url"), text=clean_text, links=[])
-                    )
+        logger.info(f"Crawled {len(output)} pages")
 
-            except Exception as e:
-                logger.error(f"Crawl failed for {root}: {e}")
+        # if CURRENT_VERSION == 4:
+        ##root_urls.extend(["https://repo.pw.edu.pl/index.seam?lang=pl"])
+
+        # logger.info(f"V{CURRENT_VERSION}: Starting crawl for roots: {root_urls}")
+
+        # for root in root_urls:
+        # try:
+        # crawl_result = app.crawl_url(
+        # root,
+        # params={"limit": 1000, "scrapeOptions": {"formats": ["markdown"]}},
+        # )
+
+        # for page in crawl_result.get("data", []):
+        # raw_text = page.get("markdown", "")
+        # clean_text = clean_footnote(clean_headnote(raw_text))
+        # output.append(
+        ##ScrapedPage(url=page.get("url"), text=clean_text, links=[])
+        # )
+
+        # except Exception as e:
+        # logger.error(f"Crawl failed for {root}: {e}")
 
     return output
 
@@ -189,7 +244,7 @@ def main() -> None:
     output_dir = "src/data/scraped_raw"
     os.makedirs(output_dir, exist_ok=True)
 
-    for _, page in enumerate(scraped_data):
+    for page in scraped_data:
         safe_name = page.url.replace("https://", "").replace("/", "_").strip("_")
         file_path = os.path.join(output_dir, f"{safe_name}.txt")
         with open(file_path, "w", encoding="utf-8") as f:
