@@ -188,7 +188,11 @@ def scrap_data() -> list[ScrapedPage]:
 
                 output.append(
                     ScrapedPage(
-                        url=page.metadata.url if page.metadata and page.metadata.url else "",
+                        url=(
+                            page.metadata.url
+                            if page.metadata and page.metadata.url
+                            else ""
+                        ),
                         text=clean_text,
                         links=[],
                     )
