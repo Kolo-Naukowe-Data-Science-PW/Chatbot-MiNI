@@ -43,7 +43,7 @@ def build_messages(
     context: list[str],
     field_of_study: str | None = None,
     semester: str | None = None,
-    conversation_history: list[Message] | None = None,
+    conversation_history: list["Message"] | None = None,
 ) -> list[dict[str, str]]:
     """
     Builds a messages array for the LLM based on the provided user query and context.
