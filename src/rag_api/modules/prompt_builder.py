@@ -113,13 +113,15 @@ def build_messages(
         # Build context message for current query
         context_message = f"---\nKontekst (informacje, które mogą - ale nie muszą - okazać się przydatne przy odpowiadaniu na bieżące pytanie):\n{joined_context}\n---"
 
-        # Build messages array: system + history + context + query
+        # Build messages array: system + history + combined context + query
         messages = (
             [{"role": "system", "content": system_message}]
             + [msg.model_dump() for msg in (conversation_history or [])]
             + [
-                {"role": "user", "content": context_message},
-                {"role": "user", "content": query},
+                {
+                    "role": "user",
+                    "content": f"{context_message}\n\nBieżące pytanie użytkownika:\n{query}",
+                }
             ]
         )
 
