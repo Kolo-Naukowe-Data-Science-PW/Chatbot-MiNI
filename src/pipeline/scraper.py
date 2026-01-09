@@ -154,7 +154,7 @@ def scrap_data() -> list[ScrapedPage]:
 
             crawl_response = app.start_crawl(
                 root_url,
-                limit=5000,
+                limit=300,
                 scrape_options=ScrapeOptions(formats=["markdown"]),
                 allow_external_links=False,
             )
