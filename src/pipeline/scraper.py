@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from dotenv import load_dotenv
 from firecrawl import Firecrawl
+from firecrawl.v2.types import ScrapeOptions
 
 from src.pipeline.common import CURRENT_VERSION
 
@@ -151,38 +152,35 @@ def scrap_data() -> list[ScrapedPage]:
 
             logger.info(f"Starting crawl for: {root_url}")
 
-            crawl_job = app.crawl(
-                url=root_url,
-                params={
-                    "limit": 5000,
-                    "scrapeOptions": {"formats": ["markdown"]},
-                    "allowBackwardLinks": False,
-                    "allowExternalLinks": False,
-                },
+            crawl_response = app.start_crawl(
+                root_url,
+                limit=5000,
+                scrape_options=ScrapeOptions(formats=["markdown"]),
+                allow_external_links=False,
             )
 
-            job_id = crawl_job["jobId"]
+            job_id = crawl_response.id
             logger.info(f"Crawl job started: {job_id}")
 
             while True:
                 status = app.get_crawl_status(job_id)
 
-                if status["status"] == "completed":
+                if status.status == "completed":
                     logger.info(f"Crawl completed for {root_url}")
                     break
 
-                if status["status"] == "failed":
+                if status.status == "failed":
                     logger.error(f"Crawl failed for {root_url}: {status}")
                     break
 
                 logger.info(
-                    f"Crawl status: {status['status']} "
-                    f"({status.get('completed', 0)}/{status.get('total', '?')})"
+                    f"Crawl status: {status.status} "
+                    f"({status.completed}/{status.total})"
                 )
                 time.sleep(2)
 
-            for page in status.get("data", []):
-                raw_text = page.get("markdown", "")
+            for page in status.data:
+                raw_text = page.markdown or ""
                 clean_text = clean_footnote(clean_headnote(raw_text))
 
                 if not clean_text.strip():
@@ -190,7 +188,7 @@ def scrap_data() -> list[ScrapedPage]:
 
                 output.append(
                     ScrapedPage(
-                        url=page.get("url"),
+                        url=page.metadata.url if page.metadata and page.metadata.url else "",
                         text=clean_text,
                         links=[],
                     )
