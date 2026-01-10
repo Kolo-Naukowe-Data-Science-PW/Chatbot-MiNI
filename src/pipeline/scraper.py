@@ -188,35 +188,17 @@ def scrap_data() -> list[ScrapedPage]:
 
                 output.append(
                     ScrapedPage(
-                        url=page.metadata.url if page.metadata and page.metadata.url else "",
+                        url=(
+                            page.metadata.url
+                            if page.metadata and page.metadata.url
+                            else ""
+                        ),
                         text=clean_text,
                         links=[],
                     )
                 )
 
         logger.info(f"Crawled {len(output)} pages")
-
-        # if CURRENT_VERSION == 4:
-        ##root_urls.extend(["https://repo.pw.edu.pl/index.seam?lang=pl"])
-
-        # logger.info(f"V{CURRENT_VERSION}: Starting crawl for roots: {root_urls}")
-
-        # for root in root_urls:
-        # try:
-        # crawl_result = app.crawl_url(
-        # root,
-        # params={"limit": 1000, "scrapeOptions": {"formats": ["markdown"]}},
-        # )
-
-        # for page in crawl_result.get("data", []):
-        # raw_text = page.get("markdown", "")
-        # clean_text = clean_footnote(clean_headnote(raw_text))
-        # output.append(
-        ##ScrapedPage(url=page.get("url"), text=clean_text, links=[])
-        # )
-
-        # except Exception as e:
-        # logger.error(f"Crawl failed for {root}: {e}")
 
     return output
 
@@ -242,13 +224,24 @@ def main() -> None:
     output_dir = "src/data/scraped_raw"
     os.makedirs(output_dir, exist_ok=True)
 
+    saved_count = 0
+    skipped_count = 0
+
     for page in scraped_data:
+
+        content_length = len(page.text.strip())
+        if content_length < 50:
+            logger.warning(f"SKIPPING: {page.url} - content too short ({content_length} chars).")
+            skipped_count += 1
+            continue
+
         safe_name = page.url.replace("https://", "").replace("/", "_").strip("_")
         file_path = os.path.join(output_dir, f"{safe_name}.txt")
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(f"URL: {page.url}\n\n{page.text}")
+        saved_count += 1
 
-    logger.info(f"Successfully saved {len(scraped_data)} pages to {output_dir}")
+    logger.info(f"Successfully saved {saved_count} to {output_dir}. Skipped saving {skipped_count} pages because they were too short.")
 
 
 if __name__ == "__main__":

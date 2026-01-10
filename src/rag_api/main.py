@@ -25,7 +25,7 @@ client = OpenAI(
 # In order to run it, one needs to create an account on OpenRouter and get the API key.
 # Then put the API key in the .env file.
 
-MODEL_NAME = "mistralai/mistral-7b-instruct:free"  # "openai/gpt-oss-20b:free"
+MODEL_NAME = "openai/gpt-4o-mini"
 
 
 def query_llm(messages: list[dict[str, str]]) -> str:
