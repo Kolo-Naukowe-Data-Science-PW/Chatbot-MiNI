@@ -9,6 +9,7 @@ from firecrawl import Firecrawl
 from firecrawl.v2.types import ScrapeOptions
 
 from src.pipeline.common import CURRENT_VERSION
+from src.pipeline.links_extended import links
 
 load_dotenv()
 
@@ -143,63 +144,85 @@ def scrap_data() -> list[ScrapedPage]:
 
     else:
 
-        logger.info(f"V{CURRENT_VERSION}: Starting full crawl of MiNI PW website.")
-        root_urls = ["https://ww2.mini.pw.edu.pl/"]
+        urls = links
 
-        if CURRENT_VERSION >= 4:
-            root_urls.append("https://repo.pw.edu.pl/index.seam?lang=pl")
+        logger.info(f"V{CURRENT_VERSION}: Scraping list of {len(urls)} most important URLs and PDF files.")
 
-        for root_url in root_urls:
-
-            logger.info(f"Starting crawl for: {root_url}")
-
-            crawl_response = app.start_crawl(
-                root_url,
-                limit=50,
-                scrape_options=ScrapeOptions(formats=["markdown"]),
-                allow_external_links=False,
-            )
-
-            job_id = crawl_response.id
-            logger.info(f"Crawl job started: {job_id}")
-
-            while True:
-                status = app.get_crawl_status(job_id)
-
-                if status.status == "completed":
-                    logger.info(f"Crawl completed for {root_url}")
-                    break
-
-                if status.status == "failed":
-                    logger.error(f"Crawl failed for {root_url}: {status}")
-                    break
-
-                logger.info(
-                    f"Crawl status: {status.status} "
-                    f"({status.completed}/{status.total})"
+        for url in urls:
+            try:
+                result = app.scrape(
+                    url,
+                    formats=[
+                        "markdown",
+                        "links",
+                    ],  # markdown — for cleaned page content; links — for all links displayed on given url
+                    only_main_content=False,
+                    timeout=120000,
                 )
-                time.sleep(2)
+                text = clean_headnote(result.markdown)
+                text = clean_footnote(text)
+                output.append(ScrapedPage(url=url, text=text, links=result.links))
+                time.sleep(1)
+            except Exception as e:
+                logger.warning(f"Couldn't get content from {url}. Error: {e}")
 
-            for page in status.data:
-                raw_text = page.markdown or ""
-                clean_text = clean_footnote(clean_headnote(raw_text))
+        #logger.info(f"V{CURRENT_VERSION}: Starting full crawl of MiNI PW website.")
+        #root_urls = ["https://ww2.mini.pw.edu.pl/"]
 
-                if not clean_text.strip():
-                    continue
+        #if CURRENT_VERSION >= 4:
+            #root_urls.append("https://repo.pw.edu.pl/index.seam?lang=pl")
 
-                output.append(
-                    ScrapedPage(
-                        url=(
-                            page.metadata.url
-                            if page.metadata and page.metadata.url
-                            else ""
-                        ),
-                        text=clean_text,
-                        links=[],
-                    )
-                )
+        #for root_url in root_urls:
 
-        logger.info(f"Crawled {len(output)} pages")
+            #logger.info(f"Starting crawl for: {root_url}")
+
+            #crawl_response = app.start_crawl(
+                #root_url,
+                #limit=50,
+                #scrape_options=ScrapeOptions(formats=["markdown"]),
+                #allow_external_links=False,
+            #)
+
+            #job_id = crawl_response.id
+            #logger.info(f"Crawl job started: {job_id}")
+
+            #while True:
+                #status = app.get_crawl_status(job_id)
+
+                #if status.status == "completed":
+                    #logger.info(f"Crawl completed for {root_url}")
+                    #break
+
+                #if status.status == "failed":
+                    #logger.error(f"Crawl failed for {root_url}: {status}")
+                    #break
+
+                #logger.info(
+                    #f"Crawl status: {status.status} "
+                    #f"({status.completed}/{status.total})"
+                #)
+                #time.sleep(2)
+
+            #for page in status.data:
+                #raw_text = page.markdown or ""
+                #clean_text = clean_footnote(clean_headnote(raw_text))
+
+                #if not clean_text.strip():
+                    #continue
+
+                #output.append(
+                    #ScrapedPage(
+                        #url=(
+                            #page.metadata.url
+                            #if page.metadata and page.metadata.url
+                            #else ""
+                        #),
+                        #text=clean_text,
+                        #links=[],
+                    #)
+                #)
+
+        #logger.info(f"Crawled {len(output)} pages")
 
     return output
 
