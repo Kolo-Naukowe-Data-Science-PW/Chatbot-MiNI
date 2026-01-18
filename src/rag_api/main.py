@@ -4,7 +4,8 @@ import os
 from dotenv import load_dotenv
 from openai import OpenAI
 
-from src.rag_api.modules.prompt_builder import build_prompt
+from src.rag_api.models import Message
+from src.rag_api.modules.prompt_builder import build_messages
 from src.rag_api.modules.retrieval import get_top_k_chunks
 
 load_dotenv()
@@ -22,20 +23,20 @@ client = OpenAI(
 )
 # Highly recommended for usage with RAG, because it's free and has a good performance.
 # In order to run it, one needs to create an account on OpenRouter and get the API key.
-# Then put the API key in the .env file
+# Then put the API key in the .env file.
 
-MODEL_NAME = "mistralai/mistral-7b-instruct:free"  # "openai/gpt-oss-20b:free"
+MODEL_NAME = "openai/gpt-4o-mini"
 
 
-def query_llm(prompt: str) -> str:
+def query_llm(messages: list[dict[str, str]]) -> str:
     """
     Generates an answer using the OpenRouter API.
 
     Parameters
     ----------
-    prompt : str
-        The full prompt string containing the system instructions,
-        context, and user query.
+    messages : list[dict[str, str]]
+        A list of message dicts with 'role' and 'content' keys,
+        containing system instructions, conversation history, and current query.
 
     Returns
     -------
@@ -47,8 +48,8 @@ def query_llm(prompt: str) -> str:
 
         completion = client.chat.completions.create(
             model=MODEL_NAME,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.5,
+            messages=messages,
+            temperature=0,
             max_tokens=500,
         )
 
@@ -66,7 +67,8 @@ def main() -> None:
     Runs the interactive command-line interface (CLI) for the RAG API.
 
     Loops indefinitely, accepting user queries via stdin, retrieving context,
-    generating answers, and printing them to stdout.
+    generating answers, and printing them to stdout. Maintains conversation history
+    throughout the session.
 
     Parameters
     ----------
@@ -79,11 +81,20 @@ def main() -> None:
     logger.info("RAG API script started.")
     logger.info(f"Using Model: {MODEL_NAME}")
 
+    conversation_history: list[Message] = []
+
     while True:
-        query = input("\nEnter your query (or 'q' to quit): ").strip()
+        query = input(
+            "\nEnter your query (or 'q' to quit, 'clear' to reset history): "
+        ).strip()
 
         if query.lower() == "q":
             break
+        if query.lower() == "clear":
+            conversation_history = []
+            logger.info("Conversation history cleared.")
+            print("History cleared.")
+            continue
         if not query:
             logger.error("Query cannot be empty.")
             continue
@@ -93,17 +104,30 @@ def main() -> None:
         sorted_chunks = get_top_k_chunks(query)
 
         if not sorted_chunks:
-            print("No relevant information found in the database.")
+            answer = "No relevant information found in the database."
+            print(answer)
+            conversation_history.append(Message(role="user", content=query))
+            conversation_history.append(Message(role="assistant", content=answer))
             continue
 
         text_only_chunks = [chunk["text_chunk"] for chunk in sorted_chunks]
-        prompt = build_prompt(query, text_only_chunks)
+        messages = build_messages(
+            query, text_only_chunks, conversation_history=conversation_history
+        )
 
         print("\nThinking...")
-        answer = query_llm(prompt)
+        answer = query_llm(messages)
 
         print("\n=== Answer ===")
         print(answer)
+
+        # Update conversation history
+        conversation_history.append(Message(role="user", content=query))
+        conversation_history.append(Message(role="assistant", content=answer))
+
+        logger.info(
+            f"Conversation history now has {len(conversation_history)} messages."
+        )
 
 
 if __name__ == "__main__":

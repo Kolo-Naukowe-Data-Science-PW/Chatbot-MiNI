@@ -2,6 +2,7 @@ import hashlib
 import logging
 import os
 import re
+
 import shutil
 import time
 from dataclasses import dataclass
@@ -436,9 +437,11 @@ def scrap_data() -> list[ScrapedPage]:
     app = Firecrawl(api_key=firecrawl_api_key)
     output: list[ScrapedPage] = []
 
+
     if CURRENT_VERSION >= 5:
         logger.info(f"V{CURRENT_VERSION}: USOS Scrape (NAMED PLANS)")
         return scrape_usos_v9(app)
+
 
     if CURRENT_VERSION <= 2:
         urls = [
@@ -492,7 +495,11 @@ def scrap_data() -> list[ScrapedPage]:
                     formats=[
                         "markdown",
                         "links",
+
                     ],
+
+                    ],  # markdown — for cleaned page content; links — for all links displayed on given url
+
                     only_main_content=False,
                     timeout=120000,
                 )
@@ -502,6 +509,7 @@ def scrap_data() -> list[ScrapedPage]:
                 time.sleep(1)
             except Exception as e:
                 logger.warning(f"Couldn't get content from {url}. Error: {e}")
+
 
         # logger.info(f"V{CURRENT_VERSION}: Starting full crawl of MiNI PW website.")
         # root_urls = ["https://ww2.mini.pw.edu.pl/"]
@@ -561,6 +569,65 @@ def scrap_data() -> list[ScrapedPage]:
 
         # logger.info(f"Crawled {len(output)} pages")
 
+        #logger.info(f"V{CURRENT_VERSION}: Starting full crawl of MiNI PW website.")
+        #root_urls = ["https://ww2.mini.pw.edu.pl/"]
+
+        #if CURRENT_VERSION >= 4:
+            #root_urls.append("https://repo.pw.edu.pl/index.seam?lang=pl")
+
+        #for root_url in root_urls:
+
+            #logger.info(f"Starting crawl for: {root_url}")
+
+            #crawl_response = app.start_crawl(
+                #root_url,
+                #limit=50,
+                #scrape_options=ScrapeOptions(formats=["markdown"]),
+                #allow_external_links=False,
+            #)
+
+            #job_id = crawl_response.id
+            #logger.info(f"Crawl job started: {job_id}")
+
+            #while True:
+                #status = app.get_crawl_status(job_id)
+
+                #if status.status == "completed":
+                    #logger.info(f"Crawl completed for {root_url}")
+                    #break
+
+                #if status.status == "failed":
+                    #logger.error(f"Crawl failed for {root_url}: {status}")
+                    #break
+
+                #logger.info(
+                    #f"Crawl status: {status.status} "
+                    #f"({status.completed}/{status.total})"
+                #)
+                #time.sleep(2)
+
+            #for page in status.data:
+                #raw_text = page.markdown or ""
+                #clean_text = clean_footnote(clean_headnote(raw_text))
+
+                #if not clean_text.strip():
+                    #continue
+
+                #output.append(
+                    #ScrapedPage(
+                        #url=(
+                            #page.metadata.url
+                            #if page.metadata and page.metadata.url
+                            #else ""
+                        #),
+                        #text=clean_text,
+                        #links=[],
+                    #)
+                #)
+
+        #logger.info(f"Crawled {len(output)} pages")
+
+
     return output
 
 
@@ -591,6 +658,7 @@ def main() -> None:
     os.makedirs(output_dir, exist_ok=True)
 
     for page in scraped_data:
+
         if CURRENT_VERSION >= 5:
             name_hash = hashlib.md5(page.url.encode()).hexdigest()[:10]
 
@@ -609,14 +677,23 @@ def main() -> None:
         else:
             safe_name = page.url.replace("https://", "").replace("/", "_").strip("_")
 
+
+        safe_name = page.url.replace("https://", "").replace("/", "_").strip("_")
+
         file_path = os.path.join(output_dir, f"{safe_name}.txt")
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(f"URL: {page.url}\n\n{page.text}")
+
 
     if CURRENT_VERSION >= 5:
         logger.info(f"✅ Finished! Saved {len(scraped_data)} files in {output_dir}")
     else:
         logger.info(f"Successfully saved {len(scraped_data)} to {output_dir}.")
+
+    logger.info(
+        f"Successfully saved {len(scraped_data)} to {output_dir}."
+    )
+
 
 
 if __name__ == "__main__":
