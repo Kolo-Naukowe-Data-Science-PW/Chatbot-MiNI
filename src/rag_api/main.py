@@ -1,5 +1,6 @@
 import logging
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -8,7 +9,12 @@ from src.rag_api.models import Message
 from src.rag_api.modules.prompt_builder import build_messages
 from src.rag_api.modules.retrieval import get_top_k_chunks
 
-load_dotenv()
+env_path = Path(__file__).resolve().parent / ".env"
+if env_path.exists():
+    load_dotenv(dotenv_path=env_path)
+else:
+    # Fallback to default behavior (search cwd and parents)
+    load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
