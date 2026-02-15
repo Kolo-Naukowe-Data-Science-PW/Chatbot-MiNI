@@ -45,5 +45,10 @@ jobs:
       # - name: Run Data Processing (Ingest)
       #   run: docker-compose up ingest
 
-      - name: Start API and Frontend
-        run: docker-compose up -d --build api frontend
+      # - name: Start API and Frontend
+      #   run: docker-compose up -d --build api frontend
+
+      - name: Start API and new Frontend
+        run: |
+          docker-compose rm -sf frontend
+          docker-compose up -d --build api frontend
