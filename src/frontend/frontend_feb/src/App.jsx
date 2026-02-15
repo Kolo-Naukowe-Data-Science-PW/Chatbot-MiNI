@@ -157,10 +157,10 @@ function Sidebar({ language, setLanguage, version, setVersion, chats, currentCha
                 <path fillRule="evenodd" clipRule="evenodd" d="M16.4291 0.000500028C19.6994 0.0389874 22.4301 2.33321 24.1322 5.55706C24.1657 5.59442 24.1942 5.63732 24.2163 5.68531L24.2863 5.83807C27.5257 6.35252 30.2963 7.99817 31.4574 10.7993C32.8069 14.0552 31.5253 17.735 28.872 20.6511C29.3361 24.4115 28.3239 28.0081 25.4861 29.8964C22.7337 31.7278 19.1647 31.3506 15.9606 29.608C13.0268 31.2269 9.761 31.6303 7.10016 30.0728C3.96192 28.2357 2.78672 24.3473 3.25918 20.268C1.20989 18.5234 -0.0910746 16.2216 0.00497999 13.6583C0.163853 9.41957 4.00739 6.23124 8.82277 4.9959C8.84368 4.98392 8.8655 4.97317 8.88831 4.96415C10.6116 2.03764 13.2419 0 16.3455 0L16.4291 0.000500028ZM16.3455 1.02406C13.9886 1.02406 11.8484 2.42244 10.2706 4.69863L14.8645 3.84871C15.1422 3.79735 15.4089 3.98119 15.4603 4.25923C15.5115 4.53729 15.328 4.80439 15.0503 4.85577L9.54849 5.8737C4.68931 6.96883 1.16549 10.0008 1.02696 13.6966L1.02384 13.8055C0.986673 15.7268 1.87432 17.5334 3.41087 19.0243L3.83784 14.7973C3.86627 14.516 4.11706 14.311 4.39802 14.3394C4.67899 14.3679 4.88371 14.619 4.85533 14.9003L4.28004 20.5966C4.27427 20.6537 4.25908 20.7076 4.23659 20.7571C3.90092 24.4613 5.05385 27.6887 7.61627 29.1887C9.7168 30.4183 12.3628 30.2518 14.9335 28.9896L11.6682 27.078C11.4245 26.9353 11.3423 26.6217 11.4848 26.3776C11.6274 26.1335 11.9406 26.0513 12.1843 26.1939L16.4299 28.6795C16.4635 28.6991 16.4938 28.7221 16.5211 28.7476C19.5041 30.3487 22.6159 30.5766 24.92 29.0435C27.1364 27.5687 28.1416 24.7728 27.9313 21.5591L24.8734 24.5087C24.67 24.7049 24.3463 24.6987 24.1503 24.4951C23.9545 24.2914 23.9605 23.9674 24.1638 23.7712L28.0898 19.9844C28.0992 19.9753 28.1088 19.9668 28.1187 19.9586C30.622 17.2085 31.651 13.9378 30.5128 11.1919C29.6077 9.00838 27.5005 7.56192 24.8086 6.97701L26.736 11.179C26.8538 11.436 26.7413 11.7399 26.4847 11.8579C26.2281 11.9759 25.9245 11.8633 25.8067 11.6064L23.5141 6.60811C21.9477 3.28277 19.3878 1.09437 16.4862 1.02568L16.3455 1.02406Z" fill="white"/>
               </svg>
             </div>
-            
+
             <div className="header-content">
               <h2 className="logo-text">Chatbot MiNI</h2>
-              
+
               <button className="sidebar-toggle-btn" onClick={() => setIsCollapsed(true)}>
                 <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
 <path d="M15 17H16" stroke="#C0D1C8" strokeWidth="1.5" strokeLinecap="round"/>
@@ -174,7 +174,7 @@ function Sidebar({ language, setLanguage, version, setVersion, chats, currentCha
           </div>
 
           <div className="version-selector-new">
-            <button 
+            <button
               className="version-btn-new"
               onClick={() => setShowVersionMenu(!showVersionMenu)}
             >
@@ -183,10 +183,10 @@ function Sidebar({ language, setLanguage, version, setVersion, chats, currentCha
                 <path d="M3 5L6 8L9 5" stroke="#C0D1C8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
             </button>
-            
+
             {showVersionMenu && (
               <div className="version-menu-new">
-                <button 
+                <button
                   className={version === "testPro" ? "active" : ""}
                   onClick={() => {
                     setVersion("testPro");
@@ -195,7 +195,7 @@ function Sidebar({ language, setLanguage, version, setVersion, chats, currentCha
                 >
                   {t.versions.testPro}
                 </button>
-                <button 
+                <button
                   className={version === "test" ? "active" : ""}
                   onClick={() => {
                     setVersion("test");
@@ -204,7 +204,7 @@ function Sidebar({ language, setLanguage, version, setVersion, chats, currentCha
                 >
                   {t.versions.test}
                 </button>
-                <button 
+                <button
                   className={version === "production" ? "active" : ""}
                   onClick={() => {
                     setVersion("production");
@@ -218,20 +218,20 @@ function Sidebar({ language, setLanguage, version, setVersion, chats, currentCha
           </div>
 
           <div className="languages">
-            <button 
-              className={language === "PL" ? "active" : ""} 
+            <button
+              className={language === "PL" ? "active" : ""}
               onClick={() => setLanguage("PL")}
             >
               PL
             </button>
-            <button 
-              className={language === "EN" ? "active" : ""} 
+            <button
+              className={language === "EN" ? "active" : ""}
               onClick={() => setLanguage("EN")}
             >
               EN
             </button>
-            <button 
-              className={language === "UA" ? "active" : ""} 
+            <button
+              className={language === "UA" ? "active" : ""}
               onClick={() => setLanguage("UA")}
             >
               UA
@@ -301,7 +301,7 @@ function Sidebar({ language, setLanguage, version, setVersion, chats, currentCha
 
             <span>{t.login}</span>
           </button>
-          
+
           {/* <div className="euos-logo">
             <p style={{color: '#666', fontSize: '12px'}}>EUOS</p>
           </div> */}
@@ -324,10 +324,10 @@ function Card({ title, version, language, onClick }) {
             <path d="M11.5825 5.88757V9.47757C11.5825 9.57757 11.5225 9.67757 11.4425 9.72757L7.36255 12.0276C7.27255 12.0776 7.17255 12.0776 7.08255 12.0276L3.00255 9.72757C2.91255 9.67757 2.86255 9.58757 2.86255 9.47757V5.88757L7.08255 8.26757C7.17255 8.31757 7.27255 8.31757 7.36255 8.26757L11.5825 5.88757Z" stroke="#E63312" strokeWidth="1.3"/>
           </svg>
         </div>
-        
+
         <div className={`version-badge ${version}`}>{t.versions[version]}</div>
       </div>
-      
+
       <p>{title}</p>
     </div>
   );
@@ -366,16 +366,16 @@ function Message({ message, version, language, onFeedbackChange, isDisabled })  
   // Helper function to get file icon based on extension
   const getFileIcon = (filename) => {
     const ext = getFileExtension(filename);
-    
+
     // PDF icon
     if (ext === 'pdf') {
       return (
-        
+
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
 <path fillRule="evenodd" clipRule="evenodd" d="M6.66667 0.666626C6.48985 0.666626 6.32029 0.736866 6.19526 0.861886L2.19526 4.86189C2.07024 4.98691 2 5.15648 2 5.33329V13.3333C2 14.4379 2.89543 15.3333 4 15.3333H4.66667C5.03485 15.3333 5.33333 15.0348 5.33333 14.6666C5.33333 14.2984 5.03485 14 4.66667 14H4C3.63181 14 3.33333 13.7015 3.33333 13.3333V5.99996H6.66667C7.03487 5.99996 7.33333 5.70148 7.33333 5.33329V1.99996H12C12.3682 1.99996 12.6667 2.29844 12.6667 2.66663V7.33329C12.6667 7.70149 12.9651 7.99996 13.3333 7.99996C13.7015 7.99996 14 7.70149 14 7.33329V2.66663C14 1.56206 13.1046 0.666626 12 0.666626H6.66667ZM6 4.66663H4.27614L6 2.94277V4.66663ZM6.87187 15.7085C6.97713 15.8383 7.13013 15.9448 7.32307 15.9841C7.50373 16.021 7.66153 15.9873 7.77087 15.9474C7.97207 15.874 8.1304 15.7356 8.23367 15.6337C8.39607 15.4736 8.56607 15.2565 8.73527 15.0112C9.4748 14.7561 10.5141 14.5213 11.5247 14.3734C12.0865 14.2912 12.611 14.2402 13.0526 14.2228C13.2275 14.4288 13.3867 14.6062 13.5192 14.7403C13.6021 14.8242 13.6943 14.9114 13.7845 14.978C13.8252 15.0081 13.9013 15.0613 13.9993 15.0995C14.0503 15.1194 14.3854 15.2473 14.6949 14.9979C14.8771 14.8512 15.0457 14.6869 15.1629 14.5016C15.2808 14.3155 15.3919 14.0314 15.2994 13.7083C15.2087 13.392 14.9725 13.2147 14.7987 13.1232C14.6213 13.0298 14.4219 12.9778 14.2391 12.9458C14.0733 12.9167 13.8859 12.8985 13.6822 12.8896C13.2695 12.3743 12.787 11.7334 12.3287 11.0798C11.9267 10.5066 11.5519 9.93596 11.2607 9.43909C11.2906 9.31089 11.3156 9.18769 11.335 9.07062C11.3682 8.87009 11.3883 8.66929 11.3839 8.48069C11.3797 8.29976 11.3523 8.08189 11.2533 7.87842C11.1436 7.65296 10.944 7.44769 10.6455 7.36729C10.3776 7.29516 10.1222 7.34922 9.92627 7.42169C9.62393 7.53356 9.4582 7.78169 9.40093 8.02402C9.35253 8.22909 9.37873 8.42709 9.40907 8.56856C9.47173 8.86096 9.61793 9.19702 9.78633 9.52616C9.80133 9.55542 9.81673 9.58509 9.83247 9.61496C9.67353 10.1381 9.43853 10.7552 9.15947 11.3932C8.7504 12.3286 8.27033 13.2557 7.85687 13.9186C7.5746 14.0369 7.31413 14.1722 7.1164 14.3277C6.98173 14.4336 6.80127 14.606 6.71493 14.8578C6.6088 15.1676 6.68407 15.4769 6.87187 15.7085ZM11.3316 13.0541C10.789 13.1335 10.2297 13.2377 9.69987 13.3594C9.93607 12.9015 10.1686 12.4134 10.3811 11.9276C10.5017 11.6516 10.6179 11.372 10.7257 11.0954C10.8907 11.345 11.0628 11.597 11.237 11.8454C11.5054 12.228 11.7823 12.6073 12.0506 12.9624C11.8124 12.9881 11.5711 13.0191 11.3316 13.0541ZM10.7073 8.25609C10.7072 8.25522 10.7071 8.25482 10.7071 8.25482C10.7071 8.25476 10.7071 8.25582 10.7073 8.25809C10.7073 8.25729 10.7073 8.25662 10.7073 8.25609Z" fill="#E63312"/>
 </svg>);
     }
-    
+
     // Excel icon (.xlsx, .xls)
     if (ext === 'xlsx' || ext === 'xls') {
       return (
@@ -387,7 +387,7 @@ function Message({ message, version, language, onFeedbackChange, isDisabled })  
 
       );
     }
-    
+
     // Word icon (.docx, .doc)
     if (ext === 'docx' || ext === 'doc') {
       return (
@@ -397,7 +397,7 @@ function Message({ message, version, language, onFeedbackChange, isDisabled })  
 
       );
     }
-    
+
     // HTML icon
     if (ext === 'html' || ext === 'htm') {
       return (
@@ -407,8 +407,8 @@ function Message({ message, version, language, onFeedbackChange, isDisabled })  
 
       );
     }
-    
-    // Link icon 
+
+    // Link icon
 if (ext === 'link') {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -417,7 +417,7 @@ if (ext === 'link') {
     </svg>
   );
 }
-    
+
     // Default file icon
     return (
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -437,8 +437,8 @@ if (ext === 'link') {
     onFeedbackChange(message.id, { selected: newSelected }, message.pairId);
   };
 
-  
-  
+
+
   return (
     <div className={`message ${isUser ? 'user' : 'bot'}${isDisabled ? ' disabled' : ''}`}>
       <div className="message-bubble">
@@ -446,14 +446,14 @@ if (ext === 'link') {
           <div className="variant-label">Wariant {message.variantLabel}</div>
         )}
         <p>{message.text}</p>
-        
+
         {!isUser && message.sources && message.sources.length > 0 && (
           <div className="message-sources">
             <div className="sources-title">{t.sources}:</div>
             <div className="sources-files">
               {message.sources.map((source, index) => (
-                <button 
-                  key={index} 
+                <button
+                  key={index}
                   className="file-attachment"
                   onClick={() => {
                     if (source.startsWith('http://') || source.startsWith('https://')) {
@@ -476,7 +476,7 @@ if (ext === 'link') {
         <div className="message-feedback">
           {version === "production" && (
             <div className="feedback-simple-inline">
-              <button 
+              <button
                 className={`thumb-btn-inline ${message.feedback?.rating === 'up' ? 'active' : ''}`}
                 onClick={() => onFeedbackChange(message.id, { rating: message.feedback?.rating === 'up' ? null : 'up' })}
               >
@@ -485,7 +485,7 @@ if (ext === 'link') {
 </svg>
 
               </button>
-              <button 
+              <button
                 className={`thumb-btn-inline ${message.feedback?.rating === 'down' ? 'active' : ''}`}
                 onClick={() => onFeedbackChange(message.id, { rating: message.feedback?.rating === 'down' ? null : 'down' })}
               >
@@ -499,7 +499,7 @@ if (ext === 'link') {
 
           {(version === "test" || version === "testPro") && message.isVariant && (
             <div className="variant-feedback">
-              <button 
+              <button
                 className={`variant-select-btn ${message.feedback?.selected ? 'active' : ''}`}
                 onClick={handleVariantSelect}
                 disabled={isDisabled}
@@ -570,7 +570,7 @@ function MainContent({ language, version, selectedMajor, setSelectedMajor, selec
       setInputValue('');
     }
   };
-  
+
   return (
     <main className="main">
       <div className="center-content">
@@ -598,9 +598,9 @@ function MainContent({ language, version, selectedMajor, setSelectedMajor, selec
 
             <div className="cards">
               {t.majors.map((major, index) => (
-                <Card 
-                  key={index} 
-                  title={major} 
+                <Card
+                  key={index}
+                  title={major}
                   version={version}
                   language={language}
                   onClick={() => handleMajorSelect(major)}
@@ -668,18 +668,18 @@ function MainContent({ language, version, selectedMajor, setSelectedMajor, selec
             ) : (
               <div className="messages-list">
   {messages.map((message) => {
-    const isOtherVariantSelected = messages.some(msg => 
-      msg.pairId === message.pairId && 
-      msg.id !== message.id && 
+    const isOtherVariantSelected = messages.some(msg =>
+      msg.pairId === message.pairId &&
+      msg.id !== message.id &&
       msg.feedback?.selected
     );
-    
+
     return (
-      <Message 
-        key={message.id} 
-        message={message} 
-        version={version} 
-        language={language} 
+      <Message
+        key={message.id}
+        message={message}
+        version={version}
+        language={language}
         onFeedbackChange={onFeedbackChange}
         isDisabled={isOtherVariantSelected}
       />
@@ -699,7 +699,7 @@ function MainContent({ language, version, selectedMajor, setSelectedMajor, selec
               <path d="M13.25 9.5V14.25C13.25 15.2165 12.4665 16 11.5 16C10.5335 16 9.75 15.2165 9.75 14.25V8C9.75 6.067 11.317 4.5 13.25 4.5C15.183 4.5 16.75 6.067 16.75 8V14.25C16.75 17.1495 14.3995 19.5 11.5 19.5C8.60051 19.5 6.25 17.1495 6.25 14.25V9.5" stroke="#C0D1C8" strokeWidth="1.5" strokeLinecap="round"/>
             </svg>
           </button>
-          
+
           <input
             type="text"
             placeholder={selectedMajor && selectedSemester ? t.placeholder.replace("Najpierw podaj kierunek i semestr", "Zadaj pytanie...") : t.placeholder}
@@ -707,7 +707,7 @@ function MainContent({ language, version, selectedMajor, setSelectedMajor, selec
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
           />
-          
+
           <button type="submit" className="send-btn" disabled={!selectedMajor || !selectedSemester || !inputValue.trim() || isLoading}>
             {isLoading ? (
               <div className="spinner"></div>
@@ -742,11 +742,11 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
 
   const handleNewChat = () => {
-    const t = translations[language]; 
+    const t = translations[language];
     const newChat = {
       id: Date.now(),
       date: new Date().toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric' }),
-      title: t.newChat 
+      title: t.newChat
     };
     setChats([newChat, ...chats]);
     setCurrentChatId(newChat.id);
@@ -943,8 +943,8 @@ export default function App() {
 
   return (
     <div className="layout">
-      <Sidebar 
-        language={language} 
+      <Sidebar
+        language={language}
         setLanguage={setLanguage}
         version={version}
         setVersion={setVersion}
@@ -953,8 +953,8 @@ export default function App() {
         onNewChat={handleNewChat}
         onChatSelect={handleChatSelect}
       />
-      <MainContent 
-        language={language} 
+      <MainContent
+        language={language}
         version={version}
         selectedMajor={selectedMajor}
         setSelectedMajor={setSelectedMajor}

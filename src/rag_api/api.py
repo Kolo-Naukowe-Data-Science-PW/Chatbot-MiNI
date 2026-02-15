@@ -1,15 +1,15 @@
-import logging
 # dodane: zapis feedbacku modeli do CSV
 import csv
-from datetime import datetime, timezone
+import logging
+from datetime import UTC, datetime
 from pathlib import Path
 from threading import Lock
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
+
 # dodane: do pozwoleń CORS
 from fastapi.middleware.cors import CORSMiddleware
-
 from pydantic import BaseModel
 
 from src.rag_api.main import query_llm
@@ -35,6 +35,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 class QueryRequest(BaseModel):
     """
@@ -124,7 +125,7 @@ def append_feedback_row(payload: FeedbackRequest) -> None:
     feedback_file_path.parent.mkdir(parents=True, exist_ok=True)
     variant_config = payload.variant_config or {}
     row = {
-        "created_at": payload.created_at or datetime.now(timezone.utc).isoformat(),
+        "created_at": payload.created_at or datetime.now(UTC).isoformat(),
         "message_id": payload.message_id or "",
         "pair_id": payload.pair_id or "",
         "variant_label": payload.variant_label or "",

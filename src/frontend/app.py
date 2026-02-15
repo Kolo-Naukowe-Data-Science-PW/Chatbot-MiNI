@@ -3,7 +3,7 @@ import os
 import requests
 import streamlit as st
 
-API_URL = os.getenv("API_URL", "http://127.0.0.1:8000/chat")  
+API_URL = os.getenv("API_URL", "http://127.0.0.1:8000/chat")
 st.set_page_config(page_title="Chatbot Wydziału MiNI PW", page_icon="🎓")
 
 with st.sidebar:
