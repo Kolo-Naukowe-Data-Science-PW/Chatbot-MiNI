@@ -47,7 +47,3 @@ jobs:
 
       - name: Start API and Frontend
         run: docker-compose up -d --build --force-recreate api frontend
-
-
-
-
