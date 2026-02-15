@@ -6,11 +6,14 @@ export default defineConfig({
   plugins: [react()],
   // # dodane: proxy dla połączenia frontend -> API w Dockerze
   server: {
-    proxy: {
-      '/api': {
-        target: 'http://api:8000',
-        changeOrigin: true,
+  // # dodane: dozwolone hosty dla Vite na VM
+  allowedHosts: ["chatbotknds.mini.pw.edu.pl"],
+  proxy: {
+    "/api": {
+      target: "http://api:8000",
+      changeOrigin: true,
       },
     },
   },
+
 })
