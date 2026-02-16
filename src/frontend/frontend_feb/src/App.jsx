@@ -19,7 +19,8 @@ const VARIANT_MODEL_CONFIGS = {
     top_p: 0.2,
     frequency_penalty: 0,
     presence_penalty: 0,
-    max_tokens: 900
+    max_tokens: 200,
+    styleInstruction: "Odpowiedz luźno, prosto i przyjaźnie." 
   },
   B: {
     model: "openai/gpt-4o-mini",
@@ -27,7 +28,8 @@ const VARIANT_MODEL_CONFIGS = {
     top_p: 1,
     frequency_penalty: 0.2,
     presence_penalty: 0.3,
-    max_tokens: 900
+    max_tokens: 200,
+    styleInstruction: "Odpowiedz formalnie, akademickim stylem."
   }
 };
 
@@ -862,7 +864,7 @@ export default function App() {
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
-            query: messageText,
+            query:`${modelConfig.styleInstruction}\n\nPytanie użytkownika: ${messageText}`, // # dodane
             language: language.toLowerCase(),
             mode: currentVersion,
             variant: variantLabel,
