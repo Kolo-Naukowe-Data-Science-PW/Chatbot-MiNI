@@ -9,44 +9,7 @@ jobs:
     runs-on: self-hosted
 
     steps:
-      # - name: Checkout code
-      #   uses: actions/checkout@v4
-#       - name: Validate secrets
-#         run: |
-#           if [ -z "${{ secrets.OPENROUTER_API_KEY }}" ]; then
-#             echo "❌ OPENROUTER_API_KEY is not set!"
-#             exit 1
-#           fi
-#           if [ -z "${{ secrets.FIRECRAWL_API_KEY }}" ]; then
-#             echo "❌ FIRECRAWL_API_KEY is not set!"
-#             exit 1
-#           fi
-#           echo "✅ All secrets are configured"
-
-#       - name: Create .env file
-#         run: |
-#           echo "OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}" > .env
-#           echo "FIRECRAWL_API_KEY=${{ secrets.FIRECRAWL_API_KEY }}" >> .env
-#           echo "PIPELINE_VERSION=${{ vars.PIPELINE_VERSION || '1' }}" >> .env
-#           echo "PYTHONUNBUFFERED=1" >> .env
-#           echo "PYTHONPATH=/app/src" >> .env
-#           echo "CHROMA_DIR=/app/src/data/chroma_db" >> .env
-
-#       - name: Stop and Remove Old Containers
-#         run: docker-compose down --remove-orphans || true
-
-#       - name: Prune Docker System
-#         run: docker system prune -f
-
-#       - name: Build and Run Scraper
-#         run: docker-compose up --build scraper
-
-#       - name: Run Data Processing (Ingest)
-#         run: docker-compose up ingest
-
-      # - name: Start API and Frontend
-      #   run: docker-compose up -d --build --force-recreate api frontend
         - name: Checkout code
-        uses: actions/checkout@v4
+          uses: actions/checkout@v4
         - name: Start Frontend only
           run: docker compose up -d --build --force-recreate frontend
