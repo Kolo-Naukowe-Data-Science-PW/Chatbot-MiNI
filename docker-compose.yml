@@ -129,4 +129,3 @@ services:
     depends_on:
       - api
     profiles: ["test_chat"] #test
-
