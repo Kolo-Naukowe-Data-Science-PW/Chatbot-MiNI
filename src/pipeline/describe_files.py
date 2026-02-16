@@ -1,0 +1,146 @@
+import json
+import os
+
+import pandas as pd
+from docx import Document
+
+from src.pipeline.common import CURRENT_VERSION, get_config, logger
+
+config = get_config()
+
+INPUT_DIR = "src/data/complex_files"
+OUTPUT_DIR = "src/data/processed_text"
+
+
+def process_xlsx(path: str) -> str | None:
+    """
+    Ingests Excel files, extracting text from each sheet.
+
+    Parameters
+    ----------
+    path : str
+        The file path to the .xlsx file.
+
+    Returns
+    -------
+    Optional[str]
+        A formatted string containing sheet names and content,
+        or None if an error occurs.
+    """
+    try:
+        xls = pd.ExcelFile(path)
+        text = f"Source: Excel file {os.path.basename(path)}\n"
+        for sheet in xls.sheet_names:
+            text += f"\nSheet: {sheet}\n"
+            df = pd.read_excel(xls, sheet_name=sheet)
+            text += df.to_markdown(index=False)
+        return text
+
+    except Exception as e:
+        logger.error(f"Error processing {path}: {e}")
+        return None
+
+
+def process_docx(path: str) -> str | None:
+    """
+    Ingests Word documents, extracting text from paragraphs.
+
+    Parameters
+    ----------
+    path : str
+        The file path to the .docx file.
+
+    Returns
+    -------
+    Optional[str]
+        A formatted string containing the document name and content,
+        or None if an error occurs.
+    """
+    try:
+        doc = Document(path)
+        text = f"Source: Word document {os.path.basename(path)}\n"
+        text += "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
+        return text
+
+    except Exception as e:
+        logger.error(f"Error processing {path}: {e}")
+        return None
+
+
+def save_text_and_meta(filename: str, text: str) -> None:
+    """
+    Saves the extracted text and metadata to the output directory.
+
+    Metadata includes the filename.
+
+    Parameters
+    ----------
+    filename : str
+        The name of the source file (e.g., 'data.xlsx').
+    text : str
+        The extracted text content to save.
+
+    Returns
+    -------
+    None
+    """
+    base_name = filename
+
+    txt_path = os.path.join(OUTPUT_DIR, f"{base_name}.txt")
+    with open(txt_path, "w", encoding="utf-8") as f:
+        f.write(text)
+
+    meta_path = os.path.join(OUTPUT_DIR, f"{base_name}.json")
+    # SHOULD BE CHANGED TO THE ACTUAL URL
+    meta_data = {"source_url": filename}
+    with open(meta_path, "w", encoding="utf-8") as f:
+        json.dump(meta_data, f, indent=2)
+
+    logger.info(f"Processed: {filename}")
+
+
+def main() -> None:
+    """
+    Main function to process files in the input directory.
+
+    Processes Excel and Word files, saves extracted text,
+    and logs progress.
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    -------
+    None
+    """
+    if not config["process_complex_files"]:
+        logger.info(
+            f"SKIP: Pipeline Version {CURRENT_VERSION} does not support complex files (XLSX/DOCX)."
+        )
+        return
+
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    if not os.path.exists(INPUT_DIR):
+        logger.warning(f"Input directory does not exist: {INPUT_DIR}")
+        return
+
+    for filename in os.listdir(INPUT_DIR):
+        file_path = os.path.join(INPUT_DIR, filename)
+        content = None
+
+        if filename.endswith(".xlsx"):
+            logger.info(f"Processing a XLSX file: {filename}")
+            content = process_xlsx(file_path)
+        elif filename.endswith(".docx"):
+            logger.info(f"Processing a DOCX file: {filename}")
+            content = process_docx(file_path)
+        # in the future, more file types can be added here
+        # for example scan PDFs, images, etc.
+
+        if content:
+            save_text_and_meta(filename, content)
+
+
+if __name__ == "__main__":
+    main()
