@@ -107,7 +107,7 @@ services:
     working_dir: /app/src/frontend/frontend_feb # dodane
     command: sh -c "npm ci && npm run dev -- --host 0.0.0.0 --port 8501" # dodane
     environment:
-      VITE_API_URL: "/chat" # dodane
+      VITE_API_URL: "/api/chat" # dodane
     volumes:
       - ./:/app # dodane
     ports:
@@ -115,3 +115,18 @@ services:
     depends_on:
       - api
     restart: always
+
+  api_test_health: #test
+    image: curlimages/curl:8.12.1 #test
+    command: ["-sS", "-i", "http://api:8000/docs"] #test
+    depends_on:
+      - api
+    profiles: ["test"] #test
+
+  api_test_chat: #test
+    image: curlimages/curl:8.12.1 #test
+    command: ["-sS", "-i", "-X", "POST", "http://api:8000/chat", "-H", "Content-Type: application/json", "-d", "{\"query\":\"test\",\"language\":\"pl\"}"] #test
+    depends_on:
+      - api
+    profiles: ["test_chat"] #test
+

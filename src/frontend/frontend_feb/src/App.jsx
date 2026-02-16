@@ -10,6 +10,7 @@ import { useState, useRef, useEffect } from "react";
 const API_URL = "/api/chat";
 const FEEDBACK_API_URL = "/api/feedback";
 
+
 // model testing parameters for A and B versions
 const VARIANT_MODEL_CONFIGS = {
   A: {
