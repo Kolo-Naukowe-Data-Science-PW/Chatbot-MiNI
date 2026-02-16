@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 
 // ============ API CONFIG ============
 // const API_URL = "http://127.0.0.1:8000/chat"; // # dodane
-const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/chat"; // # dodane
+const API_URL = import.meta.env.VITE_API_URL || "/api/chat";
 // version testing feedback
 const FEEDBACK_API_URL = API_URL.replace("/chat", "/feedback");
 // model testing parameters for A and B versions

@@ -1,10 +1,11 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
 
-// https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
   server: {
+    host: "0.0.0.0",
+    port: 8501,
     allowedHosts: ["chatbotknds.mini.pw.edu.pl"],
     proxy: {
       "/api": {
@@ -12,6 +13,11 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ""),
       },
+    },
+    hmr: {
+      protocol: "wss",
+      host: "chatbotknds.mini.pw.edu.pl",
+      clientPort: 443,
     },
   },
 });
