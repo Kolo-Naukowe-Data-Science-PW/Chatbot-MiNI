@@ -1,7 +1,3 @@
-"""
-Module for configuring standardized logging for the RAG API.
-"""
-
 import logging
 import os
 import sys
@@ -46,7 +42,7 @@ def setup_logging(log_file: str | None = None) -> None:
 
     Parameters
     ----------
-    log_file : Optional[str], default=None
+    log_file : str, optional
         Path to a file where logs should be written. If None, logs
         will only go to the console (stderr).
     """

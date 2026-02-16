@@ -4,8 +4,9 @@ import os
 from dotenv import load_dotenv
 from openai import OpenAI
 
-from rag_api.modules.prompt_builder import build_prompt
-from rag_api.modules.retrieval import get_top_k_chunks
+from src.rag_api.models import Message
+from src.rag_api.modules.prompt_builder import build_messages
+from src.rag_api.modules.retrieval import get_top_k_chunks
 
 load_dotenv()
 
@@ -20,23 +21,35 @@ client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
     api_key=OPENROUTER_API_KEY,
 )
-# Highly recommended for usage with RAG, because it's free and has a good performance. In order to run it, one needs to
-# create an account on OpenRouter and get the API key. Then put the API key in the .env file
+# Highly recommended for usage with RAG, because it's free and has a good performance.
+# In order to run it, one needs to create an account on OpenRouter and get the API key.
+# Then put the API key in the .env file.
 
-MODEL_NAME = "openai/gpt-oss-20b:free"
+MODEL_NAME = "openai/gpt-4o-mini"
 
 
-def query_llm(prompt: str) -> str:
+def query_llm(messages: list[dict[str, str]]) -> str:
     """
-    Generates an answer using OpenRouter API.
+    Generates an answer using the OpenRouter API.
+
+    Parameters
+    ----------
+    messages : list[dict[str, str]]
+        A list of message dicts with 'role' and 'content' keys,
+        containing system instructions, conversation history, and current query.
+
+    Returns
+    -------
+    str
+        The generated text response from the LLM.
     """
     try:
         logger.debug("Sending request to OpenRouter model: %s", MODEL_NAME)
 
         completion = client.chat.completions.create(
             model=MODEL_NAME,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.5,
+            messages=messages,
+            temperature=0,
             max_tokens=500,
         )
 
@@ -49,15 +62,39 @@ def query_llm(prompt: str) -> str:
         return "Sorry, I encountered an error while generating the response."
 
 
-def main():
+def main() -> None:
+    """
+    Runs the interactive command-line interface (CLI) for the RAG API.
+
+    Loops indefinitely, accepting user queries via stdin, retrieving context,
+    generating answers, and printing them to stdout. Maintains conversation history
+    throughout the session.
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    -------
+    None
+    """
     logger.info("RAG API script started.")
     logger.info(f"Using Model: {MODEL_NAME}")
 
+    conversation_history: list[Message] = []
+
     while True:
-        query = input("\nEnter your query (or 'q' to quit): ").strip()
+        query = input(
+            "\nEnter your query (or 'q' to quit, 'clear' to reset history): "
+        ).strip()
 
         if query.lower() == "q":
             break
+        if query.lower() == "clear":
+            conversation_history = []
+            logger.info("Conversation history cleared.")
+            print("History cleared.")
+            continue
         if not query:
             logger.error("Query cannot be empty.")
             continue
@@ -67,22 +104,30 @@ def main():
         sorted_chunks = get_top_k_chunks(query)
 
         if not sorted_chunks:
-            print("No relevant information found in the database.")
+            answer = "No relevant information found in the database."
+            print(answer)
+            conversation_history.append(Message(role="user", content=query))
+            conversation_history.append(Message(role="assistant", content=answer))
             continue
 
         text_only_chunks = [chunk["text_chunk"] for chunk in sorted_chunks]
-        prompt = build_prompt(query, text_only_chunks)
+        messages = build_messages(
+            query, text_only_chunks, conversation_history=conversation_history
+        )
 
         print("\nThinking...")
-        answer = query_llm(prompt)
+        answer = query_llm(messages)
 
         print("\n=== Answer ===")
         print(answer)
 
-        print("\n=== Sources ===")
-        for i, chunk_data in enumerate(sorted_chunks, start=1):
-            source = chunk_data.get("source_url", "Unknown")
-            print(f"{i}. {source}")
+        # Update conversation history
+        conversation_history.append(Message(role="user", content=query))
+        conversation_history.append(Message(role="assistant", content=answer))
+
+        logger.info(
+            f"Conversation history now has {len(conversation_history)} messages."
+        )
 
 
 if __name__ == "__main__":

@@ -4,103 +4,128 @@ volumes:
   final_storage:
   chroma_db:
   hf_cache:
+  data_storage:
 
 x-env: &env
   PYTHONUNBUFFERED: "1"
   HF_HOME: /root/.cache/huggingface
   PYTHONPATH: /app/src
   OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+  FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY}
+  PIPELINE_VERSION: ${PIPELINE_VERSION:-1}
+  CHROMA_DIR: /app/src/data/chroma_db
 
 services:
 
-  #scraper:
-    #user: root
-    #build: .
-    #command:
-      #- micromamba
-      #- run
-      #- -n
-      #- app
-      #- python
-      #- -m
-      #- scraper.main
-    #environment: *env
-    #volumes:
-      #- final_storage:/app/src/data/final_storage
-      #- hf_cache:/root/.cache/huggingface
+  scraper:
+    user: root
+    build: .
+    command: [
+      "micromamba",
+      "run",
+      "-n",
+      "app",
+      "python",
+      "-m",
+      "pipeline.scraper"
+    ]
+    environment: *env
+    volumes:
+      - data_storage:/app/src/data
+      - final_storage:/app/src/data/final_storage
+      - hf_cache:/root/.cache/huggingface
 
-  #ingest:
-    #user: root
-    #build: .
-    #command:
-      #- micromamba
-      #- run
-      #- -n
-      #- app
-      #- python
-      #- -m
-      #- data_ingest.main
-    #environment:
-      #<<: *env
-      #SENTENCE_TRANSFORMER_MODEL: intfloat/multilingual-e5-base
-      #EMBEDDINGS_DEVICE: cpu
-      #CHROMA_DIR: /app/src/data/chroma_db
-    #volumes:
-      #- final_storage:/app/src/data/final_storage:ro
-      #- chroma_db:/app/src/data/chroma_db
-      #- hf_cache:/root/.cache/huggingface
-    #depends_on:
-      #scraper:
-        #condition: service_completed_successfully
+  ingest:
+    user: root
+    build: .
+    command: >
+      micromamba run -n app /bin/bash -c "
+      python -m pipeline.describe_files &&
+      python -m pipeline.extract_facts &&
+      python -m pipeline.ingest_facts"
+    environment: *env
+    volumes:
+      - data_storage:/app/src/data
+      - chroma_db:/app/src/data/chroma_db
+      - hf_cache:/root/.cache/huggingface
+    depends_on:
+      scraper:
+        condition: service_completed_successfully
 
   api:
     user: root
     build: .
-    command:
-      - micromamba
-      - run
-      - -n
-      - app
-      - uvicorn
-      - rag_api.api:app
-      - --host
-      - 0.0.0.0
-      - --port
-      - "8000"
-    environment:
-      <<: *env
-      CHROMA_DIR: /app/src/data/chroma_db
+    command: [
+      "micromamba",
+      "run",
+      "-n",
+      "app",
+      "uvicorn",
+      "rag_api.api:app",
+      "--host",
+      "0.0.0.0",
+      "--port",
+      "8000"
+    ]
+    environment: *env
     volumes:
       - chroma_db:/app/src/data/chroma_db
-      - ./new_pipeline:/app/new_pipeline
     expose:
       - "8000"
     restart: always
 
+  # frontend: # dodane
+  #   user: root # dodane
+  #   build: . # dodane
+  #   command: [ # dodane
+  #     "micromamba", # dodane
+  #     "run", # dodane
+  #     "-n", # dodane
+  #     "app", # dodane
+  #     "streamlit", # dodane
+  #     "run", # dodane
+  #     "src/frontend/app.py", # dodane
+  #     "--server.port", # dodane
+  #     "8501", # dodane
+  #     "--server.address", # dodane
+  #     "0.0.0.0" # dodane
+  #   ] # dodane
+  #   environment: # dodane
+  #     <<: *env # dodane
+  #     API_URL: "http://api:8000/chat" # dodane
+  #     STREAMLIT_SERVER_ADDRESS: 0.0.0.0 # dodane
+  #     STREAMLIT_SERVER_HEADLESS: "true" # dodane
+  #     STREAMLIT_BROWSER_GATHER_USAGE_STATS: "false" # dodane
+  #   ports: # dodane
+  #     - "8501:8501" # dodane
+  #   depends_on: # dodane
+  #     - api # dodane
+  #   restart: always # dodane
+
   frontend:
-    user: root
-    build: .
-    command:
-      - micromamba
-      - run
-      - -n
-      - app
-      - streamlit
-      - run
-      - src/frontend/app.py
-      - --server.port
-      - "8501"
-      - --server.address
-      - "0.0.0.0"
-      - --server.enableCORS
-      - "false"
-      - --server.enableXsrfProtection
-      - "false"
+    image: node:20-alpine # dodane
+    working_dir: /app/src/frontend/frontend_feb # dodane
+    command: sh -c "npm ci && npm run build && npm run preview -- --host 0.0.0.0 --port 8501"
     environment:
-      <<: *env
-      API_URL: "http://api:8000/chat"
+      VITE_API_URL: "/api/chat" # dodane
+    volumes:
+      - ./:/app # dodane
     ports:
       - "8501:8501"
     depends_on:
       - api
     restart: always
+
+  api_test_health: #test
+    image: curlimages/curl:8.12.1 #test
+    command: ["-sS", "-i", "http://api:8000/docs"] #test
+    depends_on:
+      - api
+    profiles: ["test"] #test
+
+  api_test_chat: #test
+    image: curlimages/curl:8.12.1 #test
+    command: ["-sS", "-i", "-X", "POST", "http://api:8000/chat", "-H", "Content-Type: application/json", "-d", "{\"query\":\"test\",\"language\":\"pl\"}"] #test
+    depends_on:
+      - api
+    profiles: ["test_chat"] #test

@@ -1,22 +1,33 @@
 from datetime import datetime
 
 import chromadb
+from chromadb.api.models.Collection import Collection
 
 
-def save_to_vector_db(text_chunk, embedding, source_url, path_to_database):
+def save_to_vector_db(
+    text_chunk: str | list[str],
+    embedding: list[float] | list[list[float]],
+    source_url: str | list[str],
+    path_to_database: str,
+) -> None:
     """
-    Saves texts chunks, embeddings urls to vector database.
+    Saves text chunks, embeddings, and URLs to the vector database.
 
-    Args:
-        text_chunk (list[str] | str): Cleaned documents scrapped from mini website.
-        embedding (list[list[float]] | list[float]): Document's embeddings
-        source_url (list[str] | str): mini website urls
-        path_to_database (str): path to local database
+    Parameters
+    ----------
+    text_chunk : str | list[str]
+        Cleaned documents scrapped from the MiNI website. Can be a single string or a list of strings.
+    embedding : list[float] | list[list[float]]
+        The embeddings corresponding to the documents. Can be a single vector or a list of vectors.
+    source_url : str | list[str]
+        The source URLs for the documents. Can be a single URL string or a list of strings.
+    path_to_database : str
+        The local file path to the persistent Chroma database.
 
-    Returns:
-        Null
+    Returns
+    -------
+    None
     """
-
     if not isinstance(text_chunk, list):
         text_chunk = [text_chunk]
 
@@ -52,22 +63,24 @@ def save_to_vector_db(text_chunk, embedding, source_url, path_to_database):
             documents=batch_texts,
             embeddings=batch_embeddings,
             metadatas=[{"url": url} for url in batch_urls],
-            ids=[f"ids_{number_of_docs+i+j+1}" for j in range(len(batch_texts))],
+            ids=[f"ids_{number_of_docs + i + j + 1}" for j in range(len(batch_texts))],
         )
 
 
-def load_vector_db(path_to_database):
+def load_vector_db(path_to_database: str) -> Collection:
     """
-    Returns vector database in given path.
+    Retrieves the vector database collection from the given path.
 
-    Args:
+    Parameters
+    ----------
+    path_to_database : str
+        The local file path to the persistent Chroma database.
 
-        path_to_database (str): path to local database
-
-    Returns:
-        vector database
+    Returns
+    -------
+    chromadb.api.models.Collection.Collection
+        The ChromaDB collection object named 'mini_docs'.
     """
-
     # for use chroma locally, once we got docker set switch PersistentClient() -> HttpClient()
     chroma_client = chromadb.PersistentClient(path=path_to_database)
 
