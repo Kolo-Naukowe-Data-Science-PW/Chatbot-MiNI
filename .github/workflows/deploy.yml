@@ -23,7 +23,6 @@ jobs:
       #       exit 1
       #     fi
       #     echo "✅ All secrets are configured"
-
       # - name: Create .env file
       #   run: |
       #     echo "OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}" > .env
@@ -32,7 +31,6 @@ jobs:
       #     echo "PYTHONUNBUFFERED=1" >> .env
       #     echo "PYTHONPATH=/app/src" >> .env
       #     echo "CHROMA_DIR=/app/src/data/chroma_db" >> .env
-
       # - name: Stop and Remove Old Containers
       #   run: docker-compose down --remove-orphans || true
 
@@ -46,4 +44,4 @@ jobs:
       #   run: docker-compose up ingest
 
       - name: Start API and Frontend
-        run: docker-compose up -d --build api frontend
+        run: docker-compose up -d --build --force-recreate api frontend
