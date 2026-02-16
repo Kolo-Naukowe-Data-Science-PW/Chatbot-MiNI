@@ -7,6 +7,7 @@ export default defineConfig({
     host: "0.0.0.0",
     port: 8501,
     allowedHosts: ["chatbotknds.mini.pw.edu.pl"],
+    hmr: false, // wyłącza websocket HMR (usuwa ten błąd)
     proxy: {
       "/api": {
         target: "http://api:8000",
@@ -14,10 +15,6 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/api/, ""),
       },
     },
-    hmr: {
-      protocol: "wss",
-      host: "chatbotknds.mini.pw.edu.pl",
-      clientPort: 443,
-    },
   },
 });
+
