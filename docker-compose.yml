@@ -107,7 +107,7 @@ services:
     working_dir: /app/src/frontend/frontend_feb # dodane
     command: sh -c "npm ci && npm run dev -- --host 0.0.0.0 --port 8501" # dodane
     environment:
-      VITE_API_URL: "/api/chat" # dodane
+      VITE_API_URL: "/chat" # dodane
     volumes:
       - ./:/app # dodane
     ports:
