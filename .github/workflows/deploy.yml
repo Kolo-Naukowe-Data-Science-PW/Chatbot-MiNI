@@ -9,9 +9,8 @@ jobs:
     runs-on: self-hosted
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
+      # - name: Checkout code
+      #   uses: actions/checkout@v4
 #       - name: Validate secrets
 #         run: |
 #           if [ -z "${{ secrets.OPENROUTER_API_KEY }}" ]; then
@@ -47,7 +46,8 @@ jobs:
 
       # - name: Start API and Frontend
       #   run: docker-compose up -d --build --force-recreate api frontend
-
+        - name: Checkout code
+        uses: actions/checkout@v4
         - name: Start Frontend only
           run: docker compose up -d --build --force-recreate frontend
 
