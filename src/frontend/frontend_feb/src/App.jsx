@@ -14,15 +14,15 @@ const FEEDBACK_API_URL = "/api/feedback";
 // model testing parameters for A and B versions
 const VARIANT_MODEL_CONFIGS = {
   A: {
-    model: "gpt-4o-mini",
+    model: "google/gemini-1.5-flash",
     temperature: 0.2,
-    top_p: 0.8,
+    top_p: 0.2,
     frequency_penalty: 0,
     presence_penalty: 0,
     max_tokens: 900
   },
   B: {
-    model: "gpt-4o-mini",
+    model: "openai/gpt-4o-mini",
     temperature: 0.9,
     top_p: 1,
     frequency_penalty: 0.2,
@@ -45,6 +45,7 @@ const translations = {
     disclaimer: "Chatbot MiNI może popełniać błędy, także dokładnie sprawdzaj odpowiedzi.",
     thinking: "Szukam informacji...",
     sources: "Źródła",
+    choose: "Wybierz", // # dodane
     error: "Przepraszam, wystąpił błąd. Spróbuj ponownie.",
     majors: [
       "Informatyka i Systemy Informacyjne, I stopień",
@@ -77,6 +78,7 @@ const translations = {
     disclaimer: "Chatbot MiNI may make mistakes, so please double-check responses.",
     thinking: "Searching for information...",
     sources: "Sources",
+    choose: "Choose", // # dodane
     error: "Sorry, an error occurred. Please try again.",
    majors: [
       "Computer Science and Information Systems, I degree",
@@ -109,6 +111,7 @@ const translations = {
     disclaimer: "Chatbot MiNI може помилятися, тому перевіряйте відповіді.",
     thinking: "Шукаю інформацію...",
     sources: "Джерела",
+    choose: "Обрати", // # dodane
     error: "Вибачте, сталася помилка. Спробуйте ще раз.",
     majors: [
       "Інформатика та інформаційні системи, I ступінь",
@@ -508,7 +511,7 @@ if (ext === 'link') {
                 onClick={handleVariantSelect}
                 disabled={isDisabled}
               >
-                Wybierz {message.variantLabel}
+                {t.choose} {message.variantLabel} {/* # dodane */}
               </button>
             </div>
           )}
