@@ -20,7 +20,7 @@ const VARIANT_MODEL_CONFIGS = {
     frequency_penalty: 0,
     presence_penalty: 0,
     max_tokens: 200,
-    styleInstruction: "Odpowiedz luźno, prosto i przyjaźnie." 
+    styleInstruction: "Odpowiedz luźno, prosto i przyjaźnie."
   },
   B: {
     model: "openai/gpt-4o-mini",
