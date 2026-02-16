@@ -50,4 +50,3 @@ jobs:
 
         - name: Start Frontend only
           run: docker compose up -d --build --force-recreate frontend
-
