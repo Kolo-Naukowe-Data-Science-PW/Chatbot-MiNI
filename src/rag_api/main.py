@@ -28,7 +28,7 @@ MODEL_NAME = "openai/gpt-4o-mini"
 
 AVAILABLE_MODELS = [
     "openai/gpt-4o-mini",
-    "google/gemini-1.5-flash",
+    "google/gemini-2.5-flash",
     "meta-llama/llama-3-8b-instruct",
 ]
 
