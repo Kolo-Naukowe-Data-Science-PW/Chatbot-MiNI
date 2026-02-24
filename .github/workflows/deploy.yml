@@ -7,9 +7,10 @@ on:
 jobs:
   deploy:
     runs-on: self-hosted
-
     steps:
         - name: Checkout code
           uses: actions/checkout@v4
-        - name: Start Frontend only
+        - name: Copy .env file
+          run: cp ~/.env.backup .env
+        - name: Start application
           run: docker compose up -d --build
