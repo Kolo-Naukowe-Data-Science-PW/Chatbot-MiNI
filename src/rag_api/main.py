@@ -1,5 +1,6 @@
 import logging
 import os
+import random
 
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -21,36 +22,50 @@ client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
     api_key=OPENROUTER_API_KEY,
 )
-# Highly recommended for usage with RAG, because it's free and has a good performance.
-# In order to run it, one needs to create an account on OpenRouter and get the API key.
-# Then put the API key in the .env file.
+
 
 MODEL_NAME = "openai/gpt-4o-mini"
 
+AVAILABLE_MODELS = [
+    "openai/gpt-4o-mini",
+    "google/gemini-1.5-flash",
+    "meta-llama/llama-3-8b-instruct",
+]
 
-def query_llm(messages: list[dict[str, str]]) -> str:
+
+def query_llm(messages: list[dict[str, str]], model_config: dict | None = None) -> str:
     """
     Generates an answer using the OpenRouter API.
-
-    Parameters
-    ----------
-    messages : list[dict[str, str]]
-        A list of message dicts with 'role' and 'content' keys,
-        containing system instructions, conversation history, and current query.
-
-    Returns
-    -------
-    str
-        The generated text response from the LLM.
+    Parameters: a list of messages (conversation history and current query) formatted for the LLM.
+                model_config: Optional dictionary containing model parameters (e.g., temperature, max_tokens).
+    Returns: the generated answer as a string. If an error occurs, returns an error message.
     """
+
+    config = model_config or {}
+
+    chosen_model = config.get("model")
+    if not chosen_model:
+        chosen_model = random.choice(AVAILABLE_MODELS)
+
+    temperature = config.get("temperature", 0.0)
+    max_tokens = config.get("max_tokens", 500)
+    top_p = config.get("top_p", 1.0)
+    frequency_penalty = config.get("frequency_penalty", 0.0)
+    presence_penalty = config.get("presence_penalty", 0.0)
+
     try:
-        logger.debug("Sending request to OpenRouter model: %s", MODEL_NAME)
+        logger.info(
+            f"Sending request to OpenRouter model: {chosen_model} (Temp: {temperature})"
+        )
 
         completion = client.chat.completions.create(
-            model=MODEL_NAME,
+            model=chosen_model,
             messages=messages,
-            temperature=0,
-            max_tokens=500,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            top_p=top_p,
+            frequency_penalty=frequency_penalty,
+            presence_penalty=presence_penalty,
         )
 
         answer = completion.choices[0].message.content.strip()
@@ -65,19 +80,11 @@ def query_llm(messages: list[dict[str, str]]) -> str:
 def main() -> None:
     """
     Runs the interactive command-line interface (CLI) for the RAG API.
-
     Loops indefinitely, accepting user queries via stdin, retrieving context,
     generating answers, and printing them to stdout. Maintains conversation history
     throughout the session.
-
-    Parameters
-    ----------
-    None
-
-    Returns
-    -------
-    None
     """
+
     logger.info("RAG API script started.")
     logger.info(f"Using Model: {MODEL_NAME}")
 
@@ -121,7 +128,6 @@ def main() -> None:
         print("\n=== Answer ===")
         print(answer)
 
-        # Update conversation history
         conversation_history.append(Message(role="user", content=query))
         conversation_history.append(Message(role="assistant", content=answer))
 

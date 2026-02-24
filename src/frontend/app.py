@@ -87,7 +87,6 @@ if prompt := st.chat_input(t("placeholders", selected_lang)):
                     answer = data.get("answer", t("no_answer", selected_lang))
                     sources = list(dict.fromkeys(data.get("sources", [])[:5]))
 
-                    # Update conversation history from API response
                     st.session_state.conversation_history = data.get(
                         "conversation_history", []
                     )

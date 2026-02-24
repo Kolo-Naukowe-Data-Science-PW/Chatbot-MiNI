@@ -12,4 +12,4 @@ jobs:
         - name: Checkout code
           uses: actions/checkout@v4
         - name: Start Frontend only
-          run: docker compose up -d --build --force-recreate frontend
+          run: docker compose up -d --build
