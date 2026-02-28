@@ -12,5 +12,7 @@ jobs:
           uses: actions/checkout@v4
         - name: Copy .env file
           run: cp ~/.env.backup .env
+        - name: Stop old containers
+          run: docker compose down
         - name: Start application
           run: docker compose up -d --build
