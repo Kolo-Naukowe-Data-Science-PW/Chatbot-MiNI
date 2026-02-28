@@ -108,8 +108,8 @@ services:
     command: sh -c "npm ci && npm run build && npm run preview -- --host 0.0.0.0 --port 8501"
     environment:
       VITE_API_URL: "/api/chat" # dodane
-    volumes:
-      - ./:/app # dodane
+    #volumes:
+    #  - ./:/app # dodane
     ports:
       - "8501:8501"
     depends_on:
