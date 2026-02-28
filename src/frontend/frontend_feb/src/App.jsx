@@ -14,7 +14,7 @@ const FEEDBACK_API_URL = "/api/feedback";
 // model testing parameters for A and B versions
 const VARIANT_MODEL_CONFIGS = {
   A: {
-    model: "google/gemini-1.5-flash",
+    model: "google/gemini-2.5-flash",
     temperature: 0.2,
     top_p: 0.2,
     frequency_penalty: 0,
