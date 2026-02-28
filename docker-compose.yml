@@ -78,7 +78,7 @@ services:
     build:
       context: ./src/frontend/frontend_feb
     environment:
-      VITE_API_URL: "/api/chat"
+      VITE_API_URL: "http://api:8000/chat"
     ports:
       - "8501:8501"
     depends_on:
