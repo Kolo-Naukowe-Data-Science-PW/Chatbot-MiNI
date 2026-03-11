@@ -178,7 +178,7 @@ links = [
     "https://ww2.mini.pw.edu.pl/mini-pw-solidarne-z-ukraina/",
     "https://ww2.mini.pw.edu.pl/i-miejsce-informatyki-na-mini-w-rankingu-kierunkow-studiow-inzynierskich-perspektywy-2022/",
     "https://ww2.mini.pw.edu.pl/kiermasz-swiateczny-pw-5-6-grudnia-2024/",
-        # BIP PW
+    # BIP PW
     "https://www.bip.pw.edu.pl/var/pw/storage/original/application/d306a4288f0943c31b5e9cd8fcd33f73.pdf",
     "https://www.bip.pw.edu.pl/Sklad-osobowy/Podstawowe-jednostki-organizacyjne/Wydzial-Matematyki-i-Nauk-Informacyjnych",
     "https://www.bip.pw.edu.pl/Wladze/Senat",
@@ -228,5 +228,5 @@ links = [
     "https://www.bip.pw.edu.pl/index.php/Wybory/Uczelniana-Komisja-Wyborcza/Wyniki-Wyborow-na-kadencje-2024-2028",
     "https://www.bip.pw.edu.pl/index.php/content/view/full/65915",
     "https://www.bip.pw.edu.pl/index.php/content/view/full/65916",
-    "https://www.bip.pw.edu.pl/index.php/content/view/full/65917"
+    "https://www.bip.pw.edu.pl/index.php/content/view/full/65917",
 ]
