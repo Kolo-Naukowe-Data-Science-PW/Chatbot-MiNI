@@ -13,13 +13,13 @@ const FEEDBACK_API_URL = "/api/feedback";
 
 // Shared model pool for all variants
 const MODEL_POOL = [
-  // cheap 
+  // cheap
   "meta-llama/llama-3.1-8b-instruct",
   "google/gemini-2.5-flash",
   "openai/gpt-4o-mini",
   "deepseek/deepseek-chat-v3-0324",
   "mistralai/mistral-small-3.2-24b-instruct",
-  // mid 
+  // mid
   "meta-llama/llama-3.1-70b-instruct",
   "qwen/qwen-2.5-7b-instruct",
   "microsoft/phi-4",
