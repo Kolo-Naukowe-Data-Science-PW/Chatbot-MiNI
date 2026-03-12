@@ -497,9 +497,13 @@ if (ext === 'link') {
     );
   };
 
-  const handleRatingClick = (newRating) => {
-    const updatedRating = message.feedback?.rating === newRating ? null : newRating;
-    onFeedbackChange(message.id, { rating: updatedRating });
+  const handleRatingClick = (label, newRating) => {
+    const current = message.feedback?.ratings?.[label];
+    const updatedRatings = {
+      ...(message.feedback?.ratings ?? {}),
+      [label]: current === newRating ? null : newRating,
+    };
+    onFeedbackChange(message.id, { ratings: updatedRatings });
   };
 
   const handleVariantSelect = () => {
@@ -581,19 +585,25 @@ if (ext === 'link') {
 
           {version === "testPro" && message.isVariant && (
             <div className="mini-rating">
-              {[1, 2, 3, 4, 5].map((star) => (
-                <button
-                  key={star}
-                  className={`star-btn ${message.feedback?.rating >= star ? 'active' : ''}`}
-                  onClick={() => handleRatingClick(star)}
-                >
-                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M9.14216 2.52244C9.49306 1.82585 10.5069 1.82585 10.8578 2.52244L12.5889 5.95873C12.7282 6.23535 12.9976 6.42707 13.3092 6.47143L17.1799 7.02247C17.9645 7.13417 18.2778 8.07886 17.7101 8.62107L14.9092 11.2959C14.6837 11.5112 14.5808 11.8214 14.6341 12.1254L15.2953 15.9023C15.4293 16.6679 14.609 17.2517 13.9072 16.8903L10.4452 15.1071C10.1665 14.9635 9.83353 14.9635 9.55484 15.1071L6.09276 16.8903C5.39095 17.2517 4.57071 16.6679 4.70474 15.9023L5.36594 12.1254C5.41916 11.8214 5.31628 11.5112 5.09082 11.2959L2.28994 8.62107C1.72216 8.07886 2.03547 7.13417 2.82011 7.02247L6.69083 6.47143C7.00242 6.42707 7.27177 6.23535 7.41112 5.95873L9.14216 2.52244Z" fill="#E63312"/>
-                  </svg>
-                </button>
+              {["Usefulness", "Accuracy", "Conciseness"].map((label) => (
+                <div key={label} className="star-rating-row">
+                  <span className="star-rating-label">{label}</span>
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      className={`star-btn ${(message.feedback?.ratings?.[label] ?? 0) >= star ? 'active' : ''}`}
+                      onClick={() => handleRatingClick(label, star)}
+                    >
+                      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M9.14216 2.52244C9.49306 1.82585 10.5069 1.82585 10.8578 2.52244L12.5889 5.95873C12.7282 6.23535 12.9976 6.42707 13.3092 6.47143L17.1799 7.02247C17.9645 7.13417 18.2778 8.07886 17.7101 8.62107L14.9092 11.2959C14.6837 11.5112 14.5808 11.8214 14.6341 12.1254L15.2953 15.9023C15.4293 16.6679 14.609 17.2517 13.9072 16.8903L10.4452 15.1071C10.1665 14.9635 9.83353 14.9635 9.55484 15.1071L6.09276 16.8903C5.39095 17.2517 4.57071 16.6679 4.70474 15.9023L5.36594 12.1254C5.41916 11.8214 5.31628 11.5112 5.09082 11.2959L2.28994 8.62107C1.72216 8.07886 2.03547 7.13417 2.82011 7.02247L6.69083 6.47143C7.00242 6.42707 7.27177 6.23535 7.41112 5.95873L9.14216 2.52244Z" fill="#E63312"/>
+                      </svg>
+                    </button>
+                  ))}
+                </div>
               ))}
             </div>
           )}
+
         </div>
       )}
     </div>
