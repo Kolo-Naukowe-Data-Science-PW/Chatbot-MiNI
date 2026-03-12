@@ -3,7 +3,7 @@ import "./App.css";
 import { useState, useRef, useEffect } from "react";
 
 // ============ API CONFIG ============
-// const API_URL = "http://127.0.0.1:8000/chat"; // 
+// const API_URL = "http://127.0.0.1:8000/chat"; //
 // const API_URL = import.meta.env.VITE_API_URL || "/api/chat";
 // // version testing feedback
 // const FEEDBACK_API_URL = API_URL.replace("/chat", "/feedback");
@@ -116,7 +116,7 @@ const translations = {
     disclaimer: "Chatbot MiNI może popełniać błędy, także dokładnie sprawdzaj odpowiedzi.",
     thinking: "Szukam informacji...",
     sources: "Źródła",
-    choose: "Wybierz", 
+    choose: "Wybierz",
     error: "Przepraszam, wystąpił błąd. Spróbuj ponownie.",
     majors: [
       "Informatyka i Systemy Informacyjne, I stopień",
@@ -149,7 +149,7 @@ const translations = {
     disclaimer: "Chatbot MiNI may make mistakes, so please double-check responses.",
     thinking: "Searching for information...",
     sources: "Sources",
-    choose: "Choose", 
+    choose: "Choose",
     error: "Sorry, an error occurred. Please try again.",
    majors: [
       "Computer Science and Information Systems, I degree",
@@ -182,7 +182,7 @@ const translations = {
     disclaimer: "Chatbot MiNI може помилятися, тому перевіряйте відповіді.",
     thinking: "Шукаю інформацію...",
     sources: "Джерела",
-    choose: "Обрати", 
+    choose: "Обрати",
     error: "Вибачте, сталася помилка. Спробуйте ще раз.",
     majors: [
       "Інформатика та інформаційні системи, I ступінь",
@@ -933,7 +933,7 @@ export default function App() {
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
-            query:`${modelConfig.styleInstruction}\n\nPytanie użytkownika: ${messageText}`, 
+            query:`${modelConfig.styleInstruction}\n\nPytanie użytkownika: ${messageText}`,
             language: language.toLowerCase(),
             mode: currentVersion,
             variant: variantLabel,
