@@ -74,42 +74,11 @@ services:
       - "8000"
     restart: always
 
-  # frontend: # dodane
-  #   user: root # dodane
-  #   build: . # dodane
-  #   command: [ # dodane
-  #     "micromamba", # dodane
-  #     "run", # dodane
-  #     "-n", # dodane
-  #     "app", # dodane
-  #     "streamlit", # dodane
-  #     "run", # dodane
-  #     "src/frontend/app.py", # dodane
-  #     "--server.port", # dodane
-  #     "8501", # dodane
-  #     "--server.address", # dodane
-  #     "0.0.0.0" # dodane
-  #   ] # dodane
-  #   environment: # dodane
-  #     <<: *env # dodane
-  #     API_URL: "http://api:8000/chat" # dodane
-  #     STREAMLIT_SERVER_ADDRESS: 0.0.0.0 # dodane
-  #     STREAMLIT_SERVER_HEADLESS: "true" # dodane
-  #     STREAMLIT_BROWSER_GATHER_USAGE_STATS: "false" # dodane
-  #   ports: # dodane
-  #     - "8501:8501" # dodane
-  #   depends_on: # dodane
-  #     - api # dodane
-  #   restart: always # dodane
-
   frontend:
-    image: node:20-alpine # dodane
-    working_dir: /app/src/frontend/frontend_feb # dodane
-    command: sh -c "npm ci && npm run build && npm run preview -- --host 0.0.0.0 --port 8501"
+    build:
+      context: ./src/frontend/frontend_feb
     environment:
-      VITE_API_URL: "/api/chat" # dodane
-    volumes:
-      - ./:/app # dodane
+      VITE_API_URL: "http://api:8000/chat"
     ports:
       - "8501:8501"
     depends_on:
@@ -129,4 +98,3 @@ services:
     depends_on:
       - api
     profiles: ["test_chat"] #test
-
