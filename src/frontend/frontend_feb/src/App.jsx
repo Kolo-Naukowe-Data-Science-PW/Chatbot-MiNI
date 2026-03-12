@@ -13,24 +13,16 @@ const FEEDBACK_API_URL = "/api/feedback";
 
 // Shared model pool for all variants
 const MODEL_POOL = [
-  // Fast / cheap
-  "openai/gpt-4o-mini",
-  "google/gemini-1.5-flash",
-  "anthropic/claude-haiku-3-5",
-  "mistralai/mistral-small",
+  // cheap 
   "meta-llama/llama-3.1-8b-instruct",
-
-  // Balanced
-  "openai/gpt-4o",
-  "google/gemini-1.5-pro",
-  "anthropic/claude-sonnet-4-5",
-  "mistralai/mistral-medium",
+  "google/gemini-2.5-flash",
+  "openai/gpt-4o-mini",
+  "deepseek/deepseek-chat-v3-0324",
+  "mistralai/mistral-small-3.2-24b-instruct",
+  // mid 
   "meta-llama/llama-3.1-70b-instruct",
-
-  // Open source
-  "qwen/qwen-2.5-72b-instruct",
+  "qwen/qwen-2.5-7b-instruct",
   "microsoft/phi-4",
-  "deepseek/deepseek-chat",
 ];
 
 const VARIANT_MODEL_CONFIGS = (() => {
