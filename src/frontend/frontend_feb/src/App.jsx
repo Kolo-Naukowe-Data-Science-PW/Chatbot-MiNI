@@ -3,7 +3,7 @@ import "./App.css";
 import { useState, useRef, useEffect } from "react";
 
 // ============ API CONFIG ============
-// const API_URL = "http://127.0.0.1:8000/chat"; // # dodane
+// const API_URL = "http://127.0.0.1:8000/chat"; // 
 // const API_URL = import.meta.env.VITE_API_URL || "/api/chat";
 // // version testing feedback
 // const FEEDBACK_API_URL = API_URL.replace("/chat", "/feedback");
@@ -11,26 +11,95 @@ const API_URL = "/api/chat";
 const FEEDBACK_API_URL = "/api/feedback";
 
 
-// model testing parameters for A and B versions
-const VARIANT_MODEL_CONFIGS = {
-  A: {
-    model: "google/gemini-1.5-flash",
-    temperature: 0.2,
-    top_p: 0.2,
-    frequency_penalty: 0,
-    presence_penalty: 0,
-    max_tokens: 200,
-    styleInstruction: "Odpowiedz luźno, prosto i przyjaźnie."
-  },
-  B: {
-    model: "openai/gpt-4o-mini",
-    temperature: 0.9,
-    top_p: 1,
-    frequency_penalty: 0.2,
-    presence_penalty: 0.3,
-    max_tokens: 200,
-    styleInstruction: "Odpowiedz formalnie, akademickim stylem."
-  }
+// Shared model pool for all variants
+const MODEL_POOL = [
+  // Fast / cheap
+  "openai/gpt-4o-mini",
+  "google/gemini-1.5-flash",
+  "anthropic/claude-haiku-3-5",
+  "mistralai/mistral-small",
+  "meta-llama/llama-3.1-8b-instruct",
+
+  // Balanced
+  "openai/gpt-4o",
+  "google/gemini-1.5-pro",
+  "anthropic/claude-sonnet-4-5",
+  "mistralai/mistral-medium",
+  "meta-llama/llama-3.1-70b-instruct",
+
+  // Open source
+  "qwen/qwen-2.5-72b-instruct",
+  "microsoft/phi-4",
+  "deepseek/deepseek-chat",
+];
+
+const VARIANT_MODEL_CONFIGS = (() => {
+  const pick = (items) => items[Math.floor(Math.random() * items.length)];
+  const float = (min, max, step = 0.1) =>
+    Number((min + Math.floor(Math.random() * ((max - min) / step + 1)) * step).toFixed(2));
+  const int = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+
+  return {
+    A: {
+      model: pick(MODEL_POOL),
+      temperature: float(0.1, 0.3, 0.1),
+      top_p: float(0.2, 0.5, 0.1),
+      frequency_penalty: float(0, 0.2, 0.1),
+      presence_penalty: float(0, 0.2, 0.1),
+      max_tokens: int(150, 250),
+      styleInstruction: "Odpowiedz bardzo krótko i konkretnie. Bez owijania w bawełnę.",
+    },
+    B: {
+      model: pick(MODEL_POOL),
+      temperature: float(0.4, 0.6, 0.1),
+      top_p: float(0.5, 0.7, 0.1),
+      frequency_penalty: float(0.1, 0.3, 0.1),
+      presence_penalty: float(0.1, 0.3, 0.1),
+      max_tokens: int(150, 250),
+      styleInstruction: "Odpowiedz luźno, prosto i przyjaźnie.",
+    },
+    C: {
+      model: pick(MODEL_POOL),
+      temperature: float(0.6, 0.8, 0.1),
+      top_p: float(0.7, 0.9, 0.1),
+      frequency_penalty: float(0.2, 0.4, 0.1),
+      presence_penalty: float(0.2, 0.4, 0.1),
+      max_tokens: int(150, 250),
+      styleInstruction: "Odpowiedz formalnie, akademickim stylem.",
+    },
+    D: {
+      model: pick(MODEL_POOL),
+      temperature: float(0.8, 1.0, 0.1),
+      top_p: float(0.85, 1.0, 0.05),
+      frequency_penalty: float(0.3, 0.6, 0.1),
+      presence_penalty: float(0.3, 0.6, 0.1),
+      max_tokens: int(150, 250),
+      styleInstruction: "Odpowiedz kreatywnie i oryginalnie. Możesz użyć metafor i nieoczywistych skojarzeń.",
+    },
+  };
+})();
+
+// Returns one random variant config
+const pickRandomConfig = () => {
+  const configs = Object.values(VARIANT_MODEL_CONFIGS);
+  return { ...configs[Math.floor(Math.random() * configs.length)] };
+};
+
+// Returns a specific pair by variant names, e.g. pickPair("C", "D")
+const pickPair = (variantA, variantB) => {
+  return [
+    { variant: variantA, ...VARIANT_MODEL_CONFIGS[variantA] },
+    { variant: variantB, ...VARIANT_MODEL_CONFIGS[variantB] },
+  ];
+};
+
+// Returns a random pair of DIFFERENT variant configs
+const pickRandomConfigPair = () => {
+  const keys = Object.keys(VARIANT_MODEL_CONFIGS);
+  const firstIndex = Math.floor(Math.random() * keys.length);
+  let secondIndex = Math.floor(Math.random() * (keys.length - 1));
+  if (secondIndex >= firstIndex) secondIndex += 1;
+  return pickPair(keys[firstIndex], keys[secondIndex]);
 };
 
 // ============ TRANSLATION ============
@@ -47,7 +116,7 @@ const translations = {
     disclaimer: "Chatbot MiNI może popełniać błędy, także dokładnie sprawdzaj odpowiedzi.",
     thinking: "Szukam informacji...",
     sources: "Źródła",
-    choose: "Wybierz", // # dodane
+    choose: "Wybierz", 
     error: "Przepraszam, wystąpił błąd. Spróbuj ponownie.",
     majors: [
       "Informatyka i Systemy Informacyjne, I stopień",
@@ -80,7 +149,7 @@ const translations = {
     disclaimer: "Chatbot MiNI may make mistakes, so please double-check responses.",
     thinking: "Searching for information...",
     sources: "Sources",
-    choose: "Choose", // # dodane
+    choose: "Choose", 
     error: "Sorry, an error occurred. Please try again.",
    majors: [
       "Computer Science and Information Systems, I degree",
@@ -113,7 +182,7 @@ const translations = {
     disclaimer: "Chatbot MiNI може помилятися, тому перевіряйте відповіді.",
     thinking: "Шукаю інформацію...",
     sources: "Джерела",
-    choose: "Обрати", // # dodane
+    choose: "Обрати", 
     error: "Вибачте, сталася помилка. Спробуйте ще раз.",
     majors: [
       "Інформатика та інформаційні системи, I ступінь",
@@ -864,7 +933,7 @@ export default function App() {
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
-            query:`${modelConfig.styleInstruction}\n\nPytanie użytkownika: ${messageText}`, // # dodane
+            query:`${modelConfig.styleInstruction}\n\nPytanie użytkownika: ${messageText}`, 
             language: language.toLowerCase(),
             mode: currentVersion,
             variant: variantLabel,
@@ -878,12 +947,18 @@ export default function App() {
 
         const data = await response.json();
         const answer = data.answer || translations[language].error;
-        const sources = data.sources ? Array.from(new Set(data.sources)).slice(0, 5) : [];
+        // Extract URLs from the text answer
+        const urlRegex = /https?:\/\/[^\s)\]}>,"']+/g;
+        const urlsFromAnswer = answer.match(urlRegex) || [];
+        const sources = data.sources
+          ? Array.from(new Set([...data.sources, ...urlsFromAnswer])).slice(0, 5)
+          : Array.from(new Set(urlsFromAnswer)).slice(0, 5);
         return { answer, sources };
       };
 
       if (currentVersion === "production") {
-        const data = await callChatApi("production", VARIANT_MODEL_CONFIGS.A);
+        const randomConfig = pickRandomConfig();
+        const data = await callChatApi("production", randomConfig);
         const botMessage = {
           id: Date.now() + 1,
           type: "bot",
@@ -893,14 +968,15 @@ export default function App() {
           canRate: true,
           version: currentVersion,
           feedback: { rating: null },
-          variantConfig: VARIANT_MODEL_CONFIGS.A
+          variantConfig: randomConfig
         };
         setMessages(prev => [...prev, botMessage]);
       } else if (currentVersion === "test" || currentVersion === "testPro") {
         const pairId = Date.now();
+        const [configA, configB] = pickRandomConfigPair();
         const [variantAResponse, variantBResponse] = await Promise.all([
-          callChatApi("A", VARIANT_MODEL_CONFIGS.A),
-          callChatApi("B", VARIANT_MODEL_CONFIGS.B)
+          callChatApi(configA.variant, configA),
+          callChatApi(configB.variant, configB)
         ]);
 
         const botMessages = [
@@ -912,10 +988,10 @@ export default function App() {
             timestamp: new Date(),
             canRate: true,
             isVariant: true,
-            variantLabel: "A",
+            variantLabel: configA.variant,
             version: currentVersion,
             pairId: pairId,
-            variantConfig: VARIANT_MODEL_CONFIGS.A,
+            variantConfig: configA,
             feedback: { rating: null, selected: false }
           },
           {
@@ -926,10 +1002,10 @@ export default function App() {
             timestamp: new Date(),
             canRate: true,
             isVariant: true,
-            variantLabel: "B",
+            variantLabel: configB.variant,
             version: currentVersion,
             pairId: pairId,
-            variantConfig: VARIANT_MODEL_CONFIGS.B,
+            variantConfig: configB,
             feedback: { rating: null, selected: false }
           }
         ];
