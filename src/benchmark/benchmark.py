@@ -59,18 +59,21 @@ def evaluate(gold: list[EvalRow], k: int) -> tuple[float, float]:
     hits = []
     mrrs = []
 
-    for _, row in enumerate(gold):
+    for index, row in enumerate(gold):
         retrieved_chunks = get_top_k_chunks(row.query, top_k=k)
         retrieved_urls = [c.get("source_url", "").strip() for c in retrieved_chunks]
-        # if index < 5:
-        #     print(f"Sample {index + 1}: {row.query}")
-        #     print(f" Retrieved {len(retrieved_urls)} chunks from {len(set(retrieved_urls))} unique URLs:")
-        #     # Show unique URLs with their frequency
-        #     from collections import Counter
-        #     url_counts = Counter(retrieved_urls)
-        #     for url, count in url_counts.items():
-        #         print(f"   {url} (x{count})")
-        #     print("-" * 20)
+        if index < 5:
+            print(f"Sample {index + 1}: {row.query}")
+            print(
+                f" Retrieved {len(retrieved_urls)} chunks from {len(set(retrieved_urls))} unique URLs:"
+            )
+            # Show unique URLs with their frequency
+            from collections import Counter
+
+            url_counts = Counter(retrieved_urls)
+            for url, count in url_counts.items():
+                print(f"   {url} (x{count})")
+            print("-" * 20)
         hits.append(hit_at_k(retrieved_urls, row.relevant_urls, k))
         mrrs.append(mrr_at_k(retrieved_urls, row.relevant_urls, k))
 
