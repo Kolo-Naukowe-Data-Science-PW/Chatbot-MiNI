@@ -61,6 +61,7 @@ class FeedbackRequest(BaseModel):
                 - version: Optional string indicating the version of the model or system.
                 - language: Optional string indicating the language of the query/response.
                 - rating: Optional integer or string representing the user's rating
+                - ratings: Dict with integers representing the user's rating
                 - selected: Optional boolean indicating if this response was selected as the best answer among alternatives.
                 - query: Optional string of the original user query.
                 - response_text: Optional string of the LLM-generated response text.
@@ -76,6 +77,7 @@ class FeedbackRequest(BaseModel):
     version: str | None = None
     language: str | None = None
     rating: int | str | None = None
+    ratings: dict[str, int] | None = None
     selected: bool | None = None
     query: str | None = None
     response_text: str | None = None
@@ -85,15 +87,13 @@ class FeedbackRequest(BaseModel):
     created_at: str | None = None
 
 
-def append_feedback_row(payload: FeedbackRequest) -> None:
+def create_row_without_ratings(payload: FeedbackRequest, variant_config):
     """
-    Append one feedback record to the CSV storage file.
-    Input: FeedbackRequest payload containing all relevant feedback information.
-    Output: None (side effect is writing a new row to the CSV file).
+    The function `create_row_without_ratings` creates a dictionary row from a `FeedbackRequest` payload
+    without including the rating information.
+
     """
 
-    feedback_file_path.parent.mkdir(parents=True, exist_ok=True)
-    variant_config = payload.variant_config or {}
     row = {
         "created_at": payload.created_at or datetime.now(UTC).isoformat(),
         "message_id": payload.message_id or "",
@@ -114,6 +114,54 @@ def append_feedback_row(payload: FeedbackRequest) -> None:
         "query": payload.query or "",
         "response_text": payload.response_text or "",
     }
+    return row
+
+
+def create_row_with_multiple_ratings(payload: FeedbackRequest, variant_config):
+    row = {
+        "created_at": payload.created_at or datetime.now(UTC).isoformat(),
+        "message_id": payload.message_id or "",
+        "pair_id": payload.pair_id or "",
+        "variant_label": payload.variant_label or "",
+        "version": payload.version or "",
+        "language": payload.language or "",
+    }
+
+    row2 = {
+        "selected": payload.selected if payload.selected is not None else "",
+        "selection_timestamp": payload.selection_timestamp or "",
+        "rating_timestamp": payload.rating_timestamp or "",
+        "model": variant_config.get("model", ""),
+        "temperature": variant_config.get("temperature", ""),
+        "top_p": variant_config.get("top_p", ""),
+        "frequency_penalty": variant_config.get("frequency_penalty", ""),
+        "presence_penalty": variant_config.get("presence_penalty", ""),
+        "max_tokens": variant_config.get("max_tokens", ""),
+        "query": payload.query or "",
+        "response_text": payload.response_text or "",
+    }
+
+    row = {**row, **payload.ratings, **row2}
+    return row
+
+
+def append_feedback_row(payload: FeedbackRequest) -> None:
+    """
+    Append one feedback record to the CSV storage file.
+    Input: FeedbackRequest payload containing all relevant feedback information.
+    Output: None (side effect is writing a new row to the CSV file).
+    """
+
+    feedback_file_path.parent.mkdir(parents=True, exist_ok=True)
+    variant_config = payload.variant_config or {}
+    row = None
+
+    if payload.rating:
+        row = create_row_without_ratings(payload, variant_config)
+
+    else:
+        row = create_row_with_multiple_ratings(payload, variant_config)
+
     fieldnames = list(row.keys())
     file_exists = feedback_file_path.exists()
     with feedback_write_lock:

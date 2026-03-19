@@ -1,25 +1,11 @@
-created_at,message_id,pair_id,variant_label,version,language,rating,selected,selection_timestamp,rating_timestamp,model,temperature,top_p,frequency_penalty,presence_penalty,max_tokens,query,response_text
-2026-03-18T09:20:40.225Z,1773825621010,,,production,pl,down,,,2026-03-18T09:20:40.225Z,google/gemini-2.5-flash,0.2,0.2,0,0,200,jak dostać się na mini?,"Cześć! Aby dostać się na Wydział Matematyki i Nauk Informacyjnych (MiNI) Politechniki Warszawskiej, musisz przejść proces rekrutacji.
-
-Na studia magisterskie na MiNI masz do wyboru kilka kierunków, np. Matematyka i Analiza Danych, Matematyka, Informatyka i Systemy Informacyjne, czy Data Science (studia w języku angielskim) [S1, S4].
-
-Szczegółowe informacje dotyczące rekrutacji znajdziesz na stronie wydziału w sekcji ""Rekrutacja"" dla studiów magisterskich [S1, S4].
-
-Powodzenia!"
-2026-03-18T09:21:17.082Z,1773825621010,,,production,pl,,,,2026-03-18T09:21:17.082Z,google/gemini-2.5-flash,0.2,0.2,0,0,200,jak dostać się na mini?,"Cześć! Aby dostać się na Wydział Matematyki i Nauk Informacyjnych (MiNI) Politechniki Warszawskiej, musisz przejść proces rekrutacji.
-
-Na studia magisterskie na MiNI masz do wyboru kilka kierunków, np. Matematyka i Analiza Danych, Matematyka, Informatyka i Systemy Informacyjne, czy Data Science (studia w języku angielskim) [S1, S4].
-
-Szczegółowe informacje dotyczące rekrutacji znajdziesz na stronie wydziału w sekcji ""Rekrutacja"" dla studiów magisterskich [S1, S4].
-
-Powodzenia!"
-2026-03-18T09:21:44.839Z,1773825693596,,,production,pl,down,,,2026-03-18T09:21:44.838Z,google/gemini-2.5-flash,0.2,0.2,0,0,200,jak dostać się na studia pierwszego stopnia na mini?,"Aby dostać się na studia pierwszego stopnia na MiNI, musisz przejść proces rekrutacji. Szczegółowe informacje znajdziesz na stronie wydziału w sekcji ""Rekrutacja"" dla studiów I stopnia."
-2026-03-18T09:23:43.394Z,1773825821697,1773825819221,A,testPro,pl,5,,,2026-03-18T09:23:43.394Z,google/gemini-2.5-flash,0.2,0.2,0,0,200,jak się masz?,"Cześć! Jako MiNIonek, asystent studentów i pracowników Wydziału Matematyki i Nauk Informacyjnych, mam się świetnie! Jestem gotowy, by pomóc Ci w każdej sprawie związanej z naszym wydziałem. Jak mogę Ci pomóc?"
-2026-03-18T09:23:45.455Z,1773825821698,1773825819221,B,testPro,pl,3,,,2026-03-18T09:23:45.455Z,openai/gpt-4o-mini,0.9,1,0.2,0.3,200,jak się masz?,"Jako asystent wirtualny nie posiadam uczuć ani emocji, jednak jestem tutaj, aby udzielać pomocy i informacji dotyczących kwestii związanych z Wydziałem Matematyki i Nauk Informacyjnych. Jak mogę Państwu pomóc?"
-2026-03-18T09:23:46.477Z,1773825821697,1773825819221,A,testPro,pl,,True,2026-03-18T09:23:46.477Z,,google/gemini-2.5-flash,0.2,0.2,0,0,200,jak się masz?,"Cześć! Jako MiNIonek, asystent studentów i pracowników Wydziału Matematyki i Nauk Informacyjnych, mam się świetnie! Jestem gotowy, by pomóc Ci w każdej sprawie związanej z naszym wydziałem. Jak mogę Ci pomóc?"
-2026-03-18T09:32:22.343Z,1773826340252,,,production,pl,up,,,2026-03-18T09:32:22.343Z,google/gemini-2.5-flash,0.2,0.2,0,0,200,hej jak się masz?,"Hej! Mam się dobrze, dziękuję, że pytasz! Jestem gotowy, żeby odpowiedzieć na Twoje pytania dotyczące Wydziału MiNI. Jak mogę Ci pomóc?"
-2026-03-18T09:35:22.506Z,1773825821697,1773825819221,A,testPro,pl,4,,,2026-03-18T09:35:22.506Z,google/gemini-2.5-flash,0.2,0.2,0,0,200,hej jak się masz?,"Cześć! Jako MiNIonek, asystent studentów i pracowników Wydziału Matematyki i Nauk Informacyjnych, mam się świetnie! Jestem gotowy, by pomóc Ci w każdej sprawie związanej z naszym wydziałem. Jak mogę Ci pomóc?"
-2026-03-18T09:35:23.044Z,1773825821697,1773825819221,A,testPro,pl,3,,,2026-03-18T09:35:23.044Z,google/gemini-2.5-flash,0.2,0.2,0,0,200,hej jak się masz?,"Cześć! Jako MiNIonek, asystent studentów i pracowników Wydziału Matematyki i Nauk Informacyjnych, mam się świetnie! Jestem gotowy, by pomóc Ci w każdej sprawie związanej z naszym wydziałem. Jak mogę Ci pomóc?"
-2026-03-18T09:35:23.619Z,1773825821697,1773825819221,A,testPro,pl,5,,,2026-03-18T09:35:23.619Z,google/gemini-2.5-flash,0.2,0.2,0,0,200,hej jak się masz?,"Cześć! Jako MiNIonek, asystent studentów i pracowników Wydziału Matematyki i Nauk Informacyjnych, mam się świetnie! Jestem gotowy, by pomóc Ci w każdej sprawie związanej z naszym wydziałem. Jak mogę Ci pomóc?"
-2026-03-18T09:35:24.118Z,1773825821697,1773825819221,A,testPro,pl,2,,,2026-03-18T09:35:24.118Z,google/gemini-2.5-flash,0.2,0.2,0,0,200,hej jak się masz?,"Cześć! Jako MiNIonek, asystent studentów i pracowników Wydziału Matematyki i Nauk Informacyjnych, mam się świetnie! Jestem gotowy, by pomóc Ci w każdej sprawie związanej z naszym wydziałem. Jak mogę Ci pomóc?"
-2026-03-18T09:35:24.451Z,1773825821697,1773825819221,A,testPro,pl,3,,,2026-03-18T09:35:24.451Z,google/gemini-2.5-flash,0.2,0.2,0,0,200,hej jak się masz?,"Cześć! Jako MiNIonek, asystent studentów i pracowników Wydziału Matematyki i Nauk Informacyjnych, mam się świetnie! Jestem gotowy, by pomóc Ci w każdej sprawie związanej z naszym wydziałem. Jak mogę Ci pomóc?"
+created_at,message_id,pair_id,variant_label,version,language,rating,ratings,selected,selection_timestamp,rating_timestamp,model,temperature,top_p,frequency_penalty,presence_penalty,max_tokens,query,response_text
+2026-03-19T10:57:16.226Z,1773917832815,1773917832611,D,testPro,pl,,{'Accuracy': 5},,,,qwen/qwen-2.5-7b-instruct,0.8,0.95,0.3,0.4,169,hej,"Przepraszam, nie znalazłem w bazie informacji na ten temat."
+2026-03-19T10:57:18.245Z,1773917832815,1773917832611,D,testPro,pl,,{'Accuracy': 5},,,,qwen/qwen-2.5-7b-instruct,0.8,0.95,0.3,0.4,169,hej,"Przepraszam, nie znalazłem w bazie informacji na ten temat."
+2026-03-19T10:57:19.716Z,1773917832815,1773917832611,D,testPro,pl,,{'Accuracy': 5},,,,qwen/qwen-2.5-7b-instruct,0.8,0.95,0.3,0.4,169,hej,"Przepraszam, nie znalazłem w bazie informacji na ten temat."
+2026-03-19T10:57:21.747Z,1773917832815,1773917832611,D,testPro,pl,,{'Accuracy': 5},,,,qwen/qwen-2.5-7b-instruct,0.8,0.95,0.3,0.4,169,hej,"Przepraszam, nie znalazłem w bazie informacji na ten temat."
+2026-03-19T10:57:22.298Z,1773917832815,1773917832611,D,testPro,pl,,{'Accuracy': 3},,,,qwen/qwen-2.5-7b-instruct,0.8,0.95,0.3,0.4,169,hej,"Przepraszam, nie znalazłem w bazie informacji na ten temat."
+2026-03-19T10:57:23.287Z,1773917832815,1773917832611,D,testPro,pl,,{'Accuracy': 4},,,,qwen/qwen-2.5-7b-instruct,0.8,0.95,0.3,0.4,169,hej,"Przepraszam, nie znalazłem w bazie informacji na ten temat."
+2026-03-19T10:57:24.276Z,1773917832815,1773917832611,D,testPro,pl,,{'Accuracy': 5},,,,qwen/qwen-2.5-7b-instruct,0.8,0.95,0.3,0.4,169,hej,"Przepraszam, nie znalazłem w bazie informacji na ten temat."
+2026-03-19T10:57:28.016Z,1773917832815,1773917832611,D,testPro,pl,,{'Accuracy': 5},,,,qwen/qwen-2.5-7b-instruct,0.8,0.95,0.3,0.4,169,hej,"Przepraszam, nie znalazłem w bazie informacji na ten temat."
+2026-03-19T10:57:46.443Z,1773917832815,1773917832611,D,testPro,pl,,"{'Accuracy': 5, 'Usefulness': 4}",,,,qwen/qwen-2.5-7b-instruct,0.8,0.95,0.3,0.4,169,hej,"Przepraszam, nie znalazłem w bazie informacji na ten temat."
+2026-03-19T10:57:49.819Z,1773917832815,1773917832611,D,testPro,pl,,"{'Accuracy': 5, 'Usefulness': 4, 'Conciseness': 3}",,,,qwen/qwen-2.5-7b-instruct,0.8,0.95,0.3,0.4,169,hej,"Przepraszam, nie znalazłem w bazie informacji na ten temat."
