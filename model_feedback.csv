@@ -1,4 +1,0 @@
-created_at,message_id,pair_id,variant_label,version,language,Accuracy,selected,selection_timestamp,rating_timestamp,model,temperature,top_p,frequency_penalty,presence_penalty,max_tokens,query,response_text
-2026-03-19T11:11:36.890Z,1773918695284,1773918695094,C,testPro,pl,3,,,,mistralai/mistral-small-3.2-24b-instruct,0.7,0.7,0.3,0.2,213,hej jak się masz?,"Przepraszam, nie znalazłem w bazie informacji na ten temat."
-2026-03-19T11:11:46.982Z,1773918695284,1773918695094,C,testPro,pl,3,4,,,,mistralai/mistral-small-3.2-24b-instruct,0.7,0.7,0.3,0.2,213,hej jak się masz?,"Przepraszam, nie znalazłem w bazie informacji na ten temat."
-2026-03-19T11:11:50.131Z,1773918695284,1773918695094,C,testPro,pl,3,4,4,,,,mistralai/mistral-small-3.2-24b-instruct,0.7,0.7,0.3,0.2,213,hej jak się masz?,"Przepraszam, nie znalazłem w bazie informacji na ten temat."
