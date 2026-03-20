@@ -5,5 +5,5 @@ chat_bot_auto_evaluation/
 ├── metrics                   Folder with all metrics used for evaluating
 ├── tests                     Folder with test
 ├── evaluate.py
-├── read_data.py
+├── read_data.py              File with function for reading selected data from csv file
 ├── README.md
