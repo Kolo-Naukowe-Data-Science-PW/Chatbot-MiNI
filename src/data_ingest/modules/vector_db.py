@@ -1,14 +1,16 @@
 from datetime import datetime
+
+from fastembed import SparseTextEmbedding
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
     Distance,
-    VectorParams,
-    SparseVectorParams,
-    SparseIndexParams,
     PointStruct,
+    SparseIndexParams,
     SparseVector,
+    SparseVectorParams,
+    VectorParams,
 )
-from fastembed import SparseTextEmbedding
+
 _sparse_model = SparseTextEmbedding(model_name="Qdrant/bm25")
 
 COLLECTION_NAME = "mini_docs"
@@ -27,9 +29,7 @@ def _ensure_collection(client: QdrantClient) -> None:
                 "dense": VectorParams(size=DENSE_DIM, distance=Distance.COSINE),
             },
             sparse_vectors_config={
-                "sparse": SparseVectorParams(
-                    index=SparseIndexParams(on_disk=False)
-                ),
+                "sparse": SparseVectorParams(index=SparseIndexParams(on_disk=False)),
             },
         )
 
@@ -67,10 +67,10 @@ def save_to_vector_db(
 
     batch_size = 5000
     for i in range(0, len(text_chunk), batch_size):
-        batch_texts = text_chunk[i:i + batch_size]
-        batch_dense = embedding[i:i + batch_size]
-        batch_sparse = sparse_vectors[i:i + batch_size]
-        batch_urls = source_url[i:i + batch_size]
+        batch_texts = text_chunk[i : i + batch_size]
+        batch_dense = embedding[i : i + batch_size]
+        batch_sparse = sparse_vectors[i : i + batch_size]
+        batch_urls = source_url[i : i + batch_size]
 
         points = [
             PointStruct(

@@ -2,19 +2,17 @@ import logging
 import os
 from typing import Any
 
+from fastembed import SparseTextEmbedding
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
-    NamedVector,
-    NamedSparseVector,
-    SparseVector,
-    FusionQuery,
     Fusion,
+    FusionQuery,
     Prefetch,
+    SparseVector,
 )
-from fastembed import SparseTextEmbedding
 
 from src.data_ingest.modules.embedder import Embedder
-from src.data_ingest.modules.vector_db import load_vector_db, COLLECTION_NAME
+from src.data_ingest.modules.vector_db import COLLECTION_NAME, load_vector_db
 from src.utils.paths import get_data_dir
 
 logger = logging.getLogger(__name__)
@@ -36,7 +34,9 @@ def _get_sparse_vector(query: str) -> SparseVector:
 
 
 def get_top_k_chunks(query: str, top_k: int = 5) -> list[dict[str, Any]]:
-    logger.info("Starting hybrid retrieval for top %d chunks. Query: '%s'", top_k, query)
+    logger.info(
+        "Starting hybrid retrieval for top %d chunks. Query: '%s'", top_k, query
+    )
 
     try:
         client: QdrantClient = load_vector_db(DATABASE_PATH)
@@ -44,19 +44,17 @@ def get_top_k_chunks(query: str, top_k: int = 5) -> list[dict[str, Any]]:
         dense_vector = embedder.generate_embeddings([query])[0]
         sparse_vector = _get_sparse_vector(query)
 
-        # Hybrid search z RRF (Reciprocal Rank Fusion)
         results = client.query_points(
             collection_name=COLLECTION_NAME,
             prefetch=[
                 Prefetch(
-                    query=NamedVector(name="dense", vector=dense_vector),
-                    limit=top_k * 3,  # więcej kandydatów do fuzji
+                    query=dense_vector,
+                    using="dense",
+                    limit=top_k * 3,
                 ),
                 Prefetch(
-                    query=NamedSparseVector(
-                        name="sparse",
-                        vector=sparse_vector,
-                    ),
+                    query=sparse_vector,
+                    using="sparse",
                     limit=top_k * 3,
                 ),
             ],
