@@ -15,7 +15,7 @@ from src.rag_api.modules.prompt_builder import build_messages
 from src.rag_api.modules.retrieval import get_top_k_chunks
 from src.rag_api.modules.translator import translate_text
 from src.utils.paths import get_data_dir
-
+#minor change just to trigger deployment again
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
