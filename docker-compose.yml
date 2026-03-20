@@ -2,7 +2,7 @@ version: "3.9"
 
 volumes:
   final_storage:
-  chroma_db:
+  qdrant_db:
   hf_cache:
   data_storage:
 
@@ -13,7 +13,7 @@ x-env: &env
   OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
   FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY}
   PIPELINE_VERSION: ${PIPELINE_VERSION:-1}
-  CHROMA_DIR: /app/src/data/chroma_db
+  QDRANT_DIR: /app/src/data/qdrant_db
 
 services:
 
@@ -46,7 +46,7 @@ services:
     environment: *env
     volumes:
       - data_storage:/app/src/data
-      - chroma_db:/app/src/data/chroma_db
+      - qdrant_db:/app/src/data/qdrant_db
       - hf_cache:/root/.cache/huggingface
     depends_on:
       scraper:
@@ -69,7 +69,7 @@ services:
     ]
     environment: *env
     volumes:
-      - chroma_db:/app/src/data/chroma_db
+      - qdrant_db:/app/src/data/qdrant_db
     expose:
       - "8000"
     restart: always

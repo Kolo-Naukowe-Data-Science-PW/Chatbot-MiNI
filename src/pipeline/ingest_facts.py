@@ -11,7 +11,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 INPUT_DIR = "src/data/facts"
-DB_PATH = os.environ.get("CHROMA_DIR", get_data_dir("chroma_db"))
+DB_PATH = os.environ.get("QDRANT_DIR", get_data_dir("qdrant_db"))
 
 
 def main() -> None:

@@ -9,5 +9,5 @@ __pycache__/
 node_modules
 dist
 build
-src/rag_api/chroma_db/
+src/rag_api/qdrant_db/
 src/data/final_storage/
