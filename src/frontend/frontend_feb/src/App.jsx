@@ -863,6 +863,7 @@ export default function App() {
         version: targetMessage.version ?? version,
         language: language.toLowerCase(),
         rating: variantAwareFeedback.rating ?? null,
+        ratings: variantAwareFeedback.ratings ?? null,
         selected: variantAwareFeedback.selected ?? null,
         query: messages.slice().reverse().find(msg => msg.type === "user")?.text ?? null,
         response_text: targetMessage.text ?? null,
