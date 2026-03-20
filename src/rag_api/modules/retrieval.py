@@ -2,70 +2,76 @@ import logging
 import os
 from typing import Any
 
+from qdrant_client import QdrantClient
+from qdrant_client.models import (
+    NamedVector,
+    NamedSparseVector,
+    SparseVector,
+    FusionQuery,
+    Fusion,
+    Prefetch,
+)
+from fastembed import SparseTextEmbedding
+
 from src.data_ingest.modules.embedder import Embedder
-from src.data_ingest.modules.vector_db import load_vector_db
+from src.data_ingest.modules.vector_db import load_vector_db, COLLECTION_NAME
 from src.utils.paths import get_data_dir
 
 logger = logging.getLogger(__name__)
 
-DATABASE_PATH = os.environ.get("CHROMA_DIR", get_data_dir("chroma_db"))
+DATABASE_PATH = os.environ.get("QDRANT_DIR", get_data_dir("qdrant_db"))
 
 logger.info("Loading Embedder model for retrieval...")
 embedder = Embedder()
+sparse_model = SparseTextEmbedding(model_name="Prithivida/Splade_PP_en_v1")
 logger.info("Embedder loaded.")
 
 
+def _get_sparse_vector(query: str) -> SparseVector:
+    result = list(sparse_model.embed([query]))[0]
+    return SparseVector(
+        indices=result.indices.tolist(),
+        values=result.values.tolist(),
+    )
+
+
 def get_top_k_chunks(query: str, top_k: int = 5) -> list[dict[str, Any]]:
-    """
-    Retrieves the top-k most relevant text chunks from the vector database.
-
-    Connects to the ChromaDB, generates an embedding for the user query,
-    and performs a similarity search to find the most relevant documents.
-
-    Parameters
-    ----------
-    query : str
-        The user's search query.
-    top_k : int, optional
-        The number of top results to retrieve, by default 5.
-
-    Returns
-    -------
-    list[dict[str, Any]]
-        A list of dictionaries, where each dictionary contains:
-        - 'text_chunk': The text content of the retrieved document.
-        - 'source_url': The URL source of the document.
-    """
-    logger.info("Starting retrieval for top %d chunks. Query: '%s'", top_k, query)
+    logger.info("Starting hybrid retrieval for top %d chunks. Query: '%s'", top_k, query)
 
     try:
-        logger.debug("Loading vector database from: %s", DATABASE_PATH)
-        vector_db = load_vector_db(DATABASE_PATH)
+        client: QdrantClient = load_vector_db(DATABASE_PATH)
 
-        logger.debug("Generating embedding for query...")
-        # Embedder expects a list of strings and returns a list of vectors
-        query_embedding = embedder.generate_embeddings([query])
+        dense_vector = embedder.generate_embeddings([query])[0]
+        sparse_vector = _get_sparse_vector(query)
 
-        logger.debug("Querying vector database...")
-        results = vector_db.query(
-            query_embeddings=query_embedding,
-            n_results=top_k,
-            include=["documents", "metadatas"],
+        # Hybrid search z RRF (Reciprocal Rank Fusion)
+        results = client.query_points(
+            collection_name=COLLECTION_NAME,
+            prefetch=[
+                Prefetch(
+                    query=NamedVector(name="dense", vector=dense_vector),
+                    limit=top_k * 3,  # więcej kandydatów do fuzji
+                ),
+                Prefetch(
+                    query=NamedSparseVector(
+                        name="sparse",
+                        vector=sparse_vector,
+                    ),
+                    limit=top_k * 3,
+                ),
+            ],
+            query=FusionQuery(fusion=Fusion.RRF),
+            limit=top_k,
+            with_payload=True,
         )
 
-        structured_results = []
-
-        if results["documents"] and results["documents"][0]:
-            documents = results["documents"][0]
-            metadatas = results["metadatas"][0]
-
-            for doc, meta in zip(documents, metadatas, strict=False):
-                structured_results.append(
-                    {
-                        "text_chunk": doc,
-                        "source_url": meta.get("url", "Unknown Source"),
-                    }
-                )
+        structured_results = [
+            {
+                "text_chunk": point.payload.get("text", ""),
+                "source_url": point.payload.get("url", "Unknown Source"),
+            }
+            for point in results.points
+        ]
 
         logger.info("Successfully retrieved %d results.", len(structured_results))
         return structured_results
