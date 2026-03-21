@@ -1,8 +1,13 @@
 name: Deploy Chatbot MiNI
 
+# odpalanie ręczne
 on:
-  push:
-    branches: [ new_pipeline ]
+  workflow_dispatch:
+
+# odpalanie automatyczne przy pushu na branch new_pipeline
+#on:
+#  push:
+#    branches: [ new_pipeline ]
 
 jobs:
   deploy:

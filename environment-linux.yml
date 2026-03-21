@@ -24,7 +24,8 @@ dependencies:
       - langchain
       - langchain-community
       - langchain-text-splitters
-      - chromadb
+      - qdrant-client[fastembed]
+      - fastembed
       - pypdf
       - python-docx
       - pdfminer.six
