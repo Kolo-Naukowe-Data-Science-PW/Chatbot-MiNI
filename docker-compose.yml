@@ -48,9 +48,9 @@ services:
       - data_storage:/app/src/data
       - qdrant_db:/app/src/data/qdrant_db
       - hf_cache:/root/.cache/huggingface
-    depends_on:
-      scraper:
-        condition: service_completed_successfully
+    #depends_on:
+    #  scraper:
+    #    condition: service_completed_successfully
 
   api:
     user: root

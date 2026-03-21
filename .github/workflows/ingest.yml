@@ -1,0 +1,17 @@
+name: Run Ingest
+
+on:
+  workflow_dispatch:
+
+jobs:
+  ingest:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Copy .env file
+        run: cp ~/.env.backup .env
+      - name: Run scraper
+        run: docker compose up --no-deps scraper
+      - name: Run ingest
+        run: docker compose up --no-deps ingest
