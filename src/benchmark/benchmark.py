@@ -5,7 +5,7 @@ from statistics import mean
 
 from src.rag_api.modules.retrieval import get_top_k_chunks
 
-logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICAL)
+# logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICAL)
 
 
 @dataclass
