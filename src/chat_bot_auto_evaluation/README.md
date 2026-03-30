@@ -6,6 +6,9 @@ This folder contains scripts and modules for automatic evaluation of chatbot per
 chat_bot_auto_evaluation/
 │
 ├── evaluate.py                   <-- main evaluation script (currently placeholder)
+├── llm_judge/
+│   ├── judge.py                  <-- LLM-as-a-judge module
+│   └── testpro_runner.py         <-- batch runner for TestPro-style A/B evaluation
 ├── metrics.py                    <-- metrics class with BERTScore implementation
 ├── prepare_data.py               <-- data loading and preprocessing utilities
 ├── README.md                     <-- this documentation file
@@ -29,6 +32,8 @@ Required packages (add to `pyproject.toml`):
 - `numpy` - numerical operations
 - `torch` - PyTorch for deep learning
 - `bert-score` - BERTScore metric implementation
+- `openai` - OpenRouter-compatible client for LLM judge calls
+- `pydantic` - schema validation for judge responses
 
 ## Core Functions
 
@@ -67,6 +72,20 @@ Required packages (add to `pyproject.toml`):
 ### evaluate.py
 
 Currently a placeholder with import comment. Future main orchestration script for running complete evaluation pipelines.
+
+### llm_judge/judge.py
+
+**`judge_pair(query, answer_a, answer_b, ...)`**
+- Calls an OpenRouter model as an impartial judge
+- Scores A and B on usefulness, accuracy, and conciseness (1-5)
+- Returns validated result with chosen better variant (`A` or `B`)
+
+### llm_judge/testpro_runner.py
+
+**`main()`**
+- Reads evaluation queries from CSV
+- Calls `/chat` twice per query (variant A and B, TestPro mode)
+- Runs LLM judge on both answers and saves results to output CSV
 
 ## Usage Examples
 
