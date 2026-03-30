@@ -1,5 +1,5 @@
 """
-LLM-as-a-judge: score two chatbot answers on 1–5 scales and pick the better variant via OpenRouter.
+LLM-as-a-judge: score two chatbot answers on 1-5 scales and pick the better variant via OpenRouter.
 """
 
 import json
@@ -17,7 +17,7 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 
 class JudgeScores(BaseModel):
-    """Per-variant star ratings (1–5) for usefulness, accuracy, and conciseness."""
+    """Per-variant star ratings (1-5) for usefulness, accuracy, and conciseness."""
 
     usefulness: int = Field(ge=1, le=5)
     accuracy: int = Field(ge=1, le=5)
@@ -29,7 +29,7 @@ class JudgeResult(BaseModel):
 
     variant_a: JudgeScores
     variant_b: JudgeScores
-    better_variant: Literal["A", "B", "tie"]
+    better_variant: Literal["A", "B"]
     reason: str
 
 
@@ -50,7 +50,7 @@ def build_judge_prompt(
         "Rate each answer on a 1-5 star scale for exactly these criteria: "
         "Usefulness, Accuracy, Conciseness. "
         "Use integers only. "
-        "Then pick the better variant: A, B, or tie. "
+        "Then pick the better variant: A or B (no ties). "
         "Return strictly valid JSON with keys: "
         "variant_a, variant_b, better_variant, reason. "
         "Each variant object must have keys usefulness, accuracy, conciseness. "

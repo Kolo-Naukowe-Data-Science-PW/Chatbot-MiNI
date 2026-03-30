@@ -13,7 +13,7 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from src.chat_bot_auto_evaluation.llm_judge import JudgeResult, judge_pair
+from src.chat_bot_auto_evaluation.llm_judge.judge import JudgeResult, judge_pair
 
 MODEL_POOL = [
     "meta-llama/llama-3.1-8b-instruct",
