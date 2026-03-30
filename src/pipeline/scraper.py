@@ -255,7 +255,7 @@ def main() -> None:
     os.makedirs(output_dir, exist_ok=True)
 
     for page in scraped_data:
-        safe_name = page.url.replace("https://", "").replace("/", "_").strip("_")
+        safe_name = page.url.replace("https://", "").replace("/", "_").strip("_")[:200]
         file_path = os.path.join(output_dir, f"{safe_name}.txt")
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(f"URL: {page.url}\n\n{page.text}")
