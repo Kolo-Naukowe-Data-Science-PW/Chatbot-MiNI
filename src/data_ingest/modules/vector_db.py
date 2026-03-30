@@ -34,6 +34,13 @@ def _ensure_collection(client: QdrantClient) -> None:
         )
 
 
+def reset_collection(path_to_database: str) -> None:
+    client = _get_client(path_to_database)
+    if client.collection_exists(COLLECTION_NAME):
+        client.delete_collection(COLLECTION_NAME)
+    _ensure_collection(client)
+
+
 def _compute_sparse(texts: list[str]) -> list[SparseVector]:
     results = []
     for embedding in _sparse_model.embed(texts):

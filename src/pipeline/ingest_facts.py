@@ -3,7 +3,7 @@ import logging
 import os
 
 from src.data_ingest.modules.embedder import Embedder
-from src.data_ingest.modules.vector_db import save_to_vector_db
+from src.data_ingest.modules.vector_db import reset_collection, save_to_vector_db
 from src.pipeline.common import CURRENT_VERSION
 from src.utils.paths import get_data_dir
 
@@ -37,10 +37,11 @@ def main() -> None:
     all_text_chunks = []
     all_urls = []
 
-    files = [f for f in os.listdir(INPUT_DIR) if f.endswith(".json")]
-    logger.info(f"Found {len(files)} files with facts to ingest.")
+    files = sorted(f for f in os.listdir(INPUT_DIR) if f.endswith(".json"))
+    total_files = len(files)
+    logger.info(f"Found {total_files} files with facts to ingest.")
 
-    for filename in files:
+    for i, filename in enumerate(files, start=1):
         path = os.path.join(INPUT_DIR, filename)
 
         try:
@@ -49,30 +50,34 @@ def main() -> None:
 
             if not isinstance(facts_list, list):
                 logger.warning(
-                    f"File {filename} has wrong format, expected a list of facts."
+                    f"[{i}/{total_files}] {filename}: wrong format, expected a list of facts."
                 )
                 continue
 
-            for item in facts_list:
-                fact_text = item.get("fact")
-                source_url = item.get("source", "unknown")
-                if fact_text:
-                    all_text_chunks.append(fact_text)
-                    all_urls.append(source_url)
+            facts_in_file = [item for item in facts_list if item.get("fact")]
+            logger.info(f"[{i}/{total_files}] {filename}: {len(facts_in_file)} facts")
+
+            for item in facts_in_file:
+                all_text_chunks.append(item["fact"])
+                all_urls.append(item.get("source", "unknown"))
 
         except Exception as e:
-            logger.error(f"Error reading file {filename}: {e}")
+            logger.error(f"[{i}/{total_files}] {filename}: error reading — {e}")
 
     if not all_text_chunks:
         logger.warning("No data to ingest.")
         return
 
+    logger.info(f"Total facts to ingest: {len(all_text_chunks)}")
+    logger.info(f"Resetting Qdrant collection before ingestion...")
+    reset_collection(DB_PATH)
+
     logger.info(f"Generating embeddings for {len(all_text_chunks)} facts...")
     embeddings = embedder.generate_embeddings(all_text_chunks)
 
-    logger.info(f"Saving to ChromaDB ({DB_PATH})...")
+    logger.info(f"Saving to Qdrant ({DB_PATH})...")
     save_to_vector_db(all_text_chunks, embeddings, all_urls, DB_PATH)
-    logger.info("Ready for deployment!")
+    logger.info("Ingestion complete. Ready for deployment!")
 
 
 if __name__ == "__main__":

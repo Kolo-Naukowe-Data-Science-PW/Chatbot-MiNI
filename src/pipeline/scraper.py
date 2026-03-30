@@ -120,9 +120,11 @@ def scrap_data() -> list[ScrapedPage]:
             "https://ww2.mini.pw.edu.pl/wydzial/uchwaly-rw/",
         ]
 
-        logger.info(f"V{CURRENT_VERSION}: Scraping limited list of {len(urls)} URLs.")
+        total = len(urls)
+        logger.info(f"V{CURRENT_VERSION}: Scraping limited list of {total} URLs.")
 
-        for url in urls:
+        for i, url in enumerate(urls, start=1):
+            logger.info(f"[{i}/{total}] Scraping: {url}")
             try:
                 result = app.scrape(
                     url,
@@ -136,19 +138,22 @@ def scrap_data() -> list[ScrapedPage]:
                 text = clean_headnote(result.markdown)
                 text = clean_footnote(text)
                 output.append(ScrapedPage(url=url, text=text, links=result.links))
+                logger.info(f"[{i}/{total}] OK — {len(text)} chars, {len(result.links)} links")
                 time.sleep(1)
             except Exception as e:
-                logger.warning(f"Couldn't get content from {url}. Error: {e}")
+                logger.warning(f"[{i}/{total}] FAILED: {url} — {e}")
 
     else:
 
         urls = links
 
+        total = len(urls)
         logger.info(
-            f"V{CURRENT_VERSION}: Scraping list of {len(urls)} most important URLs and PDF files."
+            f"V{CURRENT_VERSION}: Scraping list of {total} most important URLs and PDF files."
         )
 
-        for url in urls:
+        for i, url in enumerate(urls, start=1):
+            logger.info(f"[{i}/{total}] Scraping: {url}")
             try:
                 result = app.scrape(
                     url,
@@ -162,9 +167,10 @@ def scrap_data() -> list[ScrapedPage]:
                 text = clean_headnote(result.markdown)
                 text = clean_footnote(text)
                 output.append(ScrapedPage(url=url, text=text, links=result.links))
+                logger.info(f"[{i}/{total}] OK — {len(text)} chars, {len(result.links)} links")
                 time.sleep(1)
             except Exception as e:
-                logger.warning(f"Couldn't get content from {url}. Error: {e}")
+                logger.warning(f"[{i}/{total}] FAILED: {url} — {e}")
 
         # logger.info(f"V{CURRENT_VERSION}: Starting full crawl of MiNI PW website.")
         # root_urls = ["https://ww2.mini.pw.edu.pl/"]
