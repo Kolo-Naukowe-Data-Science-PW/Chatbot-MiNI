@@ -21,7 +21,7 @@ jobs:
       - name: Set up Miniconda
         uses: conda-incubator/setup-miniconda@v3
         with:
-          environment-file: chatbot_mii_arch.yml # Points to your .yml file
+          environment-file: chatbot_mini_arch.yml # Points to your .yml file
           activate-environment: chatbot_mini # Must match the 'name:' in your environment.yml
           auto-update-conda: true
           auto-activate-base: false
