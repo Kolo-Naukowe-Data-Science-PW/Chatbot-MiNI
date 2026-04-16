@@ -138,7 +138,9 @@ def scrap_data() -> list[ScrapedPage]:
                 text = clean_headnote(result.markdown)
                 text = clean_footnote(text)
                 output.append(ScrapedPage(url=url, text=text, links=result.links))
-                logger.info(f"[{i}/{total}] OK — {len(text)} chars, {len(result.links)} links")
+                logger.info(
+                    f"[{i}/{total}] OK — {len(text)} chars, {len(result.links)} links"
+                )
                 time.sleep(1)
             except Exception as e:
                 logger.warning(f"[{i}/{total}] FAILED: {url} — {e}")
@@ -167,7 +169,9 @@ def scrap_data() -> list[ScrapedPage]:
                 text = clean_headnote(result.markdown)
                 text = clean_footnote(text)
                 output.append(ScrapedPage(url=url, text=text, links=result.links))
-                logger.info(f"[{i}/{total}] OK — {len(text)} chars, {len(result.links)} links")
+                logger.info(
+                    f"[{i}/{total}] OK — {len(text)} chars, {len(result.links)} links"
+                )
                 time.sleep(1)
             except Exception as e:
                 logger.warning(f"[{i}/{total}] FAILED: {url} — {e}")
