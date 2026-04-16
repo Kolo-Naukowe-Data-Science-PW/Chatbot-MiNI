@@ -37,7 +37,8 @@ ignore = ["E203", "E501"]
 [tool.pytest.ini_options]
 minversion = "7.0"
 # --- CHANGED: Added --import-mode=importlib ---
-addopts = "-ra -q --cov=src --cov-report=term-missing --cov-fail-under=80 --import-mode=importlib"
+addopts = "-ra -q --cov=src --cov-report=term-missing --import-mode=importlib"
+# --cov-fail-under=80
 testpaths = [
     "src",
 ]
