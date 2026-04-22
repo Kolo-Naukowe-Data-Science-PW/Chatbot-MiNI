@@ -6,8 +6,8 @@ from dataclasses import dataclass
 from dotenv import load_dotenv
 from firecrawl import Firecrawl
 
-from src.pipeline.common import CURRENT_VERSION
-from src.pipeline.links_extended import links
+from src.ingestion.common import CURRENT_VERSION
+from src.ingestion.links_extended import links
 
 load_dotenv()
 

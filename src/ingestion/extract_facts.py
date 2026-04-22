@@ -1,7 +1,7 @@
 import json
 import os
 
-from src.pipeline.common import (
+from src.ingestion.common import (
     CURRENT_VERSION,
     MODEL_WORKER,
     get_config,

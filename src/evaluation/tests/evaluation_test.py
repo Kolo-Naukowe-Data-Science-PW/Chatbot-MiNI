@@ -2,14 +2,14 @@ import numpy as np
 import pandas as pd
 import torch
 
-from chat_bot_auto_evaluation.metrics import Metrics
-from chat_bot_auto_evaluation.prepare_data import (
+from src.evaluation.metrics import Metrics
+from src.evaluation.prepare_data import (
     convert_data_frame_to_string,
     get_data,
     read_data_from_csv,
 )
 
-FILE_PATH = "src/chat_bot_auto_evaluation/tests/test.csv"
+FILE_PATH = "src/evaluation/data/test.csv"
 COLUMNS = ["a", "b"]
 
 

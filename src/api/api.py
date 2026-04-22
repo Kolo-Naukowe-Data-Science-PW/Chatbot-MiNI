@@ -9,11 +9,12 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from src.rag_api.main import query_llm
-from src.rag_api.models import Message
-from src.rag_api.modules.prompt_builder import build_messages
-from src.rag_api.modules.retrieval import get_top_k_chunks
-from src.rag_api.modules.translator import translate_text
+from src.api.main import query_llm
+from src.api.models import Message
+from src.api.prompt_builder import build_messages
+from src.api.query_rewriter import rewrite_query
+from src.api.retrieval import get_top_k_chunks
+from src.api.translator import translate_text
 from src.utils.paths import get_data_dir
 
 # minor change just to trigger deployment again
@@ -51,6 +52,7 @@ class QueryRequest(BaseModel):
     mode: str | None = None
     variant: str | None = None
     modelConfig: dict | None = None
+    user_type: str | None = None
 
 
 class FeedbackRequest(BaseModel):
@@ -77,6 +79,7 @@ class FeedbackRequest(BaseModel):
     variant_label: str | None = None
     version: str | None = None
     language: str | None = None
+    user_type: str | None = None
     rating: int | str | None = None
     ratings: dict[str, int] | None = None
     selected: bool | None = None
@@ -102,6 +105,7 @@ def create_row(payload: FeedbackRequest, variant_config):
         "variant_label": payload.variant_label or "",
         "version": payload.version or "",
         "language": payload.language or "",
+        "user_type": payload.user_type or "",
         "rating": payload.rating if payload.rating is not None else "",
         "ratings": payload.ratings or None,
         "selected": payload.selected if payload.selected is not None else "",
@@ -166,7 +170,8 @@ def chat_endpoint(request: QueryRequest) -> dict[str, Any]:
         processing_query = translate_text(query, target_lang_code="pl")
         logger.info(f"Translated query to PL: '{processing_query}'")
 
-    sorted_chunks = get_top_k_chunks(processing_query)
+    retrieval_query = rewrite_query(processing_query)
+    sorted_chunks = get_top_k_chunks(retrieval_query)
 
     if not sorted_chunks:
         polish_msg = "Przepraszam, nie znalazłem w bazie informacji na ten temat."
@@ -186,7 +191,10 @@ def chat_endpoint(request: QueryRequest) -> dict[str, Any]:
     text_only_chunks = [chunk["text_chunk"] for chunk in sorted_chunks]
 
     messages = build_messages(
-        processing_query, text_only_chunks, conversation_history=conversation_history
+        processing_query,
+        text_only_chunks,
+        user_type=request.user_type,
+        conversation_history=conversation_history,
     )
 
     polish_answer = query_llm(messages, request.modelConfig)
@@ -197,7 +205,7 @@ def chat_endpoint(request: QueryRequest) -> dict[str, Any]:
 
     sources = [chunk.get("source_url", "Unknown") for chunk in sorted_chunks[:5]]
 
-    return {"answer": final_answer, "sources": sources}
+    return {"answer": final_answer, "sources": sources, "retrieval_query": retrieval_query}
 
 
 @app.post("/feedback")

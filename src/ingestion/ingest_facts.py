@@ -2,9 +2,9 @@ import json
 import logging
 import os
 
-from src.data_ingest.modules.embedder import Embedder
-from src.data_ingest.modules.vector_db import reset_collection, save_to_vector_db
-from src.pipeline.common import CURRENT_VERSION
+from src.ingestion.embedder import Embedder
+from src.ingestion.vector_db import reset_collection, save_to_vector_db
+from src.ingestion.common import CURRENT_VERSION
 from src.utils.paths import get_data_dir
 
 logging.basicConfig(level=logging.INFO)

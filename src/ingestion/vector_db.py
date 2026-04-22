@@ -14,7 +14,7 @@ from qdrant_client.models import (
 _sparse_model = SparseTextEmbedding(model_name="Qdrant/bm25")
 
 COLLECTION_NAME = "mini_docs"
-DENSE_DIM = 384  # dla all-MiniLM-L6-v2
+DENSE_DIM = 1024  # BAAI/bge-m3
 
 
 def _get_client(path_to_database: str) -> QdrantClient:

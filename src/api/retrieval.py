@@ -11,8 +11,8 @@ from qdrant_client.models import (
     SparseVector,
 )
 
-from src.data_ingest.modules.embedder import Embedder
-from src.data_ingest.modules.vector_db import COLLECTION_NAME, load_vector_db
+from src.ingestion.embedder import Embedder
+from src.ingestion.vector_db import COLLECTION_NAME, load_vector_db
 from src.utils.paths import get_data_dir
 
 logger = logging.getLogger(__name__)
@@ -21,7 +21,7 @@ DATABASE_PATH = os.environ.get("QDRANT_DIR", get_data_dir("qdrant_db"))
 
 logger.info("Loading Embedder model for retrieval...")
 embedder = Embedder()
-sparse_model = SparseTextEmbedding(model_name="Prithivida/Splade_PP_en_v1")
+sparse_model = SparseTextEmbedding(model_name="Qdrant/bm25")
 logger.info("Embedder loaded.")
 
 

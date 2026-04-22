@@ -3,7 +3,7 @@ import logging
 from dataclasses import dataclass
 from statistics import mean
 
-from src.rag_api.modules.retrieval import get_top_k_chunks
+from src.api.retrieval import get_top_k_chunks
 
 # logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICAL)
 
@@ -81,7 +81,7 @@ def evaluate(gold: list[EvalRow], k: int) -> tuple[float, float]:
 
 
 def main() -> None:
-    gold_path = "src/survey_questions/questions_filtered.csv"
+    gold_path = "src/evaluation/data/questions_filtered.csv"
     ks = [1, 3, 5, 10]
 
     gold = load_gold(gold_path)

@@ -2,7 +2,7 @@ import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from src.rag_api.models import Message
+    from src.api.models import Message
 
 logger = logging.getLogger(__name__)
 
@@ -38,11 +38,36 @@ STATIC_FAQ = (
 )
 
 
+USER_TYPE_PERSONA: dict[str, str] = {
+    "student_junior": (
+        "Użytkownik to student pierwszego roku. Tłumacz procedury krok po kroku, "
+        "używaj prostego języka, zachęcaj do pytania o szczegóły."
+    ),
+    "student_senior": (
+        "Użytkownik to student starszego roku. Zakładaj znajomość podstaw, "
+        "możesz używać terminologii uczelnianej."
+    ),
+    "master": (
+        "Użytkownik to student studiów magisterskich. Zakładaj dobrą znajomość "
+        "systemu uczelnianego, skup się na zagadnieniach magisterskich."
+    ),
+    "phd": (
+        "Użytkownik to doktorant. Traktuj go jak partnera, możesz dyskutować "
+        "o procedurach administracyjnych i naukowych na poziomie zaawansowanym."
+    ),
+    "admin": (
+        "Użytkownik to pracownik administracji lub wykładowca. Odpowiadaj formalnie "
+        "i precyzyjnie, skup się na aspektach administracyjnych i regulaminowych."
+    ),
+}
+
+
 def build_messages(
     query: str,
     context: list[str],
     field_of_study: str | None = None,
     semester: str | None = None,
+    user_type: str | None = None,
     conversation_history: list["Message"] | None = None,
 ) -> list[dict[str, str]]:
     """
@@ -72,10 +97,11 @@ def build_messages(
         A list of message dicts with 'role' and 'content' keys, ready for the LLM API.
     """
     logger.info(
-        "Building messages for query: '%s', Field: %s, Sem: %s, History: %d messages",
+        "Building messages for query: '%s', Field: %s, Sem: %s, UserType: %s, History: %d messages",
         query,
         field_of_study,
         semester,
+        user_type,
         len(conversation_history) if conversation_history else 0,
     )
 
@@ -95,6 +121,10 @@ def build_messages(
         elif field_of_study:
             student_info = f"Informacja o użytkowniku: Użytkownik studiuje na kierunku '{field_of_study}'.\n\n"
 
+        role_hint = ""
+        if user_type and user_type in USER_TYPE_PERSONA:
+            role_hint = f"Wskazówka dotycząca rozmówcy: {USER_TYPE_PERSONA[user_type]}\n\n"
+
         # Build system message with instructions and FAQ only (static)
         system_message = (
             "Jesteś pomocnym asystentem o imieniu MiNIonek. Odpowiadasz na pytania studentów i pracowników Wydziału Matematyki i Nauk Informacyjnych (MiNI).\n"
@@ -106,6 +136,7 @@ def build_messages(
             "2. Kontekst rozmowy: Uwzględnij historię rozmowy - użytkownik może nawiązywać do wcześniejszych pytań lub odpowiedzi.\n"
             "3. Styl: Odpowiadaj krótko, rzeczowo i po polsku.\n"
             "4. WAŻNE: Odpowiadaj ZAWSZE w języku POLSKIM. Twoja odpowiedź zostanie automatycznie przetłumaczona na język wybrany przez użytkownika. Nie mieszaj języków i nie dodawaj komentarzy o tłumaczeniu.\n\n"
+            f"{role_hint}"
             f"{student_info}"
             f"---\n{STATIC_FAQ}\n---"
         )

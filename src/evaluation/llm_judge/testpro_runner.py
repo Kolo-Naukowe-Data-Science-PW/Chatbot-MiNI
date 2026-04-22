@@ -13,7 +13,7 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from src.chat_bot_auto_evaluation.llm_judge.judge import JudgeResult, judge_pair
+from src.evaluation.llm_judge.judge import JudgeResult, judge_pair
 
 MODEL_POOL = [
     "meta-llama/llama-3.1-8b-instruct",
@@ -232,7 +232,7 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--input-csv",
-        default="src/survey_questions/questions_with_links.csv",
+        default="src/evaluation/data/questions_with_links.csv",
         help="Evaluation CSV path.",
     )
     parser.add_argument(

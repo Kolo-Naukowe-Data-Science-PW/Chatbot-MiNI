@@ -27,7 +27,7 @@ services:
       "app",
       "python",
       "-m",
-      "pipeline.scraper"
+      "ingestion.scraper"
     ]
     environment: *env
     volumes:
@@ -40,9 +40,9 @@ services:
     build: .
     command: >
       micromamba run -n app /bin/bash -c "
-      python -m pipeline.describe_files &&
-      python -m pipeline.extract_facts &&
-      python -m pipeline.ingest_facts"
+      python -m ingestion.describe_files &&
+      python -m ingestion.extract_facts &&
+      python -m ingestion.ingest_facts"
     environment: *env
     volumes:
       - data_storage:/app/src/data
@@ -61,7 +61,7 @@ services:
       "-n",
       "app",
       "uvicorn",
-      "rag_api.api:app",
+      "api.api:app",
       "--host",
       "0.0.0.0",
       "--port",
@@ -76,7 +76,7 @@ services:
 
   frontend:
     build:
-      context: ./src/frontend/frontend_feb
+      context: ./src/frontend
     environment:
       VITE_API_URL: "http://api:8000/chat"
     ports:

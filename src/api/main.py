@@ -5,9 +5,9 @@ import random
 from dotenv import load_dotenv
 from openai import OpenAI
 
-from src.rag_api.models import Message
-from src.rag_api.modules.prompt_builder import build_messages
-from src.rag_api.modules.retrieval import get_top_k_chunks
+from src.api.models import Message
+from src.api.prompt_builder import build_messages
+from src.api.retrieval import get_top_k_chunks
 
 load_dotenv()
 

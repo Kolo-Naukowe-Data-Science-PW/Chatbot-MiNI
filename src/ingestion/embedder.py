@@ -6,7 +6,7 @@ class Embedder:
     A wrapper class for generating embeddings using HuggingFace models.
     """
 
-    def __init__(self, model_name: str = "sentence-transformers/all-MiniLM-L6-v2"):
+    def __init__(self, model_name: str = "BAAI/bge-m3"):
         """
         Initializes the Embedder with a specific HuggingFace model.
 
@@ -14,7 +14,7 @@ class Embedder:
         ----------
         model_name : str, optional
             The name or path of the HuggingFace model to use,
-            by default "sentence-transformers/all-MiniLM-L6-v2".
+            by default "BAAI/bge-m3".
         """
         self.model_name = model_name
         self.embedder = HuggingFaceEmbeddings(model_name=model_name)

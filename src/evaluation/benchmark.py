@@ -14,7 +14,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.rag_api.modules.retrieval import get_top_k_chunks
+from src.api.retrieval import get_top_k_chunks
 
 #logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICAL)
 
@@ -26,6 +26,14 @@ from src.rag_api.modules.retrieval import get_top_k_chunks
 # are counted as hits; children (0.25) and more distant relatives are not.
 # Lower this to 0.25 to also credit child pages.
 RELEVANCE_THRESHOLD: float = 0.5
+
+# MRRw parameters (Metryka_chatbot.pdf)
+# α: weight for a URL that is deeper (more specific) than the gold by 1 level.
+#    α^d applied for d levels deeper.  0 < β < α < 1.
+# β: weight for a URL that is shallower (more general) than the gold by 1 level.
+#    β^|d| applied for |d| levels shallower.
+MRRW_ALPHA: float = 0.8
+MRRW_BETA: float = 0.4
 
 
 # ── Data structures ───────────────────────────────────────────────────────────
@@ -113,6 +121,134 @@ def hierarchical_relevance(retrieved_url: str, target_url: str) -> float:
         return 0.5 ** (depth + 1)
 
     return 0.0
+
+
+# ── MRRw: weighted MRR with depth-aware link accuracy ────────────────────────
+#
+# Reference: Metryka_chatbot.pdf (B. Gawlik, 2026-03-13)
+#
+# Unlike hierarchical_relevance (which uses a fixed 0.5^depth decay and treats
+# child URLs as worse than parent URLs), MRRw distinguishes:
+#   - deeper (more specific) links → penalised less   (weight α^d)
+#   - shallower (more general) links → penalised more  (weight β^|d|)
+# This reflects the intuition that returning a more specific page is better
+# than returning a too-general one.
+
+
+def _url_depth_difference(retrieved_url: str, target_url: str) -> int | None:
+    """
+    Return the signed depth difference d between retrieved_url and target_url,
+    or None if the two URLs are not on the same path (unrelated).
+
+    d > 0  → retrieved is deeper (more specific) than target by d levels
+    d = 0  → exact path match
+    d < 0  → retrieved is shallower (more general) than target by |d| levels
+
+    Only ancestor / descendant relationships count; unrelated sibling paths
+    (same depth but different branch) return None.
+    """
+    if not retrieved_url or not target_url:
+        return None
+
+    t = urlsplit(target_url)
+    r = urlsplit(retrieved_url)
+
+    if t.scheme != r.scheme or t.netloc != r.netloc:
+        return None
+
+    t_path = t.path.rstrip("/")
+    r_path = r.path.rstrip("/")
+
+    if t_path == r_path:
+        return 0
+
+    # retrieved is an ancestor (shallower): target starts with retrieved path
+    if t_path.startswith(r_path + "/"):
+        return -(t_path.count("/") - r_path.count("/"))  # negative → shallower
+
+    # retrieved is a descendant (deeper): retrieved starts with target path
+    if r_path.startswith(t_path + "/"):
+        return r_path.count("/") - t_path.count("/")  # positive → deeper
+
+    return None  # unrelated branch
+
+
+def _mrr_weight(d: int, alpha: float = MRRW_ALPHA, beta: float = MRRW_BETA) -> float:
+    """
+    Accuracy weight w(d) from Metryka_chatbot.pdf:
+        w(0)   = 1.0
+        w(d>0) = alpha^d   (deeper is penalised less than shallower)
+        w(d<0) = beta^|d|  (shallower is penalised more)
+    """
+    if d == 0:
+        return 1.0
+    if d > 0:
+        return alpha ** d
+    return beta ** abs(d)
+
+
+def mrr_weighted_single(
+    retrieved_urls: list[str],
+    target_url: str,
+    alpha: float = MRRW_ALPHA,
+    beta: float = MRRW_BETA,
+) -> float:
+    """
+    Compute the MRRw score S for a single query (Metryka_chatbot.pdf, eq. 3).
+
+    S = max over all returned links i of  w(d_i) / r_i
+
+    where r_i is the 1-based rank and d_i is the depth difference.
+    Unrelated links (d_i = None) are skipped.  Returns 0.0 if no link matches.
+    """
+    best = 0.0
+    for rank, url in enumerate(retrieved_urls, start=1):
+        d = _url_depth_difference(url, target_url)
+        if d is None:
+            continue
+        s = _mrr_weight(d, alpha, beta) / rank
+        if s > best:
+            best = s
+    return best
+
+
+def mrr_weighted(
+    gold: list["EvalRow"],
+    k: int,
+    alpha: float = MRRW_ALPHA,
+    beta: float = MRRW_BETA,
+) -> float:
+    """
+    Compute MRRw over the full evaluation set (Metryka_chatbot.pdf, eq. 4).
+
+    MRRw = (1/N) * Σ S_j
+
+    Parameters
+    ----------
+    gold : list[EvalRow]
+        Evaluation set (query + target URL pairs).
+    k : int
+        Rank cut-off — only the top-k retrieved URLs are considered.
+    alpha : float
+        Weight decay for URLs deeper than the target (default 0.8).
+    beta : float
+        Weight decay for URLs shallower than the target (default 0.4).
+
+    Returns
+    -------
+    float
+        MRRw in [0, 1].
+    """
+    scores = []
+    for row in gold:
+        retrieved_chunks = get_top_k_chunks(row.query, top_k=k)
+        urls = unique_preserve_order([
+            normalize_url(c.get("source_url", ""))
+            for c in retrieved_chunks
+            if c.get("source_url", "")
+        ])
+        scores.append(mrr_weighted_single(urls[:k], row.target_url, alpha, beta))
+    return mean(scores) if scores else 0.0
 
 
 # ── Gold set loading ──────────────────────────────────────────────────────────
@@ -313,6 +449,7 @@ class MetricsAtK:
     k: int
     hit: float
     mrr: float
+    mrr_weighted: float     # MRRw (Metryka_chatbot.pdf) — depth-aware weighted MRR
     recall: float
     precision: float
     f1: float
@@ -336,9 +473,8 @@ def evaluate(
         metrics   -- averaged MetricsAtK instance
         pr_curves -- per-query list of (recall_points, precision_points)
     """
-    hits, mrrs, recalls, precisions = [], [], [], []
+    hits, mrrs, mrrws, recalls, precisions = [], [], [], [], []
     f1s, ndcgs, aps, r_precs = [], [], [], []
-    src_divs: list[float] = []
     pr_curves: list[tuple[list[float], list[float]]] = []
 
     # Each query has exactly one ground-truth URL, so total_rel is always 1.
@@ -353,11 +489,14 @@ def evaluate(
         raw_urls = [u for u in raw_urls if u]
         unique_urls = unique_preserve_order(raw_urls)
 
-        # Compute a graded relevance score for every unique retrieved URL
+        # Graded relevance scores for existing metrics (hierarchical, symmetric decay)
         rel_scores = [
             hierarchical_relevance(url, row.target_url)
             for url in unique_urls
         ]
+
+        # MRRw score for this query (depth-aware, asymmetric α/β weights)
+        mrrws.append(mrr_weighted_single(unique_urls[:k], row.target_url))
 
         if index < 5:
             print(f"Sample {index + 1}: {row.query}")
@@ -368,7 +507,8 @@ def evaluate(
             )
             for url, score in zip(unique_urls, rel_scores):
                 count = Counter(raw_urls)[url]
-                print(f"    [{score:.2f}] {url} (x{count})")
+                d = _url_depth_difference(url, row.target_url)
+                print(f"    [rel={score:.2f}, d={d}] {url} (x{count})")
             print("-" * 50)
 
         hits.append(hit_at_k(rel_scores, k))
@@ -379,7 +519,6 @@ def evaluate(
         ndcgs.append(ndcg_at_k(rel_scores, k))
         aps.append(average_precision_at_k(rel_scores, k, total_rel))
         r_precs.append(r_precision(rel_scores, total_rel))
-        # src_divs.append(source_diversity_at_k(raw_urls, k))
 
         rc, pr = pr_curve_points(rel_scores, total_rel)
         pr_curves.append((rc, pr))
@@ -389,14 +528,13 @@ def evaluate(
         k=k,
         hit=avg(hits),
         mrr=avg(mrrs),
+        mrr_weighted=avg(mrrws),
         recall=avg(recalls),
         precision=avg(precisions),
         f1=avg(f1s),
         ndcg=avg(ndcgs),
         map_score=avg(aps),
         r_prec=avg(r_precs),
-        # source_diversity=avg(src_divs),
-        # source_redundancy=1.0 - avg(src_divs),
     )
     return metrics, pr_curves
 
@@ -494,8 +632,8 @@ def plot_metrics_summary(
         output_path: str = "metrics_summary.png",
 ) -> None:
     """Grouped bar chart comparing all metrics across values of k."""
-    metric_labels = ["Hit", "MRR", "Recall", "Precision", "F1", "nDCG", "MAP"]
-    attr_names    = ["hit", "mrr", "recall", "precision", "f1", "ndcg", "map_score"]
+    metric_labels = ["Hit", "MRR", "MRRw", "Recall", "Precision", "F1", "nDCG", "MAP"]
+    attr_names    = ["hit", "mrr", "mrr_weighted", "recall", "precision", "f1", "ndcg", "map_score"]
 
     ks = [m.k for m in all_metrics]
     x = range(len(metric_labels))
@@ -526,7 +664,7 @@ def plot_metrics_summary(
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def main() -> None:
-    gold_path = "src/survey_questions/questions_filtered.csv"
+    gold_path = "src/evaluation/data/questions_filtered.csv"
     ks = [ 3, 5,7, 10]
 
     gold = load_gold(gold_path)
@@ -543,14 +681,13 @@ def main() -> None:
         print(f"=== k={k} {'=' * 30}")
         print(f"  Hit@{k}:          {m.hit:.4f}")
         print(f"  MRR@{k}:          {m.mrr:.4f}")
+        print(f"  MRRw@{k}:         {m.mrr_weighted:.4f}  (α={MRRW_ALPHA}, β={MRRW_BETA})")
         print(f"  Recall@{k}:       {m.recall:.4f}")
         print(f"  Precision@{k}:    {m.precision:.4f}")
         print(f"  F1@{k}:           {m.f1:.4f}")
         print(f"  nDCG@{k}:         {m.ndcg:.4f}")
         print(f"  MAP@{k}:          {m.map_score:.4f}")
         print(f"  R-Precision:      {m.r_prec:.4f}  (rank-cutoff independent)")
-        # print(f"  SourceDiv@{k}:    {m.source_diversity:.4f}")
-        # print(f"  SourceRed@{k}:    {m.source_redundancy:.4f}")
         print()
 
     plot_pr_curves(all_pr_curves)

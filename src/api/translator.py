@@ -1,6 +1,6 @@
 import logging
 
-from src.pipeline.common import MODEL_WORKER, get_llm_client
+from src.ingestion.common import MODEL_WORKER, get_llm_client
 
 logger = logging.getLogger(__name__)
 

@@ -100,7 +100,8 @@ const translations = {
     newChat: "Nowy czat",
     login: "logowanie",
     greeting: "Cześć! 👋",
-    subtitle: "Zanim zaczniemy rozmowę, wybierz proszę swój kierunek studiów — dzięki temu będę mógł udzielać odpowiedzi dopasowanych do Twojego programu.",
+    roleSubtitle: "Zanim zaczniemy rozmowę, powiedz mi, kim jesteś — dzięki temu będę mógł lepiej dopasować odpowiedzi.",
+    subtitle: "Świetnie! Teraz wybierz proszę swój kierunek studiów — dzięki temu będę mógł udzielać odpowiedzi dopasowanych do Twojego programu.",
     semesterGreeting: "Świetnie, dzięki! 😊",
     semesterSubtitle: "Teraz wybierz proszę, na którym semestrze jesteś.",
     chatGreeting: "Co mogę dzisiaj dla Ciebie zrobić?",
@@ -133,7 +134,8 @@ const translations = {
     newChat: "New chat",
     login: "login",
     greeting: "Hello! 👋",
-    subtitle: "Before we start the conversation, please select your field of study — this way I can provide answers tailored to your program.",
+    roleSubtitle: "Before we start the conversation, tell me who you are — this will help me tailor my answers better.",
+    subtitle: "Great! Now please select your field of study — this way I can provide answers tailored to your program.",
     semesterGreeting: "Great, thanks! 😊",
     semesterSubtitle: "Now please select which semester you are in.",
     chatGreeting: "What can I do for you today?",
@@ -166,7 +168,8 @@ const translations = {
     newChat: "Новий чат",
     login: "вхід",
     greeting: "Привіт! 👋",
-    subtitle: "Перш ніж почати розмову, виберіть свою спеціальність — так я зможу надавати відповіді, адаптовані до вашої програми.",
+    roleSubtitle: "Перш ніж почати розмову, скажіть мені, хто ви — це допоможе мені краще адаптувати відповіді.",
+    subtitle: "Чудово! Тепер виберіть свою спеціальність — так я зможу надавати відповіді, адаптовані до вашої програми.",
     semesterGreeting: "Чудово, дякую! 😊",
     semesterSubtitle: "Тепер виберіть, будь ласка, на якому семестрі ви навчаєтесь.",
     chatGreeting: "Що я можу для вас зробити сьогодні?",
@@ -622,7 +625,33 @@ function SemesterCard({ semester, onClick }) {
 }
 
 // ============ MAIN CONTENT COMPONENT ============
-function MainContent({ language, version, selectedMajor, setSelectedMajor, selectedSemester, setSelectedSemester, messages, onSendMessage, isLoading, onFeedbackChange }) {
+const USER_TYPES = {
+  PL: [
+    { key: "student_junior", label: "Student I roku", icon: "🎓" },
+    { key: "student_senior", label: "Student II/III roku", icon: "📚" },
+    { key: "master", label: "Student magisterskch", icon: "🎯" },
+    { key: "phd", label: "Doktorant", icon: "🔬" },
+    { key: "admin", label: "Pracownik administracji", icon: "🏛️" },
+  ],
+  EN: [
+    { key: "student_junior", label: "1st year student", icon: "🎓" },
+    { key: "student_senior", label: "2nd / 3rd year student", icon: "📚" },
+    { key: "master", label: "Master's student", icon: "🎯" },
+    { key: "phd", label: "PhD student", icon: "🔬" },
+    { key: "admin", label: "Faculty staff", icon: "🏛️" },
+  ],
+  UA: [
+    { key: "student_junior", label: "Студент 1 курсу", icon: "🎓" },
+    { key: "student_senior", label: "Студент 2/3 курсу", icon: "📚" },
+    { key: "master", label: "Магістрант", icon: "🎯" },
+    { key: "phd", label: "Аспірант", icon: "🔬" },
+    { key: "admin", label: "Працівник факультету", icon: "🏛️" },
+  ],
+};
+
+const USER_TYPE_NEEDS_MAJOR = ["student_junior", "student_senior", "master"];
+
+function MainContent({ language, version, userType, setUserType, selectedMajor, setSelectedMajor, selectedSemester, setSelectedSemester, messages, onSendMessage, isLoading, onFeedbackChange }) {
   const t = translations[language];
   const [inputValue, setInputValue] = useState('');
   const messagesEndRef = useRef(null);
@@ -634,6 +663,14 @@ function MainContent({ language, version, selectedMajor, setSelectedMajor, selec
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  const handleUserTypeSelect = (type) => {
+    setUserType(type);
+    if (!USER_TYPE_NEEDS_MAJOR.includes(type)) {
+      setSelectedMajor("—");
+      setSelectedSemester("—");
+    }
+  };
 
   const handleMajorSelect = (major) => {
     setSelectedMajor(major);
@@ -654,7 +691,43 @@ function MainContent({ language, version, selectedMajor, setSelectedMajor, selec
   return (
     <main className="main">
       <div className="center-content">
-        {!selectedMajor && (
+        {!userType && (
+          <>
+            <div className="hero-icon">
+              <svg width="72" height="72" viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+<mask id="path-1-inside-1_109_634" fill="white">
+<ellipse cx="29.1242" cy="37.1813" rx="6.73714" ry="10.125"/>
+</mask>
+<ellipse cx="29.1242" cy="37.1813" rx="6.73714" ry="10.125" fill="white"/>
+<path d="M35.8614 37.1813H26.8614C26.8614 38.4517 26.5024 39.194 26.3953 39.355C26.3541 39.4169 26.485 39.1908 26.9186 38.9152C27.3909 38.615 28.1589 38.3063 29.1242 38.3063V47.3063V56.3063C34.9381 56.3063 39.0927 52.7655 41.381 49.3265C43.7122 45.823 44.8614 41.5028 44.8614 37.1813H35.8614ZM29.1242 47.3063V38.3063C30.0896 38.3063 30.8576 38.615 31.3299 38.9152C31.7635 39.1908 31.8943 39.4169 31.8532 39.355C31.746 39.194 31.3871 38.4517 31.3871 37.1813H22.3871H13.3871C13.3871 41.5028 14.5363 45.823 16.8675 49.3265C19.1558 52.7655 23.3103 56.3063 29.1242 56.3063V47.3063ZM22.3871 37.1813H31.3871C31.3871 35.9109 31.746 35.1686 31.8532 35.0075C31.8943 34.9457 31.7635 35.1717 31.3299 35.4473C30.8576 35.7475 30.0896 36.0563 29.1242 36.0563V27.0563V18.0563C23.3103 18.0563 19.1558 21.5971 16.8675 25.0361C14.5363 28.5396 13.3871 32.8598 13.3871 37.1813H22.3871ZM29.1242 27.0563V36.0563C28.1589 36.0563 27.3909 35.7475 26.9186 35.4473C26.485 35.1717 26.3541 34.9457 26.3953 35.0075C26.5024 35.1686 26.8614 35.9109 26.8614 37.1813H35.8614H44.8614C44.8614 32.8598 43.7122 28.5396 41.381 25.0361C39.0927 21.5971 34.9381 18.0563 29.1242 18.0563V27.0563Z" fill="white" mask="url(#path-1-inside-1_109_634)"/>
+<mask id="path-3-inside-2_109_634b" fill="white">
+<ellipse cx="46.8832" cy="35.4476" rx="5.904" ry="9.792"/>
+</mask>
+<ellipse cx="46.8832" cy="35.4476" rx="5.904" ry="9.792" fill="white"/>
+<path d="M52.7872 35.4476H43.7872C43.7872 36.7932 43.4399 37.5764 43.3506 37.7245C43.316 37.7818 43.4815 37.4749 44.0128 37.1022C44.5936 36.6948 45.5895 36.2396 46.8832 36.2396V45.2396V54.2396C52.8951 54.2396 56.8218 50.2423 58.7654 47.0187C60.813 43.6228 61.7872 39.5101 61.7872 35.4476H52.7872ZM46.8832 45.2396V36.2396C48.1769 36.2396 49.1729 36.6948 49.7537 37.1022C50.285 37.4749 50.4505 37.7818 50.4159 37.7245C50.3266 37.5764 49.9792 36.7932 49.9792 35.4476H40.9792H31.9792C31.9792 39.5101 32.9535 43.6228 35.0011 47.0187C36.9447 50.2423 40.8714 54.2396 46.8832 54.2396V45.2396ZM40.9792 35.4476H49.9792C49.9792 34.1021 50.3266 33.3189 50.4159 33.1708C50.4505 33.1135 50.285 33.4204 49.7537 33.793C49.1729 34.2005 48.1769 34.6556 46.8832 34.6556V25.6556V16.6556C40.8714 16.6556 36.9447 20.653 35.0011 23.8765C32.9535 27.2724 31.9792 31.3852 31.9792 35.4476H40.9792ZM46.8832 25.6556V34.6556C45.5895 34.6556 44.5936 34.2005 44.0128 33.793C43.4815 33.4204 43.316 33.1135 43.3506 33.1708C43.4399 33.3189 43.7872 34.1021 43.7872 35.4476H52.7872H61.7872C61.7872 31.3852 60.813 27.2724 58.7654 23.8765C56.8218 20.653 52.8951 16.6556 46.8832 16.6556V25.6556Z" fill="white" mask="url(#path-3-inside-2_109_634b)"/>
+<path fillRule="evenodd" clipRule="evenodd" d="M36.9654 0.00112506C44.3237 0.0877218 50.4678 5.24972 54.2975 12.5034C54.3728 12.5874 54.437 12.684 54.4866 12.792L54.6442 13.1357C61.9329 14.2932 68.1666 17.9959 70.7791 24.2985C73.8156 31.6242 70.9319 39.9037 64.9619 46.4651C66.0062 54.9258 63.7287 63.0183 57.3436 67.2669C51.1508 71.3875 43.1206 70.539 35.9114 66.618C29.3102 70.2605 21.9623 71.1683 15.9754 67.6638C8.91432 63.5304 6.27011 54.7815 7.33317 45.603C2.72225 41.6777 -0.204918 36.4987 0.011205 30.7311C0.36867 21.194 9.01664 14.0203 19.8512 11.2408C19.8983 11.2138 19.9474 11.1896 19.9987 11.1693C23.8761 4.58469 29.7942 0 36.7775 0L36.9654 0.00112506ZM36.7775 2.30413C31.4745 2.30413 26.6589 5.45049 23.1088 10.5719L33.4451 8.6596C34.0699 8.54405 34.6701 8.95769 34.7856 9.58328C34.901 10.2089 34.4879 10.8099 33.8631 10.9255L21.4841 13.2158C10.5509 15.6799 2.62234 22.5018 2.31066 30.8174L2.30364 31.0624C2.22001 35.3854 4.21723 39.4502 7.67446 42.8047L8.63514 33.294C8.69912 32.661 9.26338 32.1997 9.89554 32.2637C10.5277 32.3277 10.9883 32.8927 10.9245 33.5257L9.63009 46.3424C9.61711 46.4709 9.58294 46.5922 9.53234 46.7036C8.77707 55.0379 11.3712 62.2997 17.1366 65.6747C21.8628 68.4412 27.8163 68.0665 33.6005 65.2266L26.2535 60.9255C25.7051 60.6043 25.5202 59.8988 25.8409 59.3496C26.1616 58.8005 26.8663 58.6154 27.4148 58.9364L36.9674 64.5288C37.0428 64.5729 37.1111 64.6248 37.1724 64.6821C43.8841 68.2846 50.8857 68.7974 56.07 65.3478C61.0569 62.0295 63.3187 55.7389 62.8453 48.5079L55.9652 55.1446C55.5076 55.586 54.7791 55.5722 54.3383 55.114C53.8976 54.6558 53.9111 53.9266 54.3686 53.4852L63.2021 44.9648C63.2231 44.9445 63.2448 44.9252 63.267 44.9069C68.8995 38.7192 71.2147 31.3601 68.6538 25.1817C66.6174 20.2689 61.8761 17.0143 55.8195 15.6983L60.156 25.1527C60.4211 25.7309 60.168 26.4148 59.5905 26.6803C59.0132 26.9457 58.3302 26.6924 58.065 26.1144L52.9068 14.8683C49.3822 7.38623 43.6227 2.46234 37.094 2.30778L36.7775 2.30413Z" fill="white"/>
+</svg>
+            </div>
+
+            <h1>{t.greeting}</h1>
+            <p className="subtitle">{t.roleSubtitle}</p>
+
+            <div className="cards">
+              {USER_TYPES[language].map((type) => (
+                <button
+                  key={type.key}
+                  className="card role-card"
+                  onClick={() => handleUserTypeSelect(type.key)}
+                >
+                  <span className="role-icon">{type.icon}</span>
+                  <span>{type.label}</span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
+        {userType && !selectedMajor && USER_TYPE_NEEDS_MAJOR.includes(userType) && (
           <>
             <div className="hero-icon">
               <svg width="72" height="72" viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -782,13 +855,13 @@ function MainContent({ language, version, selectedMajor, setSelectedMajor, selec
 
           <input
             type="text"
-            placeholder={selectedMajor && selectedSemester ? t.placeholder.replace("Najpierw podaj kierunek i semestr", "Zadaj pytanie...") : t.placeholder}
-            disabled={!selectedMajor || !selectedSemester || isLoading}
+            placeholder={userType && selectedMajor && selectedSemester ? t.placeholder.replace("Najpierw podaj kierunek i semestr", "Zadaj pytanie...") : t.placeholder}
+            disabled={!userType || !selectedMajor || !selectedSemester || isLoading}
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
           />
 
-          <button type="submit" className="send-btn" disabled={!selectedMajor || !selectedSemester || !inputValue.trim() || isLoading}>
+          <button type="submit" className="send-btn" disabled={!userType || !selectedMajor || !selectedSemester || !inputValue.trim() || isLoading}>
             {isLoading ? (
               <div className="spinner"></div>
             ) : (
@@ -814,6 +887,7 @@ function MainContent({ language, version, selectedMajor, setSelectedMajor, selec
 export default function App() {
   const [language, setLanguage] = useState("PL");
   const [version, setVersion] = useState("production");
+  const [userType, setUserType] = useState(null);
   const [selectedMajor, setSelectedMajor] = useState(null);
   const [selectedSemester, setSelectedSemester] = useState(null);
   const [chats, setChats] = useState([]);
@@ -830,6 +904,7 @@ export default function App() {
     };
     setChats([newChat, ...chats]);
     setCurrentChatId(newChat.id);
+    setUserType(null);
     setSelectedMajor(null);
     setSelectedSemester(null);
     setMessages([]);
@@ -862,6 +937,7 @@ export default function App() {
         variant_label: targetMessage.variantLabel ?? null,
         version: targetMessage.version ?? version,
         language: language.toLowerCase(),
+        user_type: userType ?? null,
         rating: variantAwareFeedback.rating ?? null,
         ratings: variantAwareFeedback.ratings ?? null,
         selected: variantAwareFeedback.selected ?? null,
@@ -938,6 +1014,7 @@ export default function App() {
           body: JSON.stringify({
             query:`${modelConfig.styleInstruction}\n\nPytanie użytkownika: ${messageText}`,
             language: language.toLowerCase(),
+            user_type: userType ?? null,
             mode: currentVersion,
             variant: variantLabel,
             modelConfig
@@ -1044,6 +1121,8 @@ export default function App() {
       <MainContent
         language={language}
         version={version}
+        userType={userType}
+        setUserType={setUserType}
         selectedMajor={selectedMajor}
         setSelectedMajor={setSelectedMajor}
         selectedSemester={selectedSemester}
