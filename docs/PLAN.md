@@ -3,7 +3,7 @@
 Last updated: 2026-04-23.
 Branch: `new_pipeline`.
 
-Tasks are ordered by priority. **Tasks 1–4: DONE** ✓. Tasks 5–6 come after local setup.
+Tasks are ordered by priority. **Tasks 1–6: DONE** ✓.
 
 ---
 
@@ -135,7 +135,7 @@ Key conceptual difference from existing code: the current scoring treats *child*
 
 ---
 
-## Task 5 — Facebook scraping
+## ✅ Task 5 — Facebook scraping
 
 **Why**: WRS MiNI posts events on their Facebook page (`facebook.com/wrsminipw`). Students frequently ask about upcoming events. Currently the chatbot has no access to this.
 
@@ -154,7 +154,7 @@ Key conceptual difference from existing code: the current scoring treats *child*
 
 ---
 
-## Task 6 — Streaming responses (SSE)
+## ✅ Task 6 — Streaming responses (SSE)
 
 **Why**: UX improvement — users see the answer appearing word by word instead of waiting for the full response. Makes the chatbot feel much more responsive.
 

@@ -8,6 +8,7 @@ Status on 2026-04-23. Everything listed here is in `new_pipeline` branch and wor
 
 ### Data pipeline (`src/ingestion/`)
 - **Web scraping** via Firecrawl API — supports HTML, PDF, XLSX, DOCX
+- **Facebook scraping** (`scraper.py`) — `scrape_facebook_page("wrsminipw")` uses `facebook-scraper` library; each post stored as `[Facebook WRS MiNI | YYYY-MM-DD]\n{text}`; graceful fallback if library missing or blocked; integrated for v4 *(added 2026-04-23)*
 - **Four pipeline versions** (set via `PIPELINE_VERSION` env var):
   - v1 — 15 hand-picked URLs, file-as-chunk, no LLM
   - v2 — 15 hand-picked URLs, LLM-extracted atomic facts, 1 fact = 1 chunk
@@ -34,6 +35,7 @@ Status on 2026-04-23. Everything listed here is in `new_pipeline` branch and wor
 
 ### API (`src/api/api.py`)
 - **FastAPI** `/chat` endpoint — full RAG pipeline, returns `answer`, `sources`, `retrieval_query`
+- **`/chat/stream`** SSE endpoint — same pipeline with `StreamingResponse`; tokens streamed as `data: {token}\n\n`; final `data: {"event":"done","sources":[...]}\n\n` *(added 2026-04-23)*
 - **`/feedback`** endpoint — persists ratings and model config to `model_feedback.csv`
 - CORS configured for local development
 - Thread-safe CSV feedback writer
@@ -42,6 +44,7 @@ Status on 2026-04-23. Everything listed here is in `new_pipeline` branch and wor
 - **OpenRouter** as provider — supports model switching per request via `modelConfig`
 - Default pool: GPT-4o-mini, Gemini 2.5 Flash, Llama 3.1 8B, DeepSeek, Mistral, Phi-4, Qwen
 - Configurable: temperature, top_p, frequency_penalty, presence_penalty, max_tokens
+- **`query_llm_stream()`** generator (`src/api/main.py`) — same params as `query_llm`, yields text delta chunks via `stream=True`; error yields Polish error message *(added 2026-04-23)*
 
 ---
 
@@ -93,6 +96,8 @@ Status on 2026-04-23. Everything listed here is in `new_pipeline` branch and wor
 - Language selection (PL/EN/UA) at conversation start
 - **Role selection screen** — user picks one of 5 roles before chatting; PhD/admin skip field/semester selection *(added 2026-04-23)*
 - `user_type` sent with every `/chat` and `/feedback` request *(added 2026-04-23)*
+- **Streaming in production mode** — `fetch` + `ReadableStream` against `/api/chat/stream`; tokens appended in-place to a placeholder bubble; typing-dots animation while waiting for first token; `canRate` set to `true` on `done` event *(added 2026-04-23)*
+- Test / Test Pro modes still use regular `fetch` (A/B parallel calls)
 - Model config passed with each request (supports A/B testing)
 - Feedback submission to `/feedback`
 

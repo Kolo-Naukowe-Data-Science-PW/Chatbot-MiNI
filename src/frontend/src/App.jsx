@@ -8,6 +8,7 @@ import { useState, useRef, useEffect } from "react";
 // // version testing feedback
 // const FEEDBACK_API_URL = API_URL.replace("/chat", "/feedback");
 const API_URL = "/api/chat";
+const STREAM_API_URL = "/api/chat/stream";
 const FEEDBACK_API_URL = "/api/feedback";
 
 
@@ -522,7 +523,13 @@ if (ext === 'link') {
         {message.isVariant && (
           <div className="variant-label">Wariant {message.variantLabel}</div>
         )}
-        <p>{message.text}</p>
+        {!isUser && !message.text && !message.canRate ? (
+          <span className="typing-indicator">
+            <span /><span /><span />
+          </span>
+        ) : (
+          <p>{message.text}</p>
+        )}
 
         {!isUser && message.sources && message.sources.length > 0 && (
           <div className="message-sources">
@@ -1038,19 +1045,78 @@ export default function App() {
 
       if (currentVersion === "production") {
         const randomConfig = pickRandomConfig();
-        const data = await callChatApi("production", randomConfig);
-        const botMessage = {
-          id: Date.now() + 1,
+        const botMessageId = Date.now() + 1;
+
+        // Insert placeholder immediately so the user sees the bubble appear
+        setMessages(prev => [...prev, {
+          id: botMessageId,
           type: "bot",
-          text: data.answer,
-          sources: data.sources,
+          text: "",
+          sources: [],
           timestamp: new Date(),
-          canRate: true,
+          canRate: false,
           version: currentVersion,
           feedback: { rating: null },
           variantConfig: randomConfig
-        };
-        setMessages(prev => [...prev, botMessage]);
+        }]);
+
+        const streamResponse = await fetch(STREAM_API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            query: `${randomConfig.styleInstruction}\n\nPytanie użytkownika: ${messageText}`,
+            language: language.toLowerCase(),
+            user_type: userType ?? null,
+            mode: currentVersion,
+            variant: "production",
+            modelConfig: randomConfig
+          })
+        });
+
+        if (!streamResponse.ok) throw new Error("Stream API Error");
+
+        const reader = streamResponse.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let receivedFirstToken = false;
+
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop(); // keep any incomplete trailing line
+
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            const payload = line.slice(6); // strip "data: "
+
+            // Try to detect the terminal JSON event {"event":"done",...}
+            try {
+              const parsed = JSON.parse(payload);
+              if (parsed.event === "done") {
+                setMessages(prev => prev.map(msg =>
+                  msg.id === botMessageId
+                    ? { ...msg, sources: parsed.sources || [], canRate: true }
+                    : msg
+                ));
+              }
+            } catch {
+              // Plain text token — append to the bot bubble
+              if (!receivedFirstToken) {
+                setIsLoading(false);
+                receivedFirstToken = true;
+              }
+              setMessages(prev => prev.map(msg =>
+                msg.id === botMessageId
+                  ? { ...msg, text: msg.text + payload }
+                  : msg
+              ));
+            }
+          }
+        }
       } else if (currentVersion === "test" || currentVersion === "testPro") {
         const pairId = Date.now();
         const [configA, configB] = pickRandomConfigPair();

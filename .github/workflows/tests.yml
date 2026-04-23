@@ -1,0 +1,34 @@
+name: Run Tests
+
+on:
+  push:
+    branches:
+      - new_pipeline
+  pull_request:
+    branches:
+      - new_pipeline
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          environment-file: environment-linux.yml
+          activate-environment: chatbot_mini
+          auto-update-conda: true
+          auto-activate-base: false
+
+      - name: Install local package and dev tools
+        shell: bash -el {0}
+        run: |
+          pip install -e .[dev]
+
+      - name: Run Pytest with Coverage
+        shell: bash -el {0}
+        run: pytest

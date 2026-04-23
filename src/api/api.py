@@ -1,4 +1,5 @@
 import csv
+import json
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
@@ -7,9 +8,10 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from src.api.main import query_llm
+from src.api.main import query_llm, query_llm_stream
 from src.api.models import Message
 from src.api.prompt_builder import build_messages
 from src.api.query_rewriter import rewrite_query
@@ -206,6 +208,82 @@ def chat_endpoint(request: QueryRequest) -> dict[str, Any]:
     sources = [chunk.get("source_url", "Unknown") for chunk in sorted_chunks[:5]]
 
     return {"answer": final_answer, "sources": sources, "retrieval_query": retrieval_query}
+
+
+@app.post("/chat/stream")
+def chat_stream_endpoint(request: QueryRequest):
+    """
+    Streaming version of /chat using Server-Sent Events (SSE).
+
+    Yields text chunks as they arrive from the LLM, then sends a final
+    JSON event with sources and the rewritten retrieval query.
+
+    SSE event format
+    ----------------
+    - Text delta:  ``data: {token text}\\n\\n``
+    - Final event: ``data: {"event":"done","sources":[...],"retrieval_query":"..."}\\n\\n``
+
+    The non-streaming ``/chat`` endpoint is preserved unchanged.
+    """
+    query = request.query
+    lang = request.language
+    conversation_history = request.conversation_history
+
+    if not query:
+        raise HTTPException(status_code=400, detail="Query cannot be empty")
+
+    logger.info(f"[stream] query='{query}' lang={lang}")
+
+    processing_query = query
+    if lang != "pl":
+        processing_query = translate_text(query, target_lang_code="pl")
+
+    retrieval_query = rewrite_query(processing_query)
+    sorted_chunks = get_top_k_chunks(retrieval_query)
+    sources = [chunk.get("source_url", "Unknown") for chunk in sorted_chunks[:5]]
+
+    if not sorted_chunks:
+        polish_msg = "Przepraszam, nie znalazłem w bazie informacji na ten temat."
+        final_msg = translate_text(polish_msg, lang) if lang != "pl" else polish_msg
+
+        def _empty():
+            yield f"data: {final_msg}\n\n"
+            yield f"data: {json.dumps({'event': 'done', 'sources': [], 'retrieval_query': retrieval_query})}\n\n"
+
+        return StreamingResponse(_empty(), media_type="text/event-stream")
+
+    text_only_chunks = [chunk["text_chunk"] for chunk in sorted_chunks]
+    messages = build_messages(
+        processing_query,
+        text_only_chunks,
+        user_type=request.user_type,
+        conversation_history=conversation_history,
+    )
+
+    def _generate():
+        polish_tokens: list[str] = []
+        for token in query_llm_stream(messages, request.modelConfig):
+            polish_tokens.append(token)
+            # Stream in the original language; if translation needed we accumulate
+            # and translate only the final answer (translation requires full text).
+            if lang == "pl":
+                yield f"data: {token}\n\n"
+
+        if lang != "pl":
+            polish_answer = "".join(polish_tokens)
+            final_answer = translate_text(polish_answer, target_lang_code=lang)
+            yield f"data: {final_answer}\n\n"
+
+        yield f"data: {json.dumps({'event': 'done', 'sources': sources, 'retrieval_query': retrieval_query})}\n\n"
+
+    return StreamingResponse(
+        _generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",  # disable nginx buffering
+        },
+    )
 
 
 @app.post("/feedback")

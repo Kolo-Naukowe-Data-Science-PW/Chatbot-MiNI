@@ -9,8 +9,17 @@ description = "MiNI PW Chatbot with RAG"
 requires-python = ">=3.11"
 dependencies = []
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.11.1",
+    "pytest-asyncio>=0.21.1",
+]
+
 [tool.setuptools.packages.find]
 where = ["src"]
+exclude = ["*.tests", "*.tests.*"]
 
 [tool.black]
 line-length = 88
@@ -23,3 +32,13 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
 ignore = ["E203", "E501"]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-ra -q --cov=src --cov-report=term-missing --import-mode=importlib"
+testpaths = ["src"]
+asyncio_mode = "auto"
+pythonpath = [".", "src"]
+
+[tool.coverage.run]
+omit = ["*/tests/*"]

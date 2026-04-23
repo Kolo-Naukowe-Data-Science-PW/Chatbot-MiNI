@@ -33,6 +33,61 @@ AVAILABLE_MODELS = [
 ]
 
 
+def query_llm_stream(
+    messages: list[dict[str, str]], model_config: dict | None = None
+):
+    """
+    Generator version of query_llm — yields text chunks as they arrive from OpenRouter.
+
+    Usage (server-sent events)::
+
+        for chunk in query_llm_stream(messages, config):
+            yield f"data: {chunk}\\n\\n"
+
+    Parameters
+    ----------
+    messages : list[dict]
+        Formatted messages array (system + history + context + query).
+    model_config : dict | None
+        Optional model parameters (model, temperature, etc.).
+
+    Yields
+    ------
+    str
+        Text delta chunks from the LLM stream.
+    """
+    config = model_config or {}
+    chosen_model = config.get("model") or random.choice(AVAILABLE_MODELS)
+    temperature = config.get("temperature", 0.0)
+    max_tokens = config.get("max_tokens", 500)
+    top_p = config.get("top_p", 1.0)
+    frequency_penalty = config.get("frequency_penalty", 0.0)
+    presence_penalty = config.get("presence_penalty", 0.0)
+
+    try:
+        logger.info(f"Streaming request to OpenRouter model: {chosen_model}")
+        stream = client.chat.completions.create(
+            model=chosen_model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            top_p=top_p,
+            frequency_penalty=frequency_penalty,
+            presence_penalty=presence_penalty,
+            stream=True,
+        )
+        for chunk in stream:
+            delta = chunk.choices[0].delta.content
+            if delta:
+                yield delta
+    except Exception as e:
+        logger.error("Streaming query failed: %s", e)
+        yield translations_error
+
+
+translations_error = "Przepraszam, wystąpił błąd podczas generowania odpowiedzi."
+
+
 def query_llm(messages: list[dict[str, str]], model_config: dict | None = None) -> str:
     """
     Generates an answer using the OpenRouter API.

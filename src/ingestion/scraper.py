@@ -230,7 +230,83 @@ def scrap_data() -> list[ScrapedPage]:
 
         # logger.info(f"Crawled {len(output)} pages")
 
+    # v4: also scrape WRS MiNI Facebook page for events
+    if CURRENT_VERSION >= 4:
+        facebook_pages = scrape_facebook_page("wrsminipw", n_posts=30)
+        if facebook_pages:
+            logger.info(f"Facebook: scraped {len(facebook_pages)} posts from WRS MiNI.")
+            output.extend(facebook_pages)
+        else:
+            logger.warning("Facebook scraping returned no posts — skipping.")
+
     return output
+
+
+FACEBOOK_PAGE_URL = "https://www.facebook.com/{page_name}"
+
+
+def scrape_facebook_page(page_name: str, n_posts: int = 20) -> list[ScrapedPage]:
+    """
+    Scrape recent posts from a public Facebook page using the facebook-scraper library.
+
+    Each post is returned as a ScrapedPage with:
+    - url:  direct link to the post (or page URL as fallback)
+    - text: post date + text content
+    - links: empty list (Facebook doesn't expose in-post links reliably)
+
+    Parameters
+    ----------
+    page_name : str
+        Facebook page name / slug, e.g. ``"wrsminipw"``.
+    n_posts : int
+        Maximum number of posts to retrieve (library pages through the feed).
+
+    Returns
+    -------
+    list[ScrapedPage]
+        Scraped posts as ScrapedPage objects.  Empty list on failure.
+    """
+    try:
+        from facebook_scraper import get_posts  # optional dep — import lazily
+    except ImportError:
+        logger.warning(
+            "facebook-scraper is not installed. "
+            "Install it with: pip install facebook-scraper"
+        )
+        return []
+
+    page_url = FACEBOOK_PAGE_URL.format(page_name=page_name)
+    results: list[ScrapedPage] = []
+
+    try:
+        logger.info(f"Scraping Facebook page: {page_url} (up to {n_posts} posts)")
+        for post in get_posts(page_name, pages=max(1, n_posts // 10 + 1)):
+            text = post.get("post_text") or post.get("text") or ""
+            if not text.strip():
+                continue
+
+            post_time = post.get("time")
+            date_str = post_time.strftime("%Y-%m-%d") if post_time else "unknown date"
+            full_text = f"[Facebook WRS MiNI | {date_str}]\n{text.strip()}"
+
+            post_url = post.get("post_url") or page_url
+            results.append(ScrapedPage(url=post_url, text=full_text, links=[]))
+
+            if len(results) >= n_posts:
+                break
+
+        logger.info(f"Facebook: collected {len(results)} posts from '{page_name}'.")
+
+    except Exception as exc:
+        logger.warning(
+            "Facebook scraping failed for '%s': %s — "
+            "Facebook may be blocking requests. "
+            "Try adding cookies via FACEBOOK_COOKIES env var.",
+            page_name,
+            exc,
+        )
+
+    return results
 
 
 def main() -> None:
