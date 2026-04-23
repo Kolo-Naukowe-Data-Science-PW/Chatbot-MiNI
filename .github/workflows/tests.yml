@@ -1,0 +1,39 @@
+name: Run Tests
+
+on:
+  push:
+    branches:
+      - new_pipeline
+  pull_request:
+    branches:
+      - new_pipeline
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Download your repository's code
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # Step 2: Set up Conda and install from environment.yml
+      - name: Set up Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          environment-file: chatbot_mini_arch.yml # Points to your .yml file
+          activate-environment: chatbot_mini # Must match the 'name:' in your environment.yml
+          auto-update-conda: true
+          auto-activate-base: false
+
+      # Step 3: Install your local src package and test dependencies
+      # We still need this so pytest can see your 'src' folder properly!
+      - name: Install local package and dev tools
+        shell: bash -el {0}
+        run: |
+          pip install -e .[dev]
+
+      # Step 4: Run pytest
+      - name: Run Pytest with Coverage
+        shell: bash -el {0}
+        run: pytest

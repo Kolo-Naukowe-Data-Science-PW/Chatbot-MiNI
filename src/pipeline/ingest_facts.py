@@ -69,7 +69,7 @@ def main() -> None:
         return
 
     logger.info(f"Total facts to ingest: {len(all_text_chunks)}")
-    logger.info(f"Resetting Qdrant collection before ingestion...")
+    logger.info("Resetting Qdrant collection before ingestion...")
     reset_collection(DB_PATH)
 
     logger.info(f"Generating embeddings for {len(all_text_chunks)} facts...")
