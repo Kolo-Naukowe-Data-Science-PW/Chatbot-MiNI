@@ -64,7 +64,7 @@ MODEL_NAME=openai/gpt-4o-mini
 QDRANT_DIR=src/data/qdrant_db
 ```
 
-> **PIPELINE_VERSION=2** — scrape 15 URL-i, LLM-based fact extraction. Wystarczy do testów i jest szybki (~5–15 min). Wersja 3/4 scrapuje setki stron i trwa kilka godzin.
+> **PIPELINE_VERSION=2** — scrape ~35 skurowanych URL-i (dziekanat, regulaminy, plany studiów, kierunki), LLM-based fact extraction. Wystarczy do testów i jest szybki (~10–20 min). Wersja 3/4 scrapuje setki stron i trwa kilka godzin.
 
 ---
 
@@ -94,8 +94,8 @@ Wszystkie komendy uruchamiaj z **katalogu głównego repozytorium** w PowerShell
 # Ustaw PYTHONPATH (wymagane dla każdej sesji PowerShell)
 $env:PYTHONPATH = "src"
 
-# Krok 4a — Scraping (pobiera 15 stron MiNI PW)
-# Zajmuje ~2 minuty, wymaga FIRECRAWL_API_KEY
+# Krok 4a — Scraping (pobiera ~35 stron MiNI PW)
+# Zajmuje ~5 minut, wymaga FIRECRAWL_API_KEY
 python -m ingestion.scraper
 # → zapisuje pliki do: src/data/scraped_raw/
 

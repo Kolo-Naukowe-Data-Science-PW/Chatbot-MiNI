@@ -3,6 +3,7 @@ from unittest.mock import call, mock_open, patch
 
 import pytest
 
+from ingestion.links_curated import links_curated
 from ingestion.scraper import (
     ScrapedPage,
     clean_footnote,
@@ -113,13 +114,13 @@ class TestScrapData:
 
         result = scrap_data()
 
-        assert len(result) == 15  # W kodzie jest wpisane 15 linków na sztywno
+        assert len(result) == len(links_curated)
         assert isinstance(result[0], ScrapedPage)
         assert result[0].text == "Przykładowy tekst strony"
         assert result[0].links == ["http://link1.com"]
 
-        assert mock_app_instance.scrape.call_count == 15
-        assert mock_sleep.call_count == 15
+        assert mock_app_instance.scrape.call_count == len(links_curated)
+        assert mock_sleep.call_count == len(links_curated)
 
     @patch("ingestion.scraper.CURRENT_VERSION", 3)
     @patch("ingestion.scraper.links", ["http://test.com/1", "http://test.com/2"])
@@ -155,7 +156,7 @@ class TestScrapData:
         result = scrap_data()
 
         assert result == []
-        assert mock_app_instance.scrape.call_count == 15
+        assert mock_app_instance.scrape.call_count == len(links_curated)
 
     @patch("ingestion.scraper.os.getenv", return_value=None)
     @patch("ingestion.scraper.logger.warning")
@@ -217,10 +218,10 @@ class TestMainPipeline:
         assert m_open.call_count == 2
 
         m_open.assert_any_call(
-            "src/data/scraped_raw/ww2.mini.pw.edu.pl_wydzial.txt", "w", encoding="utf-8"
+            os.path.join("src/data/scraped_raw", "ww2.mini.pw.edu.pl_wydzial.txt"), "w", encoding="utf-8"
         )
         m_open.assert_any_call(
-            "src/data/scraped_raw/example.com_test_page.txt", "w", encoding="utf-8"
+            os.path.join("src/data/scraped_raw", "example.com_test_page.txt"), "w", encoding="utf-8"
         )
 
         handle = m_open()

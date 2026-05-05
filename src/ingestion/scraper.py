@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from firecrawl import Firecrawl
 
 from src.ingestion.common import CURRENT_VERSION
+from src.ingestion.links_curated import links_curated
 from src.ingestion.links_extended import links
 
 load_dotenv()
@@ -101,27 +102,10 @@ def scrap_data() -> list[ScrapedPage]:
     output: list[ScrapedPage] = []
 
     if CURRENT_VERSION <= 2:
-        # first 15 URLs to test the results
-        urls = [
-            "https://ww2.mini.pw.edu.pl/studia/dziekanat/informacje-dziekanatu/",
-            "https://ww2.mini.pw.edu.pl/wydzial/dziekani/",
-            "https://ww2.mini.pw.edu.pl/wydzial/o-nas/",
-            "https://ww2.mini.pw.edu.pl/laboratorium/laboratoria/",
-            "https://ww2.mini.pw.edu.pl/studia/inzynierskie-i-licencjackie/matematyka-i-analiza-danych/",
-            "https://ww2.mini.pw.edu.pl/studia/inzynierskie-i-licencjackie/matematyka-2/",
-            "https://ww2.mini.pw.edu.pl/studia/inzynierskie-i-licencjackie/informatyka-2/",
-            "https://ww2.mini.pw.edu.pl/studia/inzynierskie-i-licencjackie/computer-science-2/",
-            "https://ww2.mini.pw.edu.pl/studia/inzynierskie-i-licencjackie/inzynieria-i-analiza-danych/",
-            "https://ww2.mini.pw.edu.pl/studia/magisterskie/matematyka-i-analiza-danych/",
-            "https://ww2.mini.pw.edu.pl/studia/magisterskie/matematyka/",
-            "https://ww2.mini.pw.edu.pl/studia/magisterskie/informatyka/",
-            "https://ww2.mini.pw.edu.pl/studia/magisterskie/inzynieria-i-analiza-danych/",
-            "https://ww2.mini.pw.edu.pl/wp-content/uploads/uchwala_rady_21_02_2019.pdf",
-            "https://ww2.mini.pw.edu.pl/wydzial/uchwaly-rw/",
-        ]
+        urls = links_curated
 
         total = len(urls)
-        logger.info(f"V{CURRENT_VERSION}: Scraping limited list of {total} URLs.")
+        logger.info(f"V{CURRENT_VERSION}: Scraping curated list of {total} URLs (legal/admin focus).")
 
         for i, url in enumerate(urls, start=1):
             logger.info(f"[{i}/{total}] Scraping: {url}")
