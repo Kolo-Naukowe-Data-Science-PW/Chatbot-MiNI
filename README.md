@@ -65,18 +65,34 @@ Chatbot-MiNI/
 │   │   ├── prompt_builder.py       # LLM prompt construction + per-role hints
 │   │   ├── query_rewriter.py       # LLM-based query rewriting before retrieval
 │   │   ├── translator.py           # Multi-language translation (PL/EN/UA)
-│   │   └── logs.py                 # Logging utilities
+│   │   ├── logs.py                 # Logging utilities
+│   │   └── tests/
+│   │       ├── api_test.py         # /chat, /feedback endpoint tests
+│   │       └── main_test.py        # OpenRouter client tests
 │   │
 │   ├── ingestion/                  # Everything that builds the knowledge base
 │   │   ├── common.py               # Pipeline version config (v1-v4), LLM client
-│   │   ├── scraper.py              # Firecrawl-based web scraper
+│   │   ├── scraper.py              # Firecrawl-based web scraper (saves incrementally)
 │   │   ├── describe_files.py       # XLSX/DOCX text extraction
-│   │   ├── extract_facts.py        # LLM-based fact extraction
-│   │   ├── ingest_facts.py         # Embed facts + load into Qdrant
-│   │   ├── links_extended.py       # Curated list of URLs to scrape
+│   │   ├── extract_facts.py        # LLM-based fact extraction (all facts, no selection)
+│   │   ├── ingest_facts.py         # Embed facts + load into Qdrant (batched, resumable)
+│   │   ├── ingest_manual_pdfs.py   # Convert manually downloaded PDFs → scraped_raw .txt
+│   │   ├── progress.py             # Pipeline progress tracker (scraped/extracted/ingested)
+│   │   ├── links_curated.py        # ~15 hand-picked URLs (v1–v2)
+│   │   ├── links_extended.py       # Full URL list for MiNI PW website (v3+)
 │   │   ├── embedder.py             # HuggingFace embedding wrapper (BAAI/bge-m3)
 │   │   ├── vector_db.py            # Qdrant collection setup + write/read helpers
-│   │   └── README.md
+│   │   └── tests/
+│   │       ├── scraper_test.py         # clean_headnote, clean_footnote, main()
+│   │       ├── extract_facts_test.py   # placeholder
+│   │       ├── ingest_facts_test.py    # placeholder
+│   │       ├── describe_files_test.py  # placeholder
+│   │       └── common_test.py          # placeholder
+│   │
+│   ├── manual_pdfs/                # Manually downloaded PDFs (git-tracked, BIP PW cookiewall)
+│   │   ├── regulamin_studiow.pdf
+│   │   ├── regulamin_swiadczen_2025_2026.pdf
+│   │   └── *.pdf                   # 18 hash-named BIP PW documents
 │   │
 │   ├── evaluation/                 # All evaluation and benchmarking
 │   │   ├── benchmark.py            # Main benchmark (Hit@k, MRR, MRRw, nDCG, MAP, P-R)
@@ -89,6 +105,8 @@ Chatbot-MiNI/
 │   │   ├── llm_judge/
 │   │   │   ├── judge.py            # LLM-as-a-judge (A/B, 1-5 scales)
 │   │   │   └── testpro_runner.py   # Batch evaluation runner
+│   │   ├── tests/
+│   │   │   └── evaluation_test.py  # BERTScore metrics tests
 │   │   └── data/
 │   │       ├── questions.csv           # Raw student survey questions
 │   │       ├── questions_cat.csv       # Questions with category labels
@@ -96,7 +114,10 @@ Chatbot-MiNI/
 │   │       └── questions_with_links.csv # Full eval set with source links
 │   │
 │   ├── frontend/                   # React/Vite frontend
-│   │   ├── src/App.jsx             # Main app (chat UI, A/B testing, role selection, feedback)
+│   │   ├── src/
+│   │   │   ├── App.jsx             # Main app (chat UI, A/B testing, role selection, feedback)
+│   │   │   └── App.css
+│   │   ├── vite.config.js          # Dev + preview proxy → api:8000 (Docker)
 │   │   ├── Dockerfile
 │   │   └── package.json
 │   │
@@ -111,6 +132,7 @@ Chatbot-MiNI/
 │
 ├── docker-compose.yml              # 5 services: scraper, ingest, api, frontend, tests
 ├── Dockerfile                      # Micromamba-based Python image
+├── DEPLOYMENT.md                   # Step-by-step deployment & ingestion instructions
 ├── environment-linux.yml           # Conda env for Linux (deployment)
 └── chatbot_mini.yml                # Conda env for Windows/Mac (local dev)
 ```
