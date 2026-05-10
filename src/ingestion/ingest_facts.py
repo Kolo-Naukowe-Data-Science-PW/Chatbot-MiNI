@@ -5,6 +5,7 @@ import os
 from src.ingestion.embedder import Embedder
 from src.ingestion.vector_db import reset_collection, save_to_vector_db
 from src.ingestion.common import CURRENT_VERSION
+from src.ingestion.progress import ingested_count, is_ingested, mark_ingested
 from src.utils.paths import get_data_dir
 
 logging.basicConfig(level=logging.INFO)
@@ -13,71 +14,105 @@ logger = logging.getLogger(__name__)
 INPUT_DIR = "src/data/facts"
 DB_PATH = os.environ.get("QDRANT_DIR", get_data_dir("qdrant_db"))
 
+BATCH_SIZE = 10
+
+
+def _load_facts_from_file(path: str, filename: str) -> tuple[list[str], list[str]]:
+    """Return (texts, urls) for a single facts JSON file."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            facts_list = json.load(f)
+        if not isinstance(facts_list, list):
+            logger.warning(f"{filename}: expected a list, got {type(facts_list).__name__}")
+            return [], []
+        facts = [item for item in facts_list if item.get("fact")]
+        texts = [item["fact"] for item in facts]
+        urls = [item.get("source", "unknown") for item in facts]
+        return texts, urls
+    except Exception as e:
+        logger.error(f"{filename}: error reading — {e}")
+        return [], []
+
 
 def main() -> None:
     """
-    Ingests facts from JSON files, generates embeddings, and saves them to ChromaDB.
+    Ingest facts into Qdrant in batches of BATCH_SIZE files.
 
-    This function reads all JSON files from the configured input directory, extracts
-    facts and source URLs, generates vector embeddings for each fact, and stores
-    everything in the vector database. It also logs progress and any errors encountered.
+    - Skips files already recorded in the progress tracker.
+    - Resets the Qdrant collection only on a fresh start (nothing ingested yet).
+    - Safe to re-run after interruption: picks up where it left off.
 
-    Parameters
-    ----------
-    None
-
-    Returns
-    -------
-    None
+    To start completely fresh: delete src/data/pipeline_progress.json
+    and src/data/qdrant_db/.
     """
     logger.info(f"Starting ingestion for pipeline version: {CURRENT_VERSION}")
 
-    embedder = Embedder()
-
-    all_text_chunks = []
-    all_urls = []
-
-    files = sorted(f for f in os.listdir(INPUT_DIR) if f.endswith(".json"))
-    total_files = len(files)
-    logger.info(f"Found {total_files} files with facts to ingest.")
-
-    for i, filename in enumerate(files, start=1):
-        path = os.path.join(INPUT_DIR, filename)
-
-        try:
-            with open(path, encoding="utf-8") as f:
-                facts_list = json.load(f)
-
-            if not isinstance(facts_list, list):
-                logger.warning(
-                    f"[{i}/{total_files}] {filename}: wrong format, expected a list of facts."
-                )
-                continue
-
-            facts_in_file = [item for item in facts_list if item.get("fact")]
-            logger.info(f"[{i}/{total_files}] {filename}: {len(facts_in_file)} facts")
-
-            for item in facts_in_file:
-                all_text_chunks.append(item["fact"])
-                all_urls.append(item.get("source", "unknown"))
-
-        except Exception as e:
-            logger.error(f"[{i}/{total_files}] {filename}: error reading — {e}")
-
-    if not all_text_chunks:
-        logger.warning("No data to ingest.")
+    if not os.path.exists(INPUT_DIR):
+        logger.error(f"Input directory does not exist: {INPUT_DIR}")
         return
 
-    logger.info(f"Total facts to ingest: {len(all_text_chunks)}")
-    logger.info(f"Resetting Qdrant collection before ingestion...")
-    reset_collection(DB_PATH)
+    all_files = sorted(f for f in os.listdir(INPUT_DIR) if f.endswith(".json"))
+    pending = [f for f in all_files if not is_ingested(f)]
 
-    logger.info(f"Generating embeddings for {len(all_text_chunks)} facts...")
-    embeddings = embedder.generate_embeddings(all_text_chunks)
+    already_done = len(all_files) - len(pending)
+    logger.info(
+        f"Found {len(all_files)} fact files. "
+        f"Already ingested: {already_done}. Pending: {len(pending)}."
+    )
 
-    logger.info(f"Saving to Qdrant ({DB_PATH})...")
-    save_to_vector_db(all_text_chunks, embeddings, all_urls, DB_PATH)
-    logger.info("Ingestion complete. Ready for deployment!")
+    if not pending:
+        logger.info("Nothing to ingest — all files already processed.")
+        return
+
+    if ingested_count() == 0:
+        logger.info("Fresh start: resetting Qdrant collection...")
+        reset_collection(DB_PATH)
+    else:
+        logger.info(f"Resuming: {ingested_count()} files already in Qdrant, skipping reset.")
+
+    embedder = Embedder()
+    total_batches = (len(pending) + BATCH_SIZE - 1) // BATCH_SIZE
+
+    for batch_num, batch_start in enumerate(range(0, len(pending), BATCH_SIZE), start=1):
+        batch_files = pending[batch_start : batch_start + BATCH_SIZE]
+        batch_texts: list[str] = []
+        batch_urls: list[str] = []
+        processed_files: list[str] = []
+
+        for filename in batch_files:
+            path = os.path.join(INPUT_DIR, filename)
+            texts, urls = _load_facts_from_file(path, filename)
+            if texts:
+                batch_texts.extend(texts)
+                batch_urls.extend(urls)
+                processed_files.append(filename)
+            else:
+                logger.warning(f"Skipping empty/broken file: {filename}")
+
+        if not batch_texts:
+            logger.warning(f"Batch {batch_num}/{total_batches}: no facts to ingest, skipping.")
+            for filename in processed_files:
+                mark_ingested(filename)
+            continue
+
+        logger.info(
+            f"Batch {batch_num}/{total_batches}: "
+            f"embedding {len(batch_texts)} facts from {len(processed_files)} files..."
+        )
+        embeddings = embedder.generate_embeddings(batch_texts)
+
+        logger.info(f"Batch {batch_num}/{total_batches}: saving to Qdrant...")
+        save_to_vector_db(batch_texts, embeddings, batch_urls, DB_PATH)
+
+        for filename in processed_files:
+            mark_ingested(filename)
+
+        logger.info(
+            f"Batch {batch_num}/{total_batches}: done. "
+            f"Total ingested so far: {ingested_count()} files."
+        )
+
+    logger.info(f"Ingestion complete. Total ingested: {ingested_count()}/{len(all_files)} files.")
 
 
 if __name__ == "__main__":

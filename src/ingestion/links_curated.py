@@ -1,6 +1,12 @@
 # ~30 highest-value URLs for quick ingestion runs (PIPELINE_VERSION=2).
 # Focused on administrative/legal documents and core study-programme pages.
 # Full list (all ~350 URLs) lives in links_extended.py — used for v3+.
+#
+# ── Dokumenty wymagające ręcznego pobrania ───────────────────────────────────
+# Poniższe strony BIP PW nie są scrapowalne (cookie wall / JS rendering).
+# Pobierz PDFy ręcznie i wrzuć do src/data/manual_pdfs/, następnie uruchom:
+#   python -m ingestion.ingest_manual_pdfs
+# ─────────────────────────────────────────────────────────────────────────────
 
 links_curated = [
     # ── Dziekanat ────────────────────────────────────────────────────────────
@@ -11,12 +17,10 @@ links_curated = [
     "https://ww2.mini.pw.edu.pl/studia/dziekanat/dla-dyplomantow-i-promotorow/",
 
     # ── Regulaminy i procedury (PDF) ─────────────────────────────────────────
-    "https://www.bip.pw.edu.pl/index.php/Sprawy-Studenckie/Regulamin-studiow-w-Politechnice-Warszawskiej2",
     "https://ww2.mini.pw.edu.pl/wp-content/uploads/Warunki-rejestracji-na-kolejny-semestr-rok-studiow-22.11.2023.pdf",
     "https://ww2.mini.pw.edu.pl/wp-content/uploads/Procedura-przeprowadzania-sprawdzian%C3%B3w.pdf",
     "https://ww2.mini.pw.edu.pl/wp-content/uploads/regulamin_praktyk_14_04_2022.pdf",
     "https://ww2.mini.pw.edu.pl/wp-content/uploads/Poradnik-Stypendialny-SSPW-2025-2026.pdf",
-    "https://ww2.mini.pw.edu.pl/wydzial/uchwaly-rw/",
     "https://ww2.mini.pw.edu.pl/wp-content/uploads/uchwala_rady_21_02_2019.pdf",
 
     # ── Harmonogram roku akademickiego ───────────────────────────────────────
@@ -47,10 +51,6 @@ links_curated = [
 
     # ── Doktoranci ───────────────────────────────────────────────────────────
     "https://ww2.mini.pw.edu.pl/studia/doktoranckie/szkola-doktorska/",
-
-    # ── BIP – dokumenty studenckie ───────────────────────────────────────────
-    "https://www.bip.pw.edu.pl/Dokumenty-publiczne/Legitymacja-studencka-w-Politechnice-Warszawskiej",
-    "https://www.bip.pw.edu.pl/Dokumenty-publiczne/Dyplom-ukonczenia-studiow-w-Politechnice-Warszawskiej",
 
     # ── O Wydziale ───────────────────────────────────────────────────────────
     "https://ww2.mini.pw.edu.pl/wydzial/o-nas/",

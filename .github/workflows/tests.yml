@@ -1,12 +1,7 @@
 name: Run Tests
 
 on:
-  push:
-    branches:
-      - new_pipeline
-  pull_request:
-    branches:
-      - new_pipeline
+  workflow_dispatch:
 
 jobs:
   test:

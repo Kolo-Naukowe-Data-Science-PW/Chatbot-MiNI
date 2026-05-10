@@ -8,6 +8,7 @@ from src.ingestion.common import (
     get_llm_client,
     logger,
 )
+from src.ingestion.progress import is_facts_extracted, mark_facts_extracted
 
 config = get_config()
 
@@ -16,15 +17,25 @@ OUTPUT_DIR = "src/data/facts"
 
 SYSTEM_PROMPT = """
     Jesteś inteligentnym asystentem z Wydziału MiNI PW, który pomaga wyodrębniać fakty z różnych dokumentów.
-    Cechujesz się szczegółowością i precyzją.
-    Twoim zadaniem jest przetworzenie tekstu na listę faktów.
-    1. Ignoruj nagłówki, stopki, reklamy, menu.
-    2. Wyciągnij konkretne informacje: kto, co, gdzie, kiedy.
-    3. Każdy fakt musi być PEŁNYM zdaniem (np. "Dziekanem Wydziału MiNI jest prof. dr hab. Grzegorz Świątek", a nie "Grzegorz Świątek").
-    4. Odpowiedź zwróć TYLKO jako czysty JSON: ["fakt1", "fakt2"]. Bez bloków kodu markdown.
-    Pamiętaj, że twoim celem jest uzyskanie jak największej liczby szczegółowych faktów z dostarczonego tekstu.
-    Poszczególne dokumenty mogą mieć różną strukturę i styl, więc dostosuj swoje podejście odpowiednio.
-    W zależności od dokumentu, liczby faktów mogą się bardzo różnić.
+    Twoim zadaniem jest przetworzenie tekstu na WYCZERPUJĄCĄ listę faktów — wyciągnij ABSOLUTNIE WSZYSTKIE informacje zawarte w tekście.
+
+    KRYTYCZNIE WAŻNE: NIE SELEKCJONUJ. Nie wybieraj tylko "ważnych" czy "kluczowych" informacji.
+    Wyciągnij KAŻDĄ informację z tekstu — wszystkie, bez wyjątku, niezależnie od tego, czy wydają się istotne.
+
+    ZASADY:
+    1. Ignoruj nagłówki, stopki, elementy nawigacji, reklamy i menu.
+    2. Wyciągnij WSZYSTKIE informacje: kto, co, gdzie, kiedy, ile, jak długo, jakie warunki — każdą, dosłownie każdą.
+    3. NIE pomijaj żadnych szczegółów — nawet pozornie drobnych (numery paragrafów, terminy, warunki, wyjątki, daty, godziny, numery sal, nazwiska, liczby).
+    4. Każdy fakt musi być SAMODZIELNYM, PEŁNYM zdaniem zrozumiałym bez kontekstu.
+       Dobry przykład: "Egzamin dyplomowy na Wydziale MiNI PW musi odbyć się w ciągu 3 miesięcy od złożenia pracy."
+       Zły przykład: "3 miesiące od złożenia pracy."
+    5. Jeśli fakt dotyczy konkretnego kierunku, roku lub semestru — zawrzyj tę informację w zdaniu.
+    6. Długie listy (np. lista przedmiotów, lista warunków) — każdy element to osobny fakt.
+    7. Odpowiedź zwróć TYLKO jako czysty JSON: ["fakt1", "fakt2", ...]. Bez bloków kodu markdown, bez komentarzy.
+
+    WAŻNE: Lepiej wyciągnąć za dużo faktów niż za mało. Dla typowej strony opisującej kierunek studiów
+    oczekiwane jest minimum 40–80 faktów. Dla regulaminu lub procedury — minimum 50–150 faktów.
+    Jeśli wyciągnęłeś mniej — prawdopodobnie coś pominąłeś. Wróć do tekstu i sprawdź ponownie.
 """
 
 
@@ -53,7 +64,7 @@ def extract_facts_list(text: str, filename: str) -> list[str]:
     client = get_llm_client()
 
     try:
-        chunk_size = 15000
+        chunk_size = 8000
         text_chunks = [
             text[i : i + chunk_size] for i in range(0, len(text), chunk_size)
         ]
@@ -144,6 +155,15 @@ def main() -> None:
                     meta = json.load(f)
                     source_url = meta.get("source_url", source_url)
 
+            facts_filename = f"{base_name}_facts.json"
+            out_path = os.path.join(OUTPUT_DIR, facts_filename)
+
+            if is_facts_extracted(facts_filename) or os.path.exists(out_path):
+                logger.info(f"SKIP (already extracted): {txt_file}")
+                if not is_facts_extracted(facts_filename):
+                    mark_facts_extracted(facts_filename)
+                continue
+
             logger.info(f"Processing: {txt_file} (Source: {source_url})")
 
             content_list = extract_facts_list(text_content, txt_file)
@@ -153,11 +173,11 @@ def main() -> None:
                     {"source": source_url, "fact": item} for item in content_list
                 ]
 
-                out_path = os.path.join(OUTPUT_DIR, f"{base_name}_facts.json")
                 with open(out_path, "w", encoding="utf-8") as f:
                     json.dump(structured_output, f, indent=2, ensure_ascii=False)
 
-                logger.info(f"Saved {len(structured_output)} items to {out_path}")
+                mark_facts_extracted(facts_filename)
+                logger.info(f"Saved {len(structured_output)} facts → {out_path}")
 
 
 if __name__ == "__main__":

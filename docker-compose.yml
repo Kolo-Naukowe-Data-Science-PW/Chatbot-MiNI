@@ -12,7 +12,7 @@ x-env: &env
   PYTHONPATH: /app/src
   OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
   FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY}
-  PIPELINE_VERSION: ${PIPELINE_VERSION:-1}
+  PIPELINE_VERSION: ${PIPELINE_VERSION:-3}
   QDRANT_DIR: /app/src/data/qdrant_db
 
 services:
@@ -40,6 +40,7 @@ services:
     build: .
     command: >
       micromamba run -n app /bin/bash -c "
+      python -m ingestion.ingest_manual_pdfs &&
       python -m ingestion.describe_files &&
       python -m ingestion.extract_facts &&
       python -m ingestion.ingest_facts"

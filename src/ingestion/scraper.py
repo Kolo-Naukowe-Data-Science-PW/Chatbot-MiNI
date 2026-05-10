@@ -9,6 +9,7 @@ from firecrawl import Firecrawl
 from src.ingestion.common import CURRENT_VERSION
 from src.ingestion.links_curated import links_curated
 from src.ingestion.links_extended import links
+from src.ingestion.progress import is_scraped, mark_scraped
 
 load_dotenv()
 
@@ -293,34 +294,75 @@ def scrape_facebook_page(page_name: str, n_posts: int = 20) -> list[ScrapedPage]
     return results
 
 
+def _save_page(url: str, text: str, output_dir: str) -> None:
+    safe_name = url.replace("https://", "").replace("/", "_").strip("_")[:200]
+    file_path = os.path.join(output_dir, f"{safe_name}.txt")
+    with open(file_path, "w", encoding="utf-8") as f:
+        f.write(f"URL: {url}\n\n{text}")
+
+
 def main() -> None:
     """
     Main function to run the scraper pipeline.
 
-    Scrapes data, creates the output directory, and saves the cleaned
-    content to text files.
-
-    Parameters
-    ----------
-    None
-
-    Returns
-    -------
-    None
+    Saves each page immediately after scraping. Skips URLs already recorded
+    in the progress tracker so interrupted runs can be safely resumed.
     """
     logger.info(f"Starting scraper pipeline V{CURRENT_VERSION}")
-    scraped_data = scrap_data()
 
     output_dir = "src/data/scraped_raw"
     os.makedirs(output_dir, exist_ok=True)
 
-    for page in scraped_data:
-        safe_name = page.url.replace("https://", "").replace("/", "_").strip("_")[:200]
-        file_path = os.path.join(output_dir, f"{safe_name}.txt")
-        with open(file_path, "w", encoding="utf-8") as f:
-            f.write(f"URL: {page.url}\n\n{page.text}")
+    firecrawl_api_key = os.getenv("FIRECRAWL_API_KEY")
+    if not firecrawl_api_key:
+        logger.warning("FIRECRAWL_API_KEY not found in environment variables.")
+    app = Firecrawl(api_key=firecrawl_api_key)
 
-    logger.info(f"Successfully saved {len(scraped_data)} to {output_dir}.")
+    urls = links_curated if CURRENT_VERSION <= 2 else links
+    total = len(urls)
+    saved = 0
+    skipped = 0
+
+    for i, url in enumerate(urls, start=1):
+        if is_scraped(url):
+            logger.info(f"[{i}/{total}] SKIP (already scraped): {url}")
+            skipped += 1
+            continue
+
+        logger.info(f"[{i}/{total}] Scraping: {url}")
+        try:
+            result = app.scrape(
+                url,
+                formats=["markdown", "links"],
+                only_main_content=False,
+                timeout=120000,
+            )
+            text = clean_footnote(clean_headnote(result.markdown))
+            _save_page(url, text, output_dir)
+            mark_scraped(url)
+            saved += 1
+            logger.info(f"[{i}/{total}] OK — {len(text)} chars, {len(result.links)} links")
+            time.sleep(1)
+        except Exception as e:
+            logger.warning(f"[{i}/{total}] FAILED: {url} — {e}")
+
+    # Facebook (v4+) — treated as a single atomic scrape
+    if CURRENT_VERSION >= 4:
+        fb_key = "facebook:wrsminipw"
+        if is_scraped(fb_key):
+            logger.info("Facebook: SKIP (already scraped).")
+        else:
+            facebook_pages = scrape_facebook_page("wrsminipw", n_posts=30)
+            if facebook_pages:
+                for page in facebook_pages:
+                    _save_page(page.url, page.text, output_dir)
+                mark_scraped(fb_key)
+                saved += len(facebook_pages)
+                logger.info(f"Facebook: saved {len(facebook_pages)} posts.")
+            else:
+                logger.warning("Facebook scraping returned no posts — skipping.")
+
+    logger.info(f"Scraping done. Saved: {saved}, Skipped: {skipped}/{total}")
 
 
 if __name__ == "__main__":

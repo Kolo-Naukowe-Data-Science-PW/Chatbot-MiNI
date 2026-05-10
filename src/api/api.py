@@ -55,6 +55,8 @@ class QueryRequest(BaseModel):
     variant: str | None = None
     modelConfig: dict | None = None
     user_type: str | None = None
+    major: str | None = None
+    semester: int | None = None
 
 
 class FeedbackRequest(BaseModel):
@@ -196,6 +198,8 @@ def chat_endpoint(request: QueryRequest) -> dict[str, Any]:
         processing_query,
         text_only_chunks,
         user_type=request.user_type,
+        field_of_study=request.major,
+        semester=str(request.semester) if request.semester else None,
         conversation_history=conversation_history,
     )
 
@@ -205,7 +209,13 @@ def chat_endpoint(request: QueryRequest) -> dict[str, Any]:
         logger.info(f"Translating answer from PL to {lang}...")
         final_answer = translate_text(polish_answer, target_lang_code=lang)
 
-    sources = [chunk.get("source_url", "Unknown") for chunk in sorted_chunks[:5]]
+    seen: set[str] = set()
+    sources = []
+    for chunk in sorted_chunks:
+        url = chunk.get("source_url", "Unknown")
+        if url not in seen:
+            seen.add(url)
+            sources.append(url)
 
     return {"answer": final_answer, "sources": sources, "retrieval_query": retrieval_query}
 
@@ -240,7 +250,13 @@ def chat_stream_endpoint(request: QueryRequest):
 
     retrieval_query = rewrite_query(processing_query)
     sorted_chunks = get_top_k_chunks(retrieval_query)
-    sources = [chunk.get("source_url", "Unknown") for chunk in sorted_chunks[:5]]
+    seen: set[str] = set()
+    sources = []
+    for chunk in sorted_chunks:
+        url = chunk.get("source_url", "Unknown")
+        if url not in seen:
+            seen.add(url)
+            sources.append(url)
 
     if not sorted_chunks:
         polish_msg = "Przepraszam, nie znalazłem w bazie informacji na ten temat."
@@ -257,6 +273,8 @@ def chat_stream_endpoint(request: QueryRequest):
         processing_query,
         text_only_chunks,
         user_type=request.user_type,
+        field_of_study=request.major,
+        semester=str(request.semester) if request.semester else None,
         conversation_history=conversation_history,
     )
 

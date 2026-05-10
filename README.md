@@ -105,7 +105,9 @@ Chatbot-MiNI/
 │
 ├── .github/workflows/
 │   ├── deploy.yml                  # Manual deploy to self-hosted runner
-│   └── ingest.yml                  # Manual data ingestion trigger
+│   ├── scrape_and_ingest.yml       # Manual: run scraper then full ingest pipeline
+│   ├── ingest_only.yml             # Manual: run ingest only (skip scraping)
+│   └── tests.yml                   # Manual: run test suite (workflow_dispatch only)
 │
 ├── docker-compose.yml              # 5 services: scraper, ingest, api, frontend, tests
 ├── Dockerfile                      # Micromamba-based Python image
@@ -237,6 +239,6 @@ Hooks: **Black** (formatting), **Ruff** (linting), **isort** (import sorting).
 Deployment is triggered manually via GitHub Actions (`Actions → Deploy Chatbot MiNI → Run workflow`).
 The self-hosted runner runs on a faculty VM accessible only from the faculty network.
 
-**Never push deployment-breaking changes to `new_pipeline` without testing locally first.**
+**Never push deployment-breaking changes to `chatbot_v3` without testing locally first.**
 
-See [Ręczny deployment & ingest.docx] for step-by-step manual deployment instructions.
+See [DEPLOYMENT.md](DEPLOYMENT.md) for step-by-step manual deployment and ingestion instructions.

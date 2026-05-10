@@ -1,23 +1,17 @@
 name: Deploy Chatbot MiNI
 
-# odpalanie ręczne
 on:
   workflow_dispatch:
-
-# odpalanie automatyczne przy pushu na branch new_pipeline
-#on:
-#  push:
-#    branches: [ new_pipeline ]
 
 jobs:
   deploy:
     runs-on: self-hosted
     steps:
-        - name: Checkout code
-          uses: actions/checkout@v4
-        - name: Copy .env file
-          run: cp ~/.env.backup .env
-        - name: Stop old containers
-          run: docker compose down
-        - name: Start application
-          run: docker compose up -d --build
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Copy .env file
+        run: cp ~/.env.backup .env
+      - name: Stop old containers
+        run: docker compose down
+      - name: Start application
+        run: docker compose up -d --build

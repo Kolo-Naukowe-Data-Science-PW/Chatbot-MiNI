@@ -1,4 +1,7 @@
-name: Run Ingest
+name: Ingest Only
+
+# Use when PDFs or scraped_raw files are already present on the VM
+# and you only need to re-run fact extraction + embedding.
 
 on:
   workflow_dispatch:
@@ -11,7 +14,5 @@ jobs:
         uses: actions/checkout@v4
       - name: Copy .env file
         run: cp ~/.env.backup .env
-      - name: Run scraper
-        run: docker compose up --no-deps --build scraper
       - name: Run ingest
         run: docker compose up --no-deps --build ingest

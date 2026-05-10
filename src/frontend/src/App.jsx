@@ -554,6 +554,15 @@ if (ext === 'link') {
             </div>
           </div>
         )}
+        {!isUser && message.variantConfig && (
+          <div className="model-info">
+            {message.variantConfig.model?.split("/").pop() ?? "model"}
+            {" · "}temp: {message.variantConfig.temperature}
+            {message.variantConfig.styleInstruction && (
+              <> · <em>{message.variantConfig.styleInstruction}</em></>
+            )}
+          </div>
+        )}
       </div>
 
       {!isUser && message.canRate && (
@@ -1022,6 +1031,8 @@ export default function App() {
             query:`${modelConfig.styleInstruction}\n\nPytanie użytkownika: ${messageText}`,
             language: language.toLowerCase(),
             user_type: userType ?? null,
+            major: selectedMajor ?? null,
+            semester: selectedSemester ?? null,
             mode: currentVersion,
             variant: variantLabel,
             modelConfig
@@ -1067,6 +1078,8 @@ export default function App() {
             query: `${randomConfig.styleInstruction}\n\nPytanie użytkownika: ${messageText}`,
             language: language.toLowerCase(),
             user_type: userType ?? null,
+            major: selectedMajor ?? null,
+            semester: selectedSemester ?? null,
             mode: currentVersion,
             variant: "production",
             modelConfig: randomConfig

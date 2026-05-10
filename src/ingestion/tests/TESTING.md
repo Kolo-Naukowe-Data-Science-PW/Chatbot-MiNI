@@ -46,4 +46,4 @@ src/
 
 ## CI
 
-Tests run automatically on every push/PR to `new_pipeline` via `.github/workflows/tests.yml`.
+Tests do **not** run automatically. Trigger them manually: GitHub Actions → **Run Tests** → `workflow_dispatch`.

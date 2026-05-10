@@ -6,14 +6,25 @@ export default defineConfig({
   server: {
     host: "0.0.0.0",
     port: 8501,
-    allowedHosts: ["chatbotknds.mini.pw.edu.pl"],
     hmr: false,
     proxy: {
-  "/api": {
-    target: "http://api:8000",
-    changeOrigin: true,
-    rewrite: (path) => path.replace(/^\/api/, ""),
+      "/api": {
+        target: "http://localhost:8000",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ""),
+      },
+    },
   },
-},
+  preview: {
+    host: "0.0.0.0",
+    port: 8501,
+    allowedHosts: ["chatbotknds.mini.pw.edu.pl"],
+    proxy: {
+      "/api": {
+        target: "http://api:8000",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ""),
+      },
+    },
   },
 });
