@@ -5,6 +5,7 @@ channels:
 dependencies:
   - python=3.11
   - pip
+  - libstdcxx-ng
   - pytorch-cpu
   - torchvision
   - sentence-transformers>=3.0.1

@@ -13,5 +13,7 @@ jobs:
         run: cp ~/.env.backup .env
       - name: Stop old containers
         run: docker compose down
+      - name: Build image
+        run: docker compose build --no-cache
       - name: Start application
-        run: docker compose up -d --build
+        run: docker compose up -d
