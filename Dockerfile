@@ -10,6 +10,7 @@ COPY . /app
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONNOUSERSITE=1 \
-    PYTHONPATH=/app/src
+    PYTHONPATH=/app/src \
+    LD_LIBRARY_PATH=/opt/conda/envs/app/lib:$LD_LIBRARY_PATH
 
 CMD ["micromamba", "run", "-n", "app", "python", "-c", "print('image ready')"]
