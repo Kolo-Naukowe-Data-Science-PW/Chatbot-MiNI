@@ -12,87 +12,74 @@ const STREAM_API_URL = "/api/chat/stream";
 const FEEDBACK_API_URL = "/api/feedback";
 
 
-// Shared model pool for all variants
-const MODEL_POOL = [
-  // cheap
-  "meta-llama/llama-3.1-8b-instruct",
-  "google/gemini-2.5-flash",
-  "openai/gpt-4o-mini",
-  "deepseek/deepseek-chat-v3-0324",
-  "mistralai/mistral-small-3.2-24b-instruct",
-  // mid
-  "meta-llama/llama-3.1-70b-instruct",
-  "qwen/qwen-2.5-7b-instruct",
-  "microsoft/phi-4",
-];
-
-const VARIANT_MODEL_CONFIGS = (() => {
-  const pick = (items) => items[Math.floor(Math.random() * items.length)];
-  const float = (min, max, step = 0.1) =>
-    Number((min + Math.floor(Math.random() * ((max - min) / step + 1)) * step).toFixed(2));
-  const int = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
-
-  return {
-    A: {
-      model: pick(MODEL_POOL),
-      temperature: float(0.1, 0.3, 0.1),
-      top_p: float(0.2, 0.5, 0.1),
-      frequency_penalty: float(0, 0.2, 0.1),
-      presence_penalty: float(0, 0.2, 0.1),
-      max_tokens: int(150, 250),
-      styleInstruction: "Odpowiedz bardzo krótko i konkretnie. Bez owijania w bawełnę.",
-    },
-    B: {
-      model: pick(MODEL_POOL),
-      temperature: float(0.4, 0.6, 0.1),
-      top_p: float(0.5, 0.7, 0.1),
-      frequency_penalty: float(0.1, 0.3, 0.1),
-      presence_penalty: float(0.1, 0.3, 0.1),
-      max_tokens: int(150, 250),
-      styleInstruction: "Odpowiedz luźno, prosto i przyjaźnie.",
-    },
-    C: {
-      model: pick(MODEL_POOL),
-      temperature: float(0.6, 0.8, 0.1),
-      top_p: float(0.7, 0.9, 0.1),
-      frequency_penalty: float(0.2, 0.4, 0.1),
-      presence_penalty: float(0.2, 0.4, 0.1),
-      max_tokens: int(150, 250),
-      styleInstruction: "Odpowiedz formalnie, akademickim stylem.",
-    },
-    D: {
-      model: pick(MODEL_POOL),
-      temperature: float(0.8, 1.0, 0.1),
-      top_p: float(0.85, 1.0, 0.05),
-      frequency_penalty: float(0.3, 0.6, 0.1),
-      presence_penalty: float(0.3, 0.6, 0.1),
-      max_tokens: int(150, 250),
-      styleInstruction: "Odpowiedz kreatywnie i oryginalnie. Możesz użyć metafor i nieoczywistych skojarzeń.",
-    },
-  };
-})();
-
-// Returns one random variant config
-const pickRandomConfig = () => {
-  const configs = Object.values(VARIANT_MODEL_CONFIGS);
-  return { ...configs[Math.floor(Math.random() * configs.length)] };
+// Fallback used while /experiment-config is loading (mirrors .env defaults)
+const DEFAULT_EXPERIMENT_CONFIG = {
+  dim: "model",
+  baseline_model: "openai/gpt-4o-mini",
+  baseline_temp: 0.2,
+  persona_idx: 3,
+  baseline_persona: "Podaj wyczerpującą odpowiedź z detalami i przykładami.",
+  personas: [
+    "Odpowiedz bardzo krótko i konkretnie. Bez owijania w bawełnę.",
+    "Odpowiedz luzno, prosto i przyjaźnie.",
+    "Odpowiedz formalnie i akademicko, pełnymi zdaniami.",
+    "Podaj wyczerpującą odpowiedź z detalami i przykładami.",
+  ],
+  model_pool: [
+    // mid-tier
+    "google/gemini-2.5-flash",
+    "openai/gpt-4o-mini",
+    "deepseek/deepseek-chat-v3-0324",
+    "mistralai/mistral-small-3.2-24b-instruct",
+    "meta-llama/llama-3.1-70b-instruct",
+    "microsoft/phi-4",
+    // supermodels
+    "openai/gpt-5.5",
+    "anthropic/claude-opus-4.7",
+    "google/gemini-3.1-pro-preview-customtools",
+  ],
 };
 
-// Returns a specific pair by variant names, e.g. pickPair("C", "D")
-const pickPair = (variantA, variantB) => {
+const _pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+// Single config for production mode: random model, baseline temp and persona
+const buildSingleConfig = (cfg) => ({
+  model: _pick(cfg.model_pool),
+  temperature: cfg.baseline_temp,
+  max_tokens: 200,
+  styleInstruction: cfg.baseline_persona,
+});
+
+// Pair for test/testPro mode: vary ONLY the dimension set in EXPERIMENT_DIM
+const buildVariantPair = (cfg) => {
+  const { dim, baseline_model, baseline_temp, baseline_persona, personas, model_pool } = cfg;
+  const max_tokens = 200;
+
+  if (dim === "temperature") {
+    const LOW  = [0.0, 0.1, 0.2, 0.3];
+    const HIGH = [0.6, 0.7, 0.8, 0.9];
+    return [
+      { variant: "A", model: baseline_model, temperature: _pick(LOW),  max_tokens, styleInstruction: baseline_persona },
+      { variant: "B", model: baseline_model, temperature: _pick(HIGH), max_tokens, styleInstruction: baseline_persona },
+    ];
+  }
+
+  if (dim === "persona") {
+    const personaA = _pick(personas);
+    const personaB = _pick(personas.filter((p) => p !== personaA));
+    return [
+      { variant: "A", model: baseline_model, temperature: baseline_temp, max_tokens, styleInstruction: personaA },
+      { variant: "B", model: baseline_model, temperature: baseline_temp, max_tokens, styleInstruction: personaB },
+    ];
+  }
+
+  // default: "model"
+  const modelA = _pick(model_pool);
+  const modelB = _pick(model_pool.filter((m) => m !== modelA));
   return [
-    { variant: variantA, ...VARIANT_MODEL_CONFIGS[variantA] },
-    { variant: variantB, ...VARIANT_MODEL_CONFIGS[variantB] },
+    { variant: "A", model: modelA, temperature: baseline_temp, max_tokens, styleInstruction: baseline_persona },
+    { variant: "B", model: modelB, temperature: baseline_temp, max_tokens, styleInstruction: baseline_persona },
   ];
-};
-
-// Returns a random pair of DIFFERENT variant configs
-const pickRandomConfigPair = () => {
-  const keys = Object.keys(VARIANT_MODEL_CONFIGS);
-  const firstIndex = Math.floor(Math.random() * keys.length);
-  let secondIndex = Math.floor(Math.random() * (keys.length - 1));
-  if (secondIndex >= firstIndex) secondIndex += 1;
-  return pickPair(keys[firstIndex], keys[secondIndex]);
 };
 
 // ============ TRANSLATION ============
@@ -910,6 +897,14 @@ export default function App() {
   const [currentChatId, setCurrentChatId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [experimentConfig, setExperimentConfig] = useState(DEFAULT_EXPERIMENT_CONFIG);
+
+  useEffect(() => {
+    fetch("/api/experiment-config")
+      .then((r) => r.json())
+      .then((cfg) => setExperimentConfig(cfg))
+      .catch(() => {}); // silently keep the default on error
+  }, []);
 
   const handleNewChat = () => {
     const t = translations[language];
@@ -1055,7 +1050,7 @@ export default function App() {
       };
 
       if (currentVersion === "production") {
-        const randomConfig = pickRandomConfig();
+        const randomConfig = buildSingleConfig(experimentConfig);
         const botMessageId = Date.now() + 1;
 
         // Insert placeholder immediately so the user sees the bubble appear
@@ -1132,7 +1127,7 @@ export default function App() {
         }
       } else if (currentVersion === "test" || currentVersion === "testPro") {
         const pairId = Date.now();
-        const [configA, configB] = pickRandomConfigPair();
+        const [configA, configB] = buildVariantPair(experimentConfig);
         const [variantAResponse, variantBResponse] = await Promise.all([
           callChatApi(configA.variant, configA),
           callChatApi(configB.variant, configB)

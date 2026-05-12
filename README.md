@@ -58,7 +58,7 @@ flowchart TD
 Chatbot-MiNI/
 ├── src/
 │   ├── api/                        # FastAPI server + query pipeline
-│   │   ├── api.py                  # /chat and /feedback endpoints
+│   │   ├── api.py                  # /chat, /feedback, /experiment-config endpoints
 │   │   ├── main.py                 # OpenRouter LLM client
 │   │   ├── models.py               # Pydantic models (Message)
 │   │   ├── retrieval.py            # Hybrid Qdrant retrieval (dense+sparse RRF)
@@ -97,21 +97,24 @@ Chatbot-MiNI/
 │   ├── evaluation/                 # All evaluation and benchmarking
 │   │   ├── benchmark.py            # Main benchmark (Hit@k, MRR, MRRw, nDCG, MAP, P-R)
 │   │   ├── benchmark_v1.py         # Legacy simple benchmark
-│   │   ├── generate_golden_answers.py  # GPT-4o reference answers generator
+│   │   ├── generate_golden_answers.py  # Golden answers from 3 supermodels (GPT-5.5, Opus 4.7, Gemini 3.1)
 │   │   ├── weighted_feedback.py    # Weighted aggregation of user feedback by role
 │   │   ├── metrics.py              # BERTScore text metrics
 │   │   ├── prepare_data.py         # CSV utilities for evaluation data
 │   │   ├── eval_with_playwright.py # Playwright-based UI automation for answer collection
 │   │   ├── llm_judge/
-│   │   │   ├── judge.py            # LLM-as-a-judge (A/B, 1-5 scales)
-│   │   │   └── testpro_runner.py   # Batch evaluation runner
+│   │   │   ├── judge.py            # LLM-as-a-judge A/B (1-5 scales: usefulness/accuracy/conciseness)
+│   │   │   ├── testpro_runner.py   # Batch A/B runner — controlled by EXPERIMENT_DIM env var
+│   │   │   ├── golden_judge.py     # LLM-as-a-judge: chatbot answer vs golden answer
+│   │   │   └── golden_judge_runner.py  # Batch runner for golden judge
 │   │   ├── tests/
 │   │   │   └── evaluation_test.py  # BERTScore metrics tests
 │   │   └── data/
 │   │       ├── questions.csv           # Raw student survey questions
 │   │       ├── questions_cat.csv       # Questions with category labels
 │   │       ├── questions_filtered.csv  # Filtered eval set with gold URLs
-│   │       └── questions_with_links.csv # Full eval set with source links
+│   │       ├── questions_with_links.csv # Full eval set with source links
+│   │       └── golden_answers.csv      # Reference answers from 3 supermodels (generated)
 │   │
 │   ├── frontend/                   # React/Vite frontend
 │   │   ├── src/
@@ -178,7 +181,23 @@ FIRECRAWL_API_KEY=fc-...
 PIPELINE_VERSION=2
 MODEL_NAME=openai/gpt-4o-mini
 QDRANT_DIR=src/data/qdrant_db
+
+# A/B experiment dimension — what varies between variant A and B in Test/TestPro mode
+# Options: model | temperature | persona
+EXPERIMENT_DIM=model
+EXPERIMENT_MODEL=openai/gpt-4o-mini   # baseline model (used when dim=temperature or persona)
+EXPERIMENT_TEMP=0.2                   # baseline temperature (used when dim=model or persona)
+EXPERIMENT_PERSONA=3                  # baseline persona index 0-3 (used when dim=model or temperature)
 ```
+
+Dostępne persony (`EXPERIMENT_PERSONA`):
+
+| Indeks | Styl |
+|---|---|
+| 0 | Krótko i konkretnie |
+| 1 | Luzno i przyjaźnie |
+| 2 | Formalnie i akademicko |
+| 3 | Wyczerpująco z detalami |
 
 ### 3. Run the ingestion pipeline (builds the vector DB)
 
@@ -220,14 +239,164 @@ docker compose up --build
 ## Running Evaluation
 
 ```bash
-# Main benchmark (Hit@k, MRR, nDCG, MAP) — requires running API
+export PYTHONPATH=src  # Windows: $env:PYTHONPATH="src"
+
+# Main benchmark (Hit@k, MRR, nDCG, MAP) — requires running Qdrant
 python -m evaluation.benchmark
 
-# LLM-as-a-judge batch evaluation
+# Generate golden answers from 3 supermodels (no API/Qdrant needed)
+python -m evaluation.generate_golden_answers           # all questions
+python -m evaluation.generate_golden_answers --limit 10  # quick test
+python -m evaluation.generate_golden_answers --resume    # resume after interruption
+
+# A/B judge: compare two chatbot variants (controlled by EXPERIMENT_DIM in .env)
+# Requires running API
 python -m evaluation.llm_judge.testpro_runner \
-  --judge-model openai/gpt-4o \
+  --judge-model anthropic/claude-opus-4.7 \
+  --limit 50
+
+# Golden judge: compare chatbot answer vs supermodel reference
+# Requires running API + generated golden_answers.csv
+python -m evaluation.llm_judge.golden_judge_runner \
+  --judge-model anthropic/claude-opus-4.7 \
+  --golden-model opus \
   --limit 50
 ```
+
+Szczegóły wszystkich opcji: `src/evaluation/README.md`
+
+---
+
+## Evaluation Map — co i jak testujemy
+
+Pełna mapa wszystkich zaimplementowanych metod ewaluacji.
+
+### 1. Metryki retrieval (standardowe)
+
+**Pytanie:** Czy system dobrze wyszukuje istotne dokumenty?
+
+| Metryka | Opis | Plik |
+|---|---|---|
+| Hit@k | Czy gold URL trafił w top-k wynikach | `evaluation/benchmark.py` |
+| MRR@k | Na której pozycji (średnio) pojawia się gold URL | `evaluation/benchmark.py` |
+| **MRRw@k** | Jak MRR, ale z częściowym kredytem za parent/child URLe (0.5^depth) — **własna metryka** | `evaluation/benchmark.py` |
+| nDCG@k | Jakość rankingu z ważeniem po pozycji | `evaluation/benchmark.py` |
+| MAP@k | Średnia precyzja przez cały ranking | `evaluation/benchmark.py` |
+| Precision-Recall curves | Krzywe P-R dla różnych k | `evaluation/benchmark.py` |
+
+Uruchomienie: `python -m evaluation.benchmark` (wymaga Qdrant)
+
+---
+
+### 2. Porównanie modeli do ekstrakcji faktów
+
+**Pytanie:** Czy inny LLM użyty do ekstrakcji faktów podczas ingestion daje lepsze wyniki retrieval?
+
+| Co się zmienia | Jak zmierzyć | Gdzie |
+|---|---|---|
+| Model LLM w `extract_facts.py` | Reingest z nowym modelem → uruchom `benchmark.py` → porównaj metryki | `ingestion/extract_facts.py` + `evaluation/benchmark.py` |
+
+Zmień model przez `MODEL_NAME` w `.env` i uruchom pełny pipeline ingestion ponownie.
+
+---
+
+### 3. Porównanie modeli embeddingów
+
+**Pytanie:** Czy lepszy model embeddingów (np. BAAI/bge-m3 vs all-MiniLM-L6-v2) poprawia retrieval?
+
+| Co się zmienia | Jak zmierzyć | Gdzie |
+|---|---|---|
+| Klasa embeddera w `embedder.py` | Reingest z nowym modelem → uruchom `benchmark.py` → porównaj metryki | `ingestion/embedder.py` + `evaluation/benchmark.py` |
+
+---
+
+### 4. Porównanie odpowiedzi chatbota z odpowiedziami supermodeli (Golden Judge)
+
+**Pytanie:** Jak dobra jest odpowiedź chatbota (z RAG) względem tego, co powiedziałby frontier model?
+
+| Co oceniamy | Metryki | Plik |
+|---|---|---|
+| Chatbot (RAG) vs GPT-5.5 | usefulness, accuracy, completeness (1–5) + który lepszy + dlaczego | `evaluation/llm_judge/golden_judge_runner.py` |
+| Chatbot (RAG) vs Claude Opus 4.7 | j.w. | j.w. |
+| Chatbot (RAG) vs Gemini 3.1 Pro | j.w. | j.w. |
+
+Uwaga: golden answer może przyznawać brak kontekstu — prompt sędziego to uwzględnia i nie karze za uczciwą niepewność.
+
+Uruchomienie: `python -m evaluation.llm_judge.golden_judge_runner --judge-model anthropic/claude-opus-4.7 --golden-model opus`
+
+---
+
+### 5. Porównanie, który supermodel jak ocenia odpowiedzi chatbota
+
+**Pytanie:** Czy różne modele-sędziowie są ze sobą zgodne? Czy jeden jest bardziej surowy?
+
+| Sędzia | Co ocenia | Plik |
+|---|---|---|
+| GPT-5.5 jako sędzia | Chatbot A vs B (A/B judge) | `evaluation/llm_judge/testpro_runner.py` |
+| Claude Opus 4.7 jako sędzia | Chatbot A vs B (A/B judge) | j.w. |
+| Dowolny model jako sędzia | Chatbot vs golden (golden judge) | `evaluation/llm_judge/golden_judge_runner.py` |
+
+Uruchom kilka razy z różnym `--judge-model` i porównaj wyniki w CSV.
+
+---
+
+### 6. A/B testing przez użytkowników (Testowa / Testowa Pro)
+
+**Pytanie:** Który model / temperatura / persona generuje odpowiedzi preferowane przez użytkowników?
+
+Kontrolowane przez `EXPERIMENT_DIM` w `.env` — w każdym pytaniu losowany jest **tylko jeden** wymiar:
+
+| `EXPERIMENT_DIM` | Co się różni między A i B | Co jest stałe |
+|---|---|---|
+| `model` | Model LLM (losowane z 9-modelowego poola) | temperatura, persona |
+| `temperature` | Temperatura: niska (0.0–0.3) vs wysoka (0.6–0.9) | model, persona |
+| `persona` | Styl odpowiedzi (krótko / przyjaźnie / formalnie / wyczerpująco) | model, temperatura |
+
+Feedback zbierany przez:
+- **Testowa** — użytkownik wybiera lepszą odpowiedź (klik "Wybierz A/B")
+- **Testowa Pro** — użytkownik wybiera + ocenia osobno usefulness / accuracy / conciseness (1–5)
+- **Offline batch** — `testpro_runner.py` + LLM-as-a-judge bez udziału człowieka
+
+Wyniki lądują w `src/data/feedback/model_feedback.csv` i `llm_judge_feedback.csv`.
+
+Dodatkowe wymiary segmentacji feedbacku:
+- typ użytkownika (student I roku / starszy / magister / doktorant / admin)
+- język (PL / EN / UK)
+- kierunek studiów i semestr
+
+---
+
+### 7. Jakość odpowiedzi — metryki tekstowe
+
+**Pytanie:** Czy odpowiedź chatbota jest semantycznie zbliżona do odpowiedzi referencyjnej?
+
+| Metryka | Opis | Plik |
+|---|---|---|
+| BERTScore (F1) | Semantyczne podobieństwo chatbot answer vs golden answer | `evaluation/metrics.py` |
+| Cosine similarity | Podobieństwo embeddingów odpowiedzi | `evaluation/metrics.py` |
+
+---
+
+### 8. Ważona agregacja feedbacku od użytkowników
+
+**Pytanie:** Jak wygląda ocena chatbota po uwzględnieniu, że opinie różnych grup użytkowników mają różną wagę?
+
+| Co | Gdzie |
+|---|---|
+| Ważona agregacja ratingów po typie użytkownika | `evaluation/weighted_feedback.py` |
+
+---
+
+### Podsumowanie: co do czego jest potrzebne
+
+| Metoda | Wymaga Qdrant | Wymaga API | Wymaga golden_answers.csv |
+|---|---|---|---|
+| Metryki retrieval (`benchmark.py`) | ✓ | — | — |
+| Golden answers generation | — | — | — |
+| Golden judge | — | ✓ | ✓ |
+| A/B judge (testpro_runner) | — | ✓ | — |
+| A/B feedback od użytkowników | ✓ | ✓ | — |
+| BERTScore / cosine | — | — | ✓ |
 
 ---
 

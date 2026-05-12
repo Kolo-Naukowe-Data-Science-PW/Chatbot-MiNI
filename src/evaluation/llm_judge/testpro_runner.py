@@ -1,11 +1,26 @@
 """
 Batch runner: load evaluation questions from CSV, fetch two TestPro-style answers from ``/chat``,
 then score the pair with ``judge_pair`` and write results to CSV.
+
+Experiment dimension
+--------------------
+Set the ``EXPERIMENT_DIM`` environment variable to control what varies between variant A and B.
+Only ONE dimension changes at a time so results are comparable across runs.
+
+    EXPERIMENT_DIM=model        (default) — A and B get different models; params/persona fixed
+    EXPERIMENT_DIM=temperature  — A and B get different temperature ranges; model/persona fixed
+    EXPERIMENT_DIM=persona      — A and B get different style instructions; model/params fixed
+
+You can also pin the baseline values with:
+    EXPERIMENT_MODEL=openai/gpt-4o-mini   (used for temperature and persona experiments)
+    EXPERIMENT_TEMP=0.2                   (used for model and persona experiments)
+    EXPERIMENT_PERSONA=0                  (index 0-3 into PERSONAS list; used for model and temperature experiments)
 """
 
 import argparse
 import csv
 import json
+import os
 import random
 import sys
 from datetime import UTC, datetime
@@ -16,60 +31,112 @@ from urllib.request import Request, urlopen
 from src.evaluation.llm_judge.judge import JudgeResult, judge_pair
 
 MODEL_POOL = [
-    "meta-llama/llama-3.1-8b-instruct",
+    # mid-tier
     "google/gemini-2.5-flash",
     "openai/gpt-4o-mini",
     "deepseek/deepseek-chat-v3-0324",
     "mistralai/mistral-small-3.2-24b-instruct",
     "meta-llama/llama-3.1-70b-instruct",
-    "qwen/qwen-2.5-7b-instruct",
     "microsoft/phi-4",
+    # supermodels
+    "openai/gpt-5.5",
+    "anthropic/claude-opus-4.7",
+    "google/gemini-3.1-pro-preview-customtools",
 ]
+
+PERSONAS = [
+    "Odpowiedz bardzo krótko i konkretnie. Bez owijania w bawełnę.",
+    "Odpowiedz luzno, prosto i przyjaźnie.",
+    "Odpowiedz formalnie i akademicko, pełnymi zdaniami.",
+    "Podaj wyczerpującą odpowiedź z detalami i przykładami.",
+]
+
+# Valid values for EXPERIMENT_DIM
+_VALID_DIMS = {"model", "temperature", "persona"}
 
 
 def _pick_variant_configs(rng: random.Random) -> tuple[dict, dict]:
     """
-    Sample two ``modelConfig`` dicts (profiles A and B: model, sampling params, style instruction).
+    Build two ``modelConfig`` dicts (A and B) that differ on exactly ONE dimension.
+
+    The dimension is controlled by the ``EXPERIMENT_DIM`` environment variable:
+      - ``model``       — different models, same temperature and persona
+      - ``temperature`` — different temperature ranges, same model and persona
+      - ``persona``     — different style instructions, same model and temperature
+
     Args:
         rng: Seeded RNG for reproducible runs (see ``--seed``).
     Returns:
         ``(config_a, config_b)`` ready for the chat API.
     """
+    dim = os.getenv("EXPERIMENT_DIM", "model").lower()
+    if dim not in _VALID_DIMS:
+        raise ValueError(
+            f"EXPERIMENT_DIM='{dim}' is not valid. Choose from: {sorted(_VALID_DIMS)}"
+        )
 
-    def pick(items: list[str]) -> str:
-        """Return one random item from a non-empty list."""
-        return items[rng.randrange(len(items))]
+    baseline_model = os.getenv("EXPERIMENT_MODEL", "openai/gpt-4o-mini")
+    baseline_temp = float(os.getenv("EXPERIMENT_TEMP", "0.2"))
+    persona_idx = int(os.getenv("EXPERIMENT_PERSONA", "0"))
+    if not 0 <= persona_idx < len(PERSONAS):
+        raise ValueError(f"EXPERIMENT_PERSONA={persona_idx} out of range 0–{len(PERSONAS) - 1}")
+    baseline_persona = PERSONAS[persona_idx]
+    max_tokens = 200
 
-    def float_range(min_val: float, max_val: float, step: float = 0.1) -> float:
-        """Random float from ``min_val`` to ``max_val`` inclusive, stepped by ``step``."""
-        count = int(round((max_val - min_val) / step))
-        return round(min_val + rng.randint(0, count) * step, 2)
+    if dim == "model":
+        # Pick two *different* models from the pool
+        model_a = rng.choice(MODEL_POOL)
+        remaining = [m for m in MODEL_POOL if m != model_a]
+        model_b = rng.choice(remaining)
+        config_a = {
+            "model": model_a,
+            "temperature": baseline_temp,
+            "max_tokens": max_tokens,
+            "styleInstruction": baseline_persona,
+        }
+        config_b = {
+            "model": model_b,
+            "temperature": baseline_temp,
+            "max_tokens": max_tokens,
+            "styleInstruction": baseline_persona,
+        }
 
-    def int_range(min_val: int, max_val: int) -> int:
-        """Random integer in ``[min_val, max_val]`` inclusive."""
-        return rng.randint(min_val, max_val)
+    elif dim == "temperature":
+        # A = low temperature (focused), B = high temperature (creative)
+        temp_a = round(rng.choice([0.0, 0.1, 0.2, 0.3]), 1)
+        temp_b = round(rng.choice([0.6, 0.7, 0.8, 0.9]), 1)
+        config_a = {
+            "model": baseline_model,
+            "temperature": temp_a,
+            "max_tokens": max_tokens,
+            "styleInstruction": baseline_persona,
+        }
+        config_b = {
+            "model": baseline_model,
+            "temperature": temp_b,
+            "max_tokens": max_tokens,
+            "styleInstruction": baseline_persona,
+        }
 
-    variant_configs = {
-        "A": {
-            "model": pick(MODEL_POOL),
-            "temperature": float_range(0.1, 0.3, 0.1),
-            "top_p": float_range(0.2, 0.5, 0.1),
-            "frequency_penalty": float_range(0.0, 0.2, 0.1),
-            "presence_penalty": float_range(0.0, 0.2, 0.1),
-            "max_tokens": int_range(150, 250),
-            "styleInstruction": "Odpowiedz bardzo krotko i konkretnie. Bez owijania.",
-        },
-        "B": {
-            "model": pick(MODEL_POOL),
-            "temperature": float_range(0.4, 0.6, 0.1),
-            "top_p": float_range(0.5, 0.7, 0.1),
-            "frequency_penalty": float_range(0.1, 0.3, 0.1),
-            "presence_penalty": float_range(0.1, 0.3, 0.1),
-            "max_tokens": int_range(150, 250),
-            "styleInstruction": "Odpowiedz luzno, prosto i przyjaznie.",
-        },
-    }
-    return variant_configs["A"], variant_configs["B"]
+    else:  # persona
+        # Pick two *different* personas
+        persona_a = rng.choice(PERSONAS)
+        remaining_personas = [p for p in PERSONAS if p != persona_a]
+        persona_b = rng.choice(remaining_personas)
+        config_a = {
+            "model": baseline_model,
+            "temperature": baseline_temp,
+            "max_tokens": max_tokens,
+            "styleInstruction": persona_a,
+        }
+        config_b = {
+            "model": baseline_model,
+            "temperature": baseline_temp,
+            "max_tokens": max_tokens,
+            "styleInstruction": persona_b,
+        }
+
+    return config_a, config_b
 
 
 def _read_eval_rows(input_csv: str, limit: int | None = None) -> list[dict[str, str]]:

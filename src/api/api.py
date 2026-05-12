@@ -1,6 +1,7 @@
 import csv
 import json
 import logging
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 from threading import Lock
@@ -146,6 +147,49 @@ def append_feedback_row(payload: FeedbackRequest) -> None:
             if not file_exists:
                 writer.writeheader()
             writer.writerow(row)
+
+
+_EXPERIMENT_PERSONAS = [
+    "Odpowiedz bardzo krótko i konkretnie. Bez owijania w bawełnę.",
+    "Odpowiedz luzno, prosto i przyjaźnie.",
+    "Odpowiedz formalnie i akademicko, pełnymi zdaniami.",
+    "Podaj wyczerpującą odpowiedź z detalami i przykładami.",
+]
+
+_EXPERIMENT_MODEL_POOL = [
+    # mid-tier
+    "google/gemini-2.5-flash",
+    "openai/gpt-4o-mini",
+    "deepseek/deepseek-chat-v3-0324",
+    "mistralai/mistral-small-3.2-24b-instruct",
+    "meta-llama/llama-3.1-70b-instruct",
+    "microsoft/phi-4",
+    # supermodels
+    "openai/gpt-5.5",
+    "anthropic/claude-opus-4.7",
+    "google/gemini-3.1-pro-preview-customtools",
+]
+
+
+@app.get("/experiment-config")
+def experiment_config() -> dict:
+    """Return the current A/B experiment configuration from environment variables.
+
+    Used by the frontend to know which dimension to vary (model / temperature / persona)
+    and what the baseline values are for the fixed dimensions.
+    """
+    persona_idx = int(os.getenv("EXPERIMENT_PERSONA", "3"))
+    persona_idx = max(0, min(persona_idx, len(_EXPERIMENT_PERSONAS) - 1))
+    baseline_temp = float(os.getenv("EXPERIMENT_TEMP", "0.2"))
+    return {
+        "dim": os.getenv("EXPERIMENT_DIM", "model").lower(),
+        "baseline_model": os.getenv("EXPERIMENT_MODEL", "openai/gpt-4o-mini"),
+        "baseline_temp": baseline_temp,
+        "persona_idx": persona_idx,
+        "baseline_persona": _EXPERIMENT_PERSONAS[persona_idx],
+        "personas": _EXPERIMENT_PERSONAS,
+        "model_pool": _EXPERIMENT_MODEL_POOL,
+    }
 
 
 @app.post("/chat")
