@@ -694,6 +694,21 @@ input::placeholder {
   gap: 8px;
 }
 
+.sources-toggle {
+  margin-top: 6px;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 0;
+  text-align: left;
+}
+
+.sources-toggle:hover {
+  color: rgba(255, 255, 255, 0.85);
+}
+
 .file-attachment {
   display: flex;
   align-items: center;

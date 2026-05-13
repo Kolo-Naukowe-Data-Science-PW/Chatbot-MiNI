@@ -106,10 +106,9 @@ def build_messages(
     )
 
     try:
-        labeled = [f"[S{i}]\n{c}" for i, c in enumerate(context, start=1)]
-        joined_context = "\n\n---\n\n".join(labeled)
+        joined_context = "\n\n---\n\n".join(context)
 
-        logger.debug("Joined %d context chunks into system message.", len(labeled))
+        logger.debug("Joined %d context chunks into system message.", len(context))
 
         student_info = ""
         if field_of_study and semester:

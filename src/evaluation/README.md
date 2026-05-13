@@ -13,6 +13,9 @@ All evaluation scripts, metrics, and benchmark data for MiNIonek.
 | `eval_with_playwright.py` | Playwright macro: automates asking questions through the live chatbot UI and collecting answers to a TSV. Requires a running deployment. |
 | `llm_judge/judge.py` | LLM-as-a-judge: rates two chatbot answers on usefulness / accuracy / conciseness (1–5 scales) and picks the better variant. |
 | `llm_judge/testpro_runner.py` | Batch runner: reads eval CSV, calls `/chat` twice per question with random model configs, runs judge, writes results to CSV. |
+| `llm_judge/golden_judge.py` | Judge logic for comparing chatbot vs golden answer. Contains two prompt variants: asymmetric (golden without RAG) and symmetric (golden with full context). |
+| `llm_judge/golden_judge_runner.py` | Batch runner: chatbot vs golden answers generated **without** context (supermodel answering from parametric knowledge only). |
+| `llm_judge/context_golden_runner.py` | Batch runner: chatbot vs golden answers generated **with** full scraped context (e.g. via LM Studio / LM Notebooks). Symmetric judge rubric. |
 | `data/` | Evaluation datasets (see below). |
 
 ## Evaluation Data (`data/`)
@@ -23,6 +26,8 @@ All evaluation scripts, metrics, and benchmark data for MiNIonek.
 | `questions_cat.csv` | Questions with topic category labels |
 | `questions_filtered.csv` | Filtered eval set: `query` + gold `strona` URL — **used by benchmark.py** |
 | `questions_with_links.csv` | Full eval set with source links — used by testpro_runner |
+| `golden_answers.csv` | Reference answers from 3 supermodels (GPT, Opus, Gemini) generated **without** RAG context — used by `golden_judge_runner.py` |
+| `context_golden_answers.csv` | Reference answers generated **with** full scraped text (e.g. LM Studio / LM Notebooks) — used by `context_golden_runner.py`. Format: `query, golden_answer[, gold_url, skip_reason]` |
 | `test.csv` | Small fixture for unit tests |
 
 ## Running the main benchmark
@@ -182,6 +187,57 @@ Output: `src/data/feedback/golden_judge_results.csv`
 | `golden_weaknesses` | Jedno zdanie o słabościach odpowiedzi supermodelu |
 
 **Ważna asymetria w promptcie sędziego**: golden answer może mówić *„nie mam dostępu do aktualnego planu, ale generalnie..."* — to jest poprawne zachowanie modelu bez RAG i NIE jest karane. Sędzia ocenia chatbota za to, czy dobrze wykorzystał swój kontekst RAG.
+
+---
+
+## LLM-as-a-judge vs context-aware golden answers
+
+Porównuje odpowiedź chatbota z odpowiedzią supermodelu, który **miał dostęp do zescrapowanego tekstu**
+(np. wygenerowaną przez LM Studio / LM Notebooks z załączonymi dokumentami).
+Sędzia używa symetrycznego rubryku — obie odpowiedzi były w równych warunkach informacyjnych.
+
+Przygotuj CSV z kolumnami `query, golden_answer` (opcjonalnie: `gold_url, skip_reason`):
+zapisz go jako `src/evaluation/data/context_golden_answers.csv`.
+
+```bash
+export PYTHONPATH=src
+
+# Pełny przebieg
+python -m evaluation.llm_judge.context_golden_runner \
+  --judge-model anthropic/claude-opus-4.7
+
+# Limit do 30 pytań, wznów po przerwaniu
+python -m evaluation.llm_judge.context_golden_runner \
+  --judge-model openai/gpt-5.5 \
+  --limit 30 --resume
+
+# Inny plik z golden answers
+python -m evaluation.llm_judge.context_golden_runner \
+  --golden-csv src/evaluation/data/moje_golden.csv \
+  --judge-model anthropic/claude-opus-4.7
+```
+
+Output: `src/data/feedback/context_golden_results.csv`
+
+| Kolumna | Opis |
+|---|---|
+| `chatbot_answer` | Odpowiedź naszego chatbota (z RAG) |
+| `golden_answer` | Odpowiedź supermodelu (z pełnym kontekstem) |
+| `chatbot_*/golden_*` | Oceny 1–5: usefulness, accuracy, completeness |
+| `better` | `chatbot` lub `golden` — która odpowiedź lepsza |
+
+**Różnica względem `golden_judge_runner.py`**: tamten runner stosuje asymetryczny rubryczny (golden model mógł otwarcie przyznać brak dostępu do danych) — ten używa symetrycznej oceny, bo obie strony miały ten sam kontekst wiedzy.
+
+---
+
+## Retrieval pipeline: re-ranking
+
+Od wersji `chatbot_v3` retrieval używa dwuetapowego podejścia:
+
+1. **Hybrid search (RRF)** — Qdrant pobiera `top_k * 2` kandydatów łącząc dense (sentence-transformers) i sparse (BM25) za pomocą Reciprocal Rank Fusion.
+2. **Cross-encoder re-ranking** — `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1` (multilingual) punktuje każdą parę `(query, chunk)` i zwraca `top_k` najlepszych wyników.
+
+Domyślnie: `top_k = 30` (60 kandydatów do re-rankingu).
 
 ---
 

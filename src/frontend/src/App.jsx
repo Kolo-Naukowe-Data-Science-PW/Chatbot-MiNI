@@ -46,14 +46,14 @@ const _pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 const buildSingleConfig = (cfg) => ({
   model: _pick(cfg.model_pool),
   temperature: cfg.baseline_temp,
-  max_tokens: 200,
+  max_tokens: 1024,
   styleInstruction: cfg.baseline_persona,
 });
 
 // Pair for test/testPro mode: vary ONLY the dimension set in EXPERIMENT_DIM
 const buildVariantPair = (cfg) => {
   const { dim, baseline_model, baseline_temp, baseline_persona, personas, model_pool } = cfg;
-  const max_tokens = 200;
+  const max_tokens = 1024;
 
   if (dim === "temperature") {
     const LOW  = [0.0, 0.1, 0.2, 0.3];
@@ -397,6 +397,8 @@ function Card({ title, version, language, onClick }) {
 // ============ MESSAGE COMPONENT ============
 function Message({ message, version, language, onFeedbackChange, isDisabled })  {
   const t = translations[language];
+  const [showAllSources, setShowAllSources] = useState(false);
+  const SOURCES_PREVIEW = 3;
 
   const isUser = message.type === 'user';
 
@@ -522,7 +524,7 @@ if (ext === 'link') {
           <div className="message-sources">
             <div className="sources-title">{t.sources}:</div>
             <div className="sources-files">
-              {message.sources.map((source, index) => (
+              {(showAllSources ? message.sources : message.sources.slice(0, SOURCES_PREVIEW)).map((source, index) => (
                 <button
                   key={index}
                   className="file-attachment"
@@ -539,6 +541,16 @@ if (ext === 'link') {
                 </button>
               ))}
             </div>
+            {message.sources.length > SOURCES_PREVIEW && (
+              <button
+                className="sources-toggle"
+                onClick={() => setShowAllSources((v) => !v)}
+              >
+                {showAllSources
+                  ? "Zwiń źródła"
+                  : `Pokaż więcej (${message.sources.length - SOURCES_PREVIEW})`}
+              </button>
+            )}
           </div>
         )}
         {!isUser && message.variantConfig && (
@@ -1044,8 +1056,8 @@ export default function App() {
         const urlRegex = /https?:\/\/[^\s)\]}>,"']+/g;
         const urlsFromAnswer = answer.match(urlRegex) || [];
         const sources = data.sources
-          ? Array.from(new Set([...data.sources, ...urlsFromAnswer])).slice(0, 5)
-          : Array.from(new Set(urlsFromAnswer)).slice(0, 5);
+          ? Array.from(new Set([...data.sources, ...urlsFromAnswer]))
+          : Array.from(new Set(urlsFromAnswer));
         return { answer, sources };
       };
 

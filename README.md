@@ -15,8 +15,9 @@ flowchart TD
 
     subgraph API flow
         API --> Trans["Translator\n(query → PL)"]
-        Trans --> Retr["Hybrid Retrieval\nQdrant RRF\n(dense + sparse)"]
-        Retr --> Prompt["Prompt Builder\n(system + FAQ + context)"]
+        Trans --> Retr["Hybrid Retrieval\nQdrant RRF\n(dense + sparse)\n60 candidates"]
+        Retr --> Rerank["Cross-encoder Re-ranking\n(mmarco-mMiniLMv2)\ntop 30"]
+        Rerank --> Prompt["Prompt Builder\n(system + FAQ + context)"]
         Prompt --> LLM["LLM via OpenRouter\n(GPT-4o-mini / Gemini 2.5 Flash / ...)"]
         LLM --> TransBack["Translator\n(answer → user lang)"]
     end
@@ -38,10 +39,11 @@ flowchart TD
 **Data flow (query):**
 1. User query → Frontend
 2. API translates non-Polish queries to Polish
-3. Hybrid retrieval: dense (sentence-transformers) + sparse (SPLADE) → RRF fusion in Qdrant
-4. Top-K facts passed to prompt builder alongside conversation history and static FAQ
-5. LLM generates a Polish answer via OpenRouter
-6. Answer translated back to user's language if needed
+3. Hybrid retrieval: dense (sentence-transformers) + sparse (BM25) → RRF fusion in Qdrant → 60 candidates
+4. Cross-encoder re-ranking (`mmarco-mMiniLMv2`) selects top 30 facts
+5. Top-30 facts passed to prompt builder alongside conversation history and static FAQ
+6. LLM generates a Polish answer via OpenRouter
+7. Answer translated back to user's language if needed
 7. Response + source URLs returned to frontend
 
 **Data flow (ingestion):**
@@ -61,7 +63,7 @@ Chatbot-MiNI/
 │   │   ├── api.py                  # /chat, /feedback, /experiment-config endpoints
 │   │   ├── main.py                 # OpenRouter LLM client
 │   │   ├── models.py               # Pydantic models (Message)
-│   │   ├── retrieval.py            # Hybrid Qdrant retrieval (dense+sparse RRF)
+│   │   ├── retrieval.py            # Hybrid Qdrant retrieval (dense+sparse RRF) + cross-encoder re-ranking
 │   │   ├── prompt_builder.py       # LLM prompt construction + per-role hints
 │   │   ├── query_rewriter.py       # LLM-based query rewriting before retrieval
 │   │   ├── translator.py           # Multi-language translation (PL/EN/UA)
@@ -105,8 +107,9 @@ Chatbot-MiNI/
 │   │   ├── llm_judge/
 │   │   │   ├── judge.py            # LLM-as-a-judge A/B (1-5 scales: usefulness/accuracy/conciseness)
 │   │   │   ├── testpro_runner.py   # Batch A/B runner — controlled by EXPERIMENT_DIM env var
-│   │   │   ├── golden_judge.py     # LLM-as-a-judge: chatbot answer vs golden answer
-│   │   │   └── golden_judge_runner.py  # Batch runner for golden judge
+│   │   │   ├── golden_judge.py     # LLM-as-a-judge: chatbot vs golden (asymmetric + symmetric prompts)
+│   │   │   ├── golden_judge_runner.py  # Batch runner: chatbot vs golden answers WITHOUT context
+│   │   │   └── context_golden_runner.py  # Batch runner: chatbot vs golden answers WITH full context
 │   │   ├── tests/
 │   │   │   └── evaluation_test.py  # BERTScore metrics tests
 │   │   └── data/
@@ -114,7 +117,8 @@ Chatbot-MiNI/
 │   │       ├── questions_cat.csv       # Questions with category labels
 │   │       ├── questions_filtered.csv  # Filtered eval set with gold URLs
 │   │       ├── questions_with_links.csv # Full eval set with source links
-│   │       └── golden_answers.csv      # Reference answers from 3 supermodels (generated)
+│   │       ├── golden_answers.csv      # Reference answers from 3 supermodels (no context)
+│   │       └── context_golden_answers.csv  # Reference answers from supermodel WITH full context (LM Notebooks)
 │   │
 │   ├── frontend/                   # React/Vite frontend
 │   │   ├── src/
@@ -255,11 +259,17 @@ python -m evaluation.llm_judge.testpro_runner \
   --judge-model anthropic/claude-opus-4.7 \
   --limit 50
 
-# Golden judge: compare chatbot answer vs supermodel reference
+# Golden judge: compare chatbot answer vs supermodel reference (no context)
 # Requires running API + generated golden_answers.csv
 python -m evaluation.llm_judge.golden_judge_runner \
   --judge-model anthropic/claude-opus-4.7 \
   --golden-model opus \
+  --limit 50
+
+# Context golden judge: compare chatbot vs supermodel WITH full context (LM Notebooks)
+# Requires running API + context_golden_answers.csv
+python -m evaluation.llm_judge.context_golden_runner \
+  --judge-model anthropic/claude-opus-4.7 \
   --limit 50
 ```
 
@@ -310,9 +320,9 @@ Zmień model przez `MODEL_NAME` w `.env` i uruchom pełny pipeline ingestion pon
 
 ---
 
-### 4. Porównanie odpowiedzi chatbota z odpowiedziami supermodeli (Golden Judge)
+### 4a. Golden Judge — chatbot vs supermodel BEZ kontekstu
 
-**Pytanie:** Jak dobra jest odpowiedź chatbota (z RAG) względem tego, co powiedziałby frontier model?
+**Pytanie:** Jak dobra jest odpowiedź chatbota (z RAG) względem tego, co powiedziałby frontier model z samej wiedzy parametrycznej?
 
 | Co oceniamy | Metryki | Plik |
 |---|---|---|
@@ -320,9 +330,25 @@ Zmień model przez `MODEL_NAME` w `.env` i uruchom pełny pipeline ingestion pon
 | Chatbot (RAG) vs Claude Opus 4.7 | j.w. | j.w. |
 | Chatbot (RAG) vs Gemini 3.1 Pro | j.w. | j.w. |
 
-Uwaga: golden answer może przyznawać brak kontekstu — prompt sędziego to uwzględnia i nie karze za uczciwą niepewność.
+Uwaga: golden answer może przyznawać brak kontekstu — prompt sędziego uwzględnia asymetrię i nie karze za uczciwą niepewność.
 
 Uruchomienie: `python -m evaluation.llm_judge.golden_judge_runner --judge-model anthropic/claude-opus-4.7 --golden-model opus`
+
+---
+
+### 4b. Context Golden Judge — chatbot vs supermodel Z pełnym kontekstem
+
+**Pytanie:** Jak dobra jest odpowiedź chatbota (z RAG) względem odpowiedzi supermodelu, który miał dostęp do tych samych danych (zescrapowany tekst w LM Notebooks)?
+
+| Co oceniamy | Metryki | Plik |
+|---|---|---|
+| Chatbot (RAG) vs supermodel z pełnym tekstem | usefulness, accuracy, completeness (1–5) + który lepszy | `evaluation/llm_judge/context_golden_runner.py` |
+
+Rubryka symetryczna — obie strony miały dostęp do wiedzy, nie ma taryfy ulgowej za brak kontekstu.
+
+Wejście: `src/evaluation/data/context_golden_answers.csv` z kolumnami `query, golden_answer`.
+
+Uruchomienie: `python -m evaluation.llm_judge.context_golden_runner --judge-model anthropic/claude-opus-4.7`
 
 ---
 
@@ -389,11 +415,12 @@ Dodatkowe wymiary segmentacji feedbacku:
 
 ### Podsumowanie: co do czego jest potrzebne
 
-| Metoda | Wymaga Qdrant | Wymaga API | Wymaga golden_answers.csv |
+| Metoda | Wymaga Qdrant | Wymaga API | Wymaga golden CSV |
 |---|---|---|---|
 | Metryki retrieval (`benchmark.py`) | ✓ | — | — |
 | Golden answers generation | — | — | — |
-| Golden judge | — | ✓ | ✓ |
+| Golden judge (bez kontekstu) | — | ✓ | `golden_answers.csv` |
+| Context golden judge (z kontekstem) | — | ✓ | `context_golden_answers.csv` |
 | A/B judge (testpro_runner) | — | ✓ | — |
 | A/B feedback od użytkowników | ✓ | ✓ | — |
 | BERTScore / cosine | — | — | ✓ |

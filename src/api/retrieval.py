@@ -35,7 +35,7 @@ def _get_sparse_vector(query: str) -> SparseVector:
     )
 
 
-def get_top_k_chunks(query: str, top_k: int = 15) -> list[dict[str, Any]]:
+def get_top_k_chunks(query: str, top_k: int = 30) -> list[dict[str, Any]]:
     logger.info(
         "Starting hybrid retrieval for top %d chunks. Query: '%s'", top_k, query
     )
