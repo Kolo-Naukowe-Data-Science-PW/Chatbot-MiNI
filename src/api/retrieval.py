@@ -10,6 +10,7 @@ from qdrant_client.models import (
     Prefetch,
     SparseVector,
 )
+from sentence_transformers import CrossEncoder
 
 from src.ingestion.embedder import Embedder
 from src.ingestion.vector_db import COLLECTION_NAME, load_vector_db
@@ -22,7 +23,8 @@ DATABASE_PATH = os.environ.get("QDRANT_DIR", get_data_dir("qdrant_db"))
 logger.info("Loading Embedder model for retrieval...")
 embedder = Embedder()
 sparse_model = SparseTextEmbedding(model_name="Qdrant/bm25")
-logger.info("Embedder loaded.")
+reranker = CrossEncoder("cross-encoder/mmarco-mMiniLMv2-L12-H384-v1")
+logger.info("Embedder and reranker loaded.")
 
 
 def _get_sparse_vector(query: str) -> SparseVector:
@@ -33,7 +35,7 @@ def _get_sparse_vector(query: str) -> SparseVector:
     )
 
 
-def get_top_k_chunks(query: str, top_k: int = 5) -> list[dict[str, Any]]:
+def get_top_k_chunks(query: str, top_k: int = 15) -> list[dict[str, Any]]:
     logger.info(
         "Starting hybrid retrieval for top %d chunks. Query: '%s'", top_k, query
     )
@@ -44,26 +46,28 @@ def get_top_k_chunks(query: str, top_k: int = 5) -> list[dict[str, Any]]:
         dense_vector = embedder.generate_embeddings([query])[0]
         sparse_vector = _get_sparse_vector(query)
 
+        # Fetch twice as many candidates for re-ranking
+        candidates = top_k * 2
         results = client.query_points(
             collection_name=COLLECTION_NAME,
             prefetch=[
                 Prefetch(
                     query=dense_vector,
                     using="dense",
-                    limit=top_k * 3,
+                    limit=candidates * 3,
                 ),
                 Prefetch(
                     query=sparse_vector,
                     using="sparse",
-                    limit=top_k * 3,
+                    limit=candidates * 3,
                 ),
             ],
             query=FusionQuery(fusion=Fusion.RRF),
-            limit=top_k,
+            limit=candidates,
             with_payload=True,
         )
 
-        structured_results = [
+        candidates_list = [
             {
                 "text_chunk": point.payload.get("text", ""),
                 "source_url": point.payload.get("url", "Unknown Source"),
@@ -71,7 +75,22 @@ def get_top_k_chunks(query: str, top_k: int = 5) -> list[dict[str, Any]]:
             for point in results.points
         ]
 
-        logger.info("Successfully retrieved %d results.", len(structured_results))
+        if not candidates_list:
+            return []
+
+        # Re-rank with cross-encoder
+        pairs = [(query, c["text_chunk"]) for c in candidates_list]
+        scores = reranker.predict(pairs)
+        ranked = sorted(
+            zip(scores, candidates_list), key=lambda x: x[0], reverse=True
+        )
+        structured_results = [item for _, item in ranked[:top_k]]
+
+        logger.info(
+            "Retrieved %d candidates, re-ranked to top %d.",
+            len(candidates_list),
+            len(structured_results),
+        )
         return structured_results
 
     except Exception as e:

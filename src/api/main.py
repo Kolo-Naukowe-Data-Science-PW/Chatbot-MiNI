@@ -59,7 +59,7 @@ def query_llm_stream(
     config = model_config or {}
     chosen_model = config.get("model") or random.choice(AVAILABLE_MODELS)
     temperature = config.get("temperature", 0.0)
-    max_tokens = config.get("max_tokens", 500)
+    max_tokens = config.get("max_tokens", 1024)
     top_p = config.get("top_p", 1.0)
     frequency_penalty = config.get("frequency_penalty", 0.0)
     presence_penalty = config.get("presence_penalty", 0.0)
@@ -103,7 +103,7 @@ def query_llm(messages: list[dict[str, str]], model_config: dict | None = None) 
         chosen_model = random.choice(AVAILABLE_MODELS)
 
     temperature = config.get("temperature", 0.0)
-    max_tokens = config.get("max_tokens", 500)
+    max_tokens = config.get("max_tokens", 1024)
     top_p = config.get("top_p", 1.0)
     frequency_penalty = config.get("frequency_penalty", 0.0)
     presence_penalty = config.get("presence_penalty", 0.0)
