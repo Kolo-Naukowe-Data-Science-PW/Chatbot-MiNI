@@ -1,6 +1,3 @@
-from bert_score import score
-
-
 class Metrics:
     """
     The `Metrics` class contains methods for calculating perplexity and BERT score for a given set of candidate and reference texts.
@@ -26,4 +23,14 @@ class Metrics:
         :return: The `bert_score` method is returning the BERTScore between the candidates and
         references using the Polish language model with verbose output enabled.
         """
-        return score(self.candidates, self.references, lang="pl", verbose=True)
+        # try:
+        #     from bert_score import score
+        # except ImportError as exc:
+        #     raise ImportError(
+        #         "bert_score is required to calculate BERTScore. "
+        #         "Install it with `pip install bert-score`."
+        #     ) from exc
+
+        # return score(self.candidates, self.references, lang="pl", verbose=True)
+        # to add
+        pass
