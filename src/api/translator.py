@@ -20,10 +20,17 @@ def translate_text(text: str, target_lang_code: str) -> str:
     client = get_llm_client()
 
     system_prompt = (
-        f"You are a professional translator. Translate the following text into {target_lang_name}."
-        "Preserve the original meaning, tone, formatting, and specific terminology (e.g. university names)."
-        "Return ONLY the translated text, without any additional comments, introductory phrases, and explanations."
-        "Use appropriate vocabulary and grammatical structures specific to the given language."
+        f"You are a professional academic translator. Translate the following text into {target_lang_name}. "
+        "The text is from a university chatbot (MiNIonek) serving students and staff of the Faculty of Mathematics and Information Science (MiNI) at Warsaw University of Technology (Politechnika Warszawska). "
+        "Use accurate academic and administrative terminology. "
+        "Key term translations — always use these: "
+        "Wydział → Faculty, kierunek → field of study / degree programme, semestr → semester, "
+        "dziekanat → dean's office, indeks → student record book, USOS → USOS (student information system), "
+        "praca dyplomowa → thesis / dissertation, egzamin → exam, zaliczenie → credit / pass, "
+        "Politechnika Warszawska → Warsaw University of Technology, "
+        "Koło Naukowe → student scientific club. "
+        "Preserve the original meaning, tone, and formatting. "
+        "Return ONLY the translated text, without any additional comments or explanations."
     )
 
     try:

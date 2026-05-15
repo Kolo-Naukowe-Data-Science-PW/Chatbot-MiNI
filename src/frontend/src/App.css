@@ -274,11 +274,11 @@ h1 {
 }
 
 .send-btn {
-  background: rgba(230, 51, 18, 0.1);
+  background: rgba(78, 205, 196, 0.1);
 }
 
 .send-btn:hover {
-  background: rgba(230, 51, 18, 0.2);
+  background: rgba(78, 205, 196, 0.2);
 }
 
 input {
@@ -1048,4 +1048,58 @@ input::placeholder {
   cursor: not-allowed;
   pointer-events: none;
 }
-/* pusty */
+/* ============ ERROR REPORT FORM ============ */
+.error-report-form {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+  max-width: 380px;
+}
+
+.error-report-textarea {
+  width: 100%;
+  padding: 8px 10px;
+  background: rgba(44, 52, 64, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: white;
+  font-size: 13px;
+  resize: none;
+  outline: none;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.error-report-textarea::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.error-report-submit {
+  align-self: flex-start;
+  padding: 4px 12px;
+  background: rgba(44, 52, 64, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  color: #C0D1C8;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.error-report-submit:hover {
+  background: rgba(44, 52, 64, 0.9);
+}
+
+.error-report-submit:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.error-sent-msg {
+  font-size: 12px;
+  color: #C0D1C8;
+  opacity: 0.7;
+  padding: 4px 0;
+}
