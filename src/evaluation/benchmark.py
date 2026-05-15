@@ -1,20 +1,31 @@
+import argparse
 import csv
+import json
 import logging
 import sys
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 from collections import Counter
 from dataclasses import dataclass
+from datetime import datetime
 from math import log2
 from pathlib import Path
 from statistics import mean
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit, urlunsplit
+from urllib.request import Request, urlopen
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.api.retrieval import get_top_k_chunks
+
+def _get_top_k_chunks(query: str, top_k: int) -> list:
+    """Lazy proxy — loads the retrieval module (and ML models) only on first call."""
+    from src.api.retrieval import get_top_k_chunks  # noqa: PLC0415
+    global _get_top_k_chunks  # replace self with the real function after first load
+    _get_top_k_chunks = lambda q, top_k: get_top_k_chunks(q, top_k=top_k)  # noqa: E731
+    return get_top_k_chunks(query, top_k=top_k)
 
 #logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICAL)
 
@@ -241,7 +252,7 @@ def mrr_weighted(
     """
     scores = []
     for row in gold:
-        retrieved_chunks = get_top_k_chunks(row.query, top_k=k)
+        retrieved_chunks = _get_top_k_chunks(row.query, top_k=k)
         urls = unique_preserve_order([
             normalize_url(c.get("source_url", ""))
             for c in retrieved_chunks
@@ -481,7 +492,7 @@ def evaluate(
     total_rel = 1
 
     for index, row in enumerate(gold):
-        retrieved_chunks = get_top_k_chunks(row.query, top_k=k)
+        retrieved_chunks = _get_top_k_chunks(row.query, top_k=k)
         raw_urls = [
             normalize_url(c.get("source_url", ""))
             for c in retrieved_chunks
@@ -661,37 +672,250 @@ def plot_metrics_summary(
     print(f"Saved metrics summary plot -> {output_path}")
 
 
+# ── Filtered gold loader (wymagany kontekst = 0) ─────────────────────────────
+
+def load_gold_filtered(path: str) -> list[EvalRow]:
+    """
+    Load from questions_with_links.csv, keeping only rows where
+    "wymagany kontekst" == "0" (exact match after stripping whitespace).
+
+    These are the only questions that have a reliable gold URL — other
+    categories (1, 2, 3, 0*, 0**, ?) either require personal context or
+    lack a definitive source link.
+    """
+    rows: list[EvalRow] = []
+    with open(path, encoding="utf-8-sig", newline="") as f:
+        reader = csv.DictReader(f)
+        for r in reader:
+            norm = {
+                (k or "").strip().lower(): (v or "").strip()
+                for k, v in r.items()
+                if k
+            }
+            if norm.get("wymagany kontekst") != "0":
+                continue
+            query = (
+                norm.get("pytanie")
+                or norm.get("query")
+                or norm.get("question", "")
+            )
+            raw_url = (
+                norm.get("strona")
+                or norm.get("relevant_urls")
+                or norm.get("url")
+                or norm.get("link", "")
+            )
+            target_url = normalize_url(raw_url.split("|")[0])
+            if not query or not target_url:
+                continue
+            rows.append(EvalRow(query=query, target_url=target_url))
+    return rows
+
+
+# ── Chatbot API helper ────────────────────────────────────────────────────────
+
+def _call_chat_api(api_url: str, query: str, timeout: int = 60) -> tuple[str, list[str]]:
+    """POST query to /chat and return (answer_text, source_urls)."""
+    data = json.dumps({"query": query, "language": "pl"}).encode("utf-8")
+    req = Request(
+        api_url, data=data, method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urlopen(req, timeout=timeout) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+        return (body.get("answer") or "").strip(), body.get("sources") or []
+    except (HTTPError, URLError) as exc:
+        raise RuntimeError(f"Chat API error: {exc}") from exc
+
+
+# ── CSV-based evaluation ──────────────────────────────────────────────────────
+
+def evaluate_to_csv(
+    gold: list[EvalRow],
+    ks: list[int],
+    output_dir: Path,
+    api_url: str | None = None,
+    timeout: int = 60,
+) -> None:
+    """
+    Evaluate the chatbot on gold and write two output files:
+      - eval_per_query_<timestamp>.csv  — one row per query with all metrics
+      - eval_summary_<timestamp>.csv    — single-row averages (also as .json)
+
+    Columns per query:
+      query | chatbot_answer | chatbot_links (;-separated) | gold_link |
+      hit@k | mrr@k | mrrw@k | recall@k | precision@k | f1@k | ndcg@k |
+      map@k | r_prec  (for every k in ks; r_prec is k-independent)
+
+    If api_url is given, calls /chat to obtain the chatbot answer and links.
+    Otherwise calls the retrieval module directly at max(ks) (no answer text).
+    """
+    max_k = max(ks)
+    total_rel = 1
+    per_query_rows: list[dict] = []
+    accum: dict[str, list[float]] = {}
+
+    for idx, row in enumerate(gold):
+        if api_url:
+            try:
+                answer, raw_sources = _call_chat_api(api_url, row.query, timeout)
+            except RuntimeError as exc:
+                print(f"  WARNING [{idx + 1}]: {exc}")
+                answer, raw_sources = "", []
+        else:
+            answer = ""
+            chunks = _get_top_k_chunks(row.query, top_k=max_k)
+            raw_sources = [c.get("source_url", "") for c in chunks]
+
+        sources = unique_preserve_order(
+            [normalize_url(u) for u in raw_sources if u]
+        )
+        rel_scores = [hierarchical_relevance(u, row.target_url) for u in sources]
+
+        csv_row: dict = {
+            "query": row.query,
+            "chatbot_answer": answer,
+            "chatbot_links": ";".join(sources),
+            "gold_link": row.target_url,
+        }
+
+        for k in ks:
+            metrics_k = {
+                f"hit@{k}":       hit_at_k(rel_scores, k),
+                f"mrr@{k}":       mrr_at_k(rel_scores, k),
+                f"mrrw@{k}":      mrr_weighted_single(sources[:k], row.target_url),
+                f"recall@{k}":    recall_at_k(rel_scores, k, total_rel),
+                f"precision@{k}": precision_at_k(rel_scores, k),
+                f"f1@{k}":        f_measure_at_k(rel_scores, k, total_rel),
+                f"ndcg@{k}":      ndcg_at_k(rel_scores, k),
+                f"map@{k}":       average_precision_at_k(rel_scores, k, total_rel),
+            }
+            csv_row.update(metrics_k)
+            for col, val in metrics_k.items():
+                accum.setdefault(col, []).append(val)
+
+        r_prec_val = r_precision(rel_scores, total_rel)
+        csv_row["r_prec"] = r_prec_val
+        accum.setdefault("r_prec", []).append(r_prec_val)
+
+        per_query_rows.append(csv_row)
+        print(f"  [{idx + 1}/{len(gold)}] {row.query[:70]}")
+
+    ts = datetime.now().strftime("%Y%m%dT%H%M%S")
+
+    # Per-query CSV
+    per_query_path = output_dir / f"eval_per_query_{ts}.csv"
+    if per_query_rows:
+        fieldnames = list(per_query_rows[0].keys())
+        with open(per_query_path, "w", encoding="utf-8", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(per_query_rows)
+        print(f"\nSaved per-query results  -> {per_query_path}")
+
+    # Summary (mean of every metric column)
+    summary = {col: mean(vals) for col, vals in accum.items() if vals}
+
+    summary_csv_path = output_dir / f"eval_summary_{ts}.csv"
+    with open(summary_csv_path, "w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=list(summary.keys()))
+        writer.writeheader()
+        writer.writerow({k: f"{v:.6f}" for k, v in summary.items()})
+    print(f"Saved summary CSV        -> {summary_csv_path}")
+
+    summary_json_path = output_dir / f"eval_summary_{ts}.json"
+    with open(summary_json_path, "w", encoding="utf-8") as f:
+        json.dump({k: round(v, 6) for k, v in summary.items()}, f,
+                  ensure_ascii=False, indent=2)
+    print(f"Saved summary JSON       -> {summary_json_path}")
+
+    print("\n=== Summary ===")
+    for col, val in summary.items():
+        print(f"  {col:20s}: {val:.4f}")
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def main() -> None:
-    gold_path = "src/evaluation/data/questions_filtered.csv"
-    ks = [ 3, 5,7, 10]
+    parser = argparse.ArgumentParser(
+        description="MiNIonek retrieval benchmark — per-query CSV output."
+    )
+    parser.add_argument(
+        "--input-csv",
+        default="src/evaluation/data/questions_with_links.csv",
+        help=(
+            "Evaluation CSV. Use questions_with_links.csv (default) to auto-filter "
+            "wymagany kontekst=0, or questions_filtered.csv for the pre-filtered set."
+        ),
+    )
+    parser.add_argument(
+        "--api-url",
+        default=None,
+        metavar="URL",
+        help=(
+            "Chatbot /chat endpoint, e.g. http://localhost:8000/chat. "
+            "When given, each query is sent to the full chatbot pipeline and the "
+            "returned answer + sources are used for evaluation. "
+            "When omitted, the retrieval module is called directly (no answer text)."
+        ),
+    )
+    parser.add_argument(
+        "--output-dir",
+        default="src/evaluation/results",
+        help="Directory where CSV / JSON / plot files are saved.",
+    )
+    parser.add_argument(
+        "--ks",
+        default="3,5,7,10",
+        help="Comma-separated rank cut-offs (default: 3,5,7,10).",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        default=60,
+        help="HTTP timeout in seconds for /chat calls (only used with --api-url).",
+    )
+    parser.add_argument(
+        "--no-plots",
+        action="store_true",
+        help="Skip P-R curve and bar-chart plots.",
+    )
+    args = parser.parse_args()
 
-    gold = load_gold(gold_path)
-    print(f"Loaded {len(gold)} evaluation queries\n")
+    ks = [int(k.strip()) for k in args.ks.split(",")]
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-    all_metrics: list[MetricsAtK] = []
-    all_pr_curves: dict[int, list[tuple[list[float], list[float]]]] = {}
+    # Load evaluation set — filter for wymagany kontekst=0 when using the full CSV
+    input_path = Path(args.input_csv)
+    if input_path.name == "questions_with_links.csv":
+        gold = load_gold_filtered(args.input_csv)
+        source_label = "questions_with_links.csv (wymagany kontekst = 0)"
+    else:
+        gold = load_gold(args.input_csv)
+        source_label = args.input_csv
 
-    for k in ks:
-        m, pr_curves = evaluate(gold, k)
-        all_metrics.append(m)
-        all_pr_curves[k] = pr_curves
+    print(f"Loaded {len(gold)} evaluation queries from {source_label}\n")
 
-        print(f"=== k={k} {'=' * 30}")
-        print(f"  Hit@{k}:          {m.hit:.4f}")
-        print(f"  MRR@{k}:          {m.mrr:.4f}")
-        print(f"  MRRw@{k}:         {m.mrr_weighted:.4f}  (α={MRRW_ALPHA}, β={MRRW_BETA})")
-        print(f"  Recall@{k}:       {m.recall:.4f}")
-        print(f"  Precision@{k}:    {m.precision:.4f}")
-        print(f"  F1@{k}:           {m.f1:.4f}")
-        print(f"  nDCG@{k}:         {m.ndcg:.4f}")
-        print(f"  MAP@{k}:          {m.map_score:.4f}")
-        print(f"  R-Precision:      {m.r_prec:.4f}  (rank-cutoff independent)")
-        print()
+    # CSV-based evaluation (per-query + summary)
+    evaluate_to_csv(gold, ks, output_dir, api_url=args.api_url, timeout=args.timeout)
 
-    plot_pr_curves(all_pr_curves)
-    plot_metrics_summary(all_metrics)
+    # Plots use the legacy evaluate() loop (calls retrieval directly per k)
+    if not args.no_plots:
+        print("\nGenerating plots (direct retrieval per k)...")
+        all_metrics: list[MetricsAtK] = []
+        all_pr_curves: dict[int, list[tuple[list[float], list[float]]]] = {}
+
+        for k in ks:
+            m, pr_curves = evaluate(gold, k)
+            all_metrics.append(m)
+            all_pr_curves[k] = pr_curves
+            print(f"  k={k}: Hit={m.hit:.4f} MRR={m.mrr:.4f} MRRw={m.mrr_weighted:.4f} "
+                  f"nDCG={m.ndcg:.4f} MAP={m.map_score:.4f}")
+
+        plot_pr_curves(all_pr_curves, str(output_dir / "pr_curves.png"))
+        plot_metrics_summary(all_metrics, str(output_dir / "metrics_summary.png"))
 
 
 if __name__ == "__main__":

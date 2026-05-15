@@ -32,18 +32,41 @@ All evaluation scripts, metrics, and benchmark data for MiNIonek.
 
 ## Running the main benchmark
 
-The benchmark requires a running Qdrant instance with ingested data. Start the API first, or just run the retrieval module directly.
+The benchmark requires a running Qdrant instance with ingested data (direct retrieval mode) **or** a running `/chat` API (recommended — tests the full pipeline).
 
 ```bash
-# From repo root
+# From repo root — full pipeline mode (recommended)
 export PYTHONPATH=src
-python -m evaluation.benchmark
+python -m evaluation.benchmark \
+  --api-url http://localhost:8000/chat \
+  --output-dir src/evaluation/results \
+  --no-plots
+
+# Direct retrieval mode (no LLM answer, faster)
+python -m evaluation.benchmark --no-plots
 ```
 
-Outputs:
-- Metrics table in stdout (Hit@k, MRR@k, nDCG@k, MAP@k, R-Precision for k = 3, 5, 7, 10)
-- `pr_curves.png` — mean interpolated Precision-Recall curves for each k
-- `metrics_summary.png` — grouped bar chart of all metrics
+**Key flags:**
+
+| Flag | Default | Description |
+|---|---|---|
+| `--api-url URL` | (none) | Chatbot `/chat` endpoint. When set, each query goes through the full pipeline (retrieval + LLM). |
+| `--input-csv PATH` | `questions_with_links.csv` | Source CSV. When using `questions_with_links.csv`, automatically filters `wymagany kontekst = 0`. |
+| `--output-dir DIR` | `src/evaluation/results` | Where to save output files. |
+| `--ks 3,5,7,10` | `3,5,7,10` | Rank cut-offs for metric computation. |
+| `--no-plots` | off | Skip plot generation (useful on servers). |
+
+**Outputs saved to `--output-dir`:**
+
+| File | Content |
+|---|---|
+| `eval_per_query_<ts>.csv` | One row per query: `query`, `chatbot_answer`, `chatbot_links` (`;`-separated), `gold_link`, all metrics at each k |
+| `eval_summary_<ts>.csv` | One-row average of every metric |
+| `eval_summary_<ts>.json` | Same as summary CSV in JSON format |
+| `pr_curves.png` | Mean interpolated P-R curves (without `--no-plots`) |
+| `metrics_summary.png` | Grouped bar chart of metrics (without `--no-plots`) |
+
+**Only `wymagany kontekst = 0` questions are evaluated** — these are the only ones with a reliable gold URL. See `BENCHMARK_VM.md` for step-by-step VM instructions.
 
 ## Running LLM-as-a-judge batch evaluation
 

@@ -86,6 +86,21 @@ services:
       - api
     restart: always
 
+  benchmark:
+    user: root
+    build: .
+    command: >
+      micromamba run -n app
+      python -m evaluation.benchmark
+      --api-url http://api:8000/chat
+      --output-dir /app/src/evaluation/results
+      --no-plots
+    environment: *env
+    volumes:
+      - hf_cache:/root/.cache/huggingface
+      - ./src/evaluation/results:/app/src/evaluation/results
+    profiles: ["benchmark"]
+
   api_test_health: #test
     image: curlimages/curl:8.12.1 #test
     command: ["-sS", "-i", "http://api:8000/docs"] #test
