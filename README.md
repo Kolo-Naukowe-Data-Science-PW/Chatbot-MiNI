@@ -97,7 +97,7 @@ Chatbot-MiNI/
 │   │   └── *.pdf                   # 18 hash-named BIP PW documents
 │   │
 │   ├── evaluation/                 # All evaluation and benchmarking
-│   │   ├── benchmark.py            # Main benchmark (Hit@k, MRR, MRRw, nDCG, MAP, P-R)
+│   │   ├── benchmark.py            # Main benchmark (Hit@k, cch@k, MRR, MRRw, nDCG, MAP, P-R)
 │   │   ├── benchmark_v1.py         # Legacy simple benchmark
 │   │   ├── generate_golden_answers.py  # Golden answers from 3 supermodels (GPT-5.5, Opus 4.7, Gemini 3.1)
 │   │   ├── weighted_feedback.py    # Weighted aggregation of user feedback by role
@@ -112,6 +112,10 @@ Chatbot-MiNI/
 │   │   │   └── context_golden_runner.py  # Batch runner: chatbot vs golden answers WITH full context
 │   │   ├── tests/
 │   │   │   └── evaluation_test.py  # BERTScore metrics tests
+│   │   ├── benchmark_checks/           # Ablation + coverage analysis scripts
+│   │   │   ├── check_coverage.py       # Are gold benchmark URLs in Qdrant?
+│   │   │   ├── check_rewriter.py       # Ablation: query rewriter ON vs OFF
+│   │   │   └── check_reranker.py       # Ablation: cross-encoder reranker ON vs OFF
 │   │   └── data/
 │   │       ├── questions.csv           # Raw student survey questions
 │   │       ├── questions_cat.csv       # Questions with category labels
@@ -132,10 +136,13 @@ Chatbot-MiNI/
 │       └── paths.py                # Path utilities
 │
 ├── .github/workflows/
-│   ├── deploy.yml                  # Manual deploy to self-hosted runner
+│   ├── deploy.yml                  # Manual deploy to self-hosted runner (run this first!)
 │   ├── scrape_and_ingest.yml       # Manual: run scraper then full ingest pipeline
 │   ├── ingest_only.yml             # Manual: run ingest only (skip scraping)
-│   └── tests.yml                   # Manual: run test suite (workflow_dispatch only)
+│   ├── tests.yml                   # Manual: run test suite (workflow_dispatch only)
+│   ├── check_coverage.yml          # Ablation: how many gold URLs are in Qdrant?
+│   ├── check_rewriter.yml          # Ablation: query rewriter ON vs OFF
+│   └── check_reranker.yml          # Ablation: cross-encoder reranker ON vs OFF
 │
 ├── docker-compose.yml              # 5 services: scraper, ingest, api, frontend, tests
 ├── Dockerfile                      # Micromamba-based Python image
@@ -288,13 +295,23 @@ Pełna mapa wszystkich zaimplementowanych metod ewaluacji.
 | Metryka | Opis | Plik |
 |---|---|---|
 | Hit@k | Czy gold URL trafił w top-k wynikach | `evaluation/benchmark.py` |
+| **cch@k** | Hit@k liczony tylko dla pytań, których gold URL jest w Qdrant — eliminuje błędy scraping z metryki retrieval — **własna metryka** | `evaluation/benchmark.py` |
 | MRR@k | Na której pozycji (średnio) pojawia się gold URL | `evaluation/benchmark.py` |
 | **MRRw@k** | Jak MRR, ale z częściowym kredytem za parent/child URLe (0.5^depth) — **własna metryka** | `evaluation/benchmark.py` |
 | nDCG@k | Jakość rankingu z ważeniem po pozycji | `evaluation/benchmark.py` |
 | MAP@k | Średnia precyzja przez cały ranking | `evaluation/benchmark.py` |
 | Precision-Recall curves | Krzywe P-R dla różnych k | `evaluation/benchmark.py` |
+| coverage_rate | Procent pytań benchmarkowych z gold URL obecnym w Qdrant | `evaluation/benchmark.py` |
 
-Uruchomienie: `python -m evaluation.benchmark` (wymaga Qdrant)
+Uruchomienie:
+
+```bash
+python -m evaluation.benchmark                  # standardowe metryki
+python -m evaluation.benchmark --check-coverage # +cch@k i coverage_rate
+python -m evaluation.benchmark --no-rerank      # bez cross-encoder (RRF only)
+```
+
+(wymaga działającego Qdrant lub uruchomionego API z `--api-base-url`)
 
 ---
 
@@ -418,12 +435,135 @@ Dodatkowe wymiary segmentacji feedbacku:
 | Metoda | Wymaga Qdrant | Wymaga API | Wymaga golden CSV |
 |---|---|---|---|
 | Metryki retrieval (`benchmark.py`) | ✓ | — | — |
+| Coverage analysis (`check_coverage.py`) | — | ✓ (`/db-urls`) | — |
+| Query rewriter ablation (`check_rewriter.py`) | — | ✓ (`/retrieval`) | — |
+| Reranker ablation (`check_reranker.py`) | — | ✓ (`/retrieval`) | — |
 | Golden answers generation | — | — | — |
 | Golden judge (bez kontekstu) | — | ✓ | `golden_answers.csv` |
 | Context golden judge (z kontekstem) | — | ✓ | `context_golden_answers.csv` |
 | A/B judge (testpro_runner) | — | ✓ | — |
 | A/B feedback od użytkowników | ✓ | ✓ | — |
 | BERTScore / cosine | — | — | ✓ |
+
+---
+
+## API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/chat` | Non-streaming chat (returns full answer at once) |
+| `POST` | `/chat/stream` | Streaming chat via SSE — used by all frontend modes |
+| `POST` | `/feedback` | Submit user feedback (star rating + text) |
+| `GET`  | `/experiment-config` | Current A/B experiment dimension + model pool |
+| `POST` | `/retrieval` | Direct retrieval endpoint — returns ranked URLs for a query |
+| `GET`  | `/db-urls` | Returns all unique source URLs indexed in Qdrant |
+
+### `/retrieval` — direct retrieval
+
+```bash
+curl -X POST http://localhost:8000/retrieval \
+  -H "Content-Type: application/json" \
+  -d '{"query": "Kiedy są egzaminy?", "top_k": 10, "use_rerank": true, "use_rewrite": false}'
+# → {"retrieval_query": "...", "urls": ["https://mini.pw.edu.pl/...", ...]}
+```
+
+Parameters:
+- `query` — the user question
+- `top_k` — how many results to return (default: 10)
+- `use_rerank` — apply cross-encoder re-ranking (default: true)
+- `use_rewrite` — apply LLM query rewriting before retrieval (default: false)
+
+### `/db-urls` — database coverage
+
+```bash
+curl http://localhost:8000/db-urls
+# → {"urls": [...], "count": 1842}
+```
+
+Used internally by ablation scripts to compute coverage-corrected metrics without direct Qdrant access (avoids file-lock conflicts with the API process).
+
+---
+
+## Ablation Studies
+
+Scripts in `src/evaluation/benchmark_checks/` compare two system variants back-to-back using the gold benchmark dataset. They use the `/retrieval` API endpoint so the running API's Qdrant singleton handles all DB access.
+
+**Prerequisite: the API must be running** (`deploy.yml` workflow on the VM, or `docker compose up` locally).
+
+### Coverage Analysis (`check_coverage.py`)
+
+Checks how many gold benchmark URLs are actually indexed in Qdrant. Classifies each URL as:
+- **exact** — URL found verbatim in DB
+- **parent** — a parent page of the gold URL is in DB (partial coverage)
+- **child** — a child page of the gold URL is in DB
+- **missing** — nothing related found
+
+```bash
+# On VM: via GitHub Actions → "Coverage Analysis — Gold URLs in Qdrant"
+# Locally (API must be running):
+python -m evaluation.benchmark_checks.check_coverage \
+  --api-base-url http://localhost:8000 \
+  --output-dir src/evaluation/results/coverage \
+  --show-missing
+```
+
+Output: JSON + CSV report in `<output-dir>/`.
+
+### Query Rewriter Ablation (`check_rewriter.py`)
+
+Compares retrieval quality with and without LLM-based query rewriting (cross-encoder always ON).
+
+```bash
+# Via GitHub Actions → "Ablation — Query Rewriter"
+# Locally:
+python -m evaluation.benchmark_checks.check_rewriter \
+  --api-base-url http://localhost:8000 \
+  --ks 3,5,10 \
+  --output-dir src/evaluation/results/rewriter_check
+```
+
+Prints side-by-side table of `no_rewrite` vs `with_rewrite` for all key metrics + delta column.
+
+### Cross-Encoder Reranker Ablation (`check_reranker.py`)
+
+Compares retrieval quality with and without cross-encoder re-ranking (raw RRF vs reranked).
+
+```bash
+# Via GitHub Actions → "Ablation — Cross-Encoder Reranker"
+# Locally:
+python -m evaluation.benchmark_checks.check_reranker \
+  --api-base-url http://localhost:8000 \
+  --ks 3,5,10 \
+  --output-dir src/evaluation/results/reranker_check
+
+# With query rewriting also ON (keeps rewriter constant, isolates reranker):
+python -m evaluation.benchmark_checks.check_reranker --rewrite ...
+```
+
+### GitHub Actions Workflows — Correct Execution Order
+
+**Always run `deploy.yml` first** before ablation workflows — the scripts call API endpoints that only exist in the latest deployed code.
+
+```
+1. Actions → "Deploy Chatbot MiNI" → Run workflow
+2. Actions → "Coverage Analysis — Gold URLs in Qdrant" → Run workflow
+3. Actions → "Ablation — Query Rewriter" → Run workflow
+4. Actions → "Ablation — Cross-Encoder Reranker" → Run workflow
+```
+
+Workflow inputs:
+
+| Workflow | Input | Default | Description |
+|----------|-------|---------|-------------|
+| check_coverage | `show_missing` | true | Print missing URLs to log |
+| check_coverage | `all_rows` | false | Use all CSV rows (not just wymagany_kontekst=0) |
+| check_rewriter | `ks` | 3,5,10 | Rank cut-offs (comma-separated) |
+| check_rewriter | `check_coverage` | false | Also compute cch@k |
+| check_reranker | `ks` | 3,5,10 | Rank cut-offs |
+| check_reranker | `rewrite` | false | Keep rewriter ON in both runs |
+| check_reranker | `check_coverage` | false | Also compute cch@k |
+
+Results are uploaded as GitHub Actions artifacts (download from the workflow run page).
 
 ---
 

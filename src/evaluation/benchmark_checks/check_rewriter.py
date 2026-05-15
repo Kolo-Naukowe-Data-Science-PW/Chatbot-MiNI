@@ -51,6 +51,13 @@ KEY_METRICS = [
 ]
 
 
+def _get_db_urls(api_base: str) -> set[str]:
+    req = Request(api_base.rstrip("/") + "/db-urls")
+    with urlopen(req, timeout=30) as resp:
+        data = json.loads(resp.read())
+    return {normalize_url(u) for u in data["urls"]}
+
+
 def _call_retrieval(api_base: str, query: str, top_k: int,
                     use_rerank: bool, use_rewrite: bool) -> list[str]:
     """POST /retrieval and return ordered deduplicated URLs."""
@@ -121,6 +128,11 @@ def main() -> None:
     parser.add_argument("--input-csv", default="src/evaluation/data/questions_with_links.csv")
     parser.add_argument("--output-dir", default="src/evaluation/results/rewriter_check")
     parser.add_argument("--ks", default="3,5,10")
+    parser.add_argument(
+        "--check-coverage",
+        action="store_true",
+        help="Also evaluate on covered-only subset (cch@k): queries whose gold URL is in Qdrant.",
+    )
     args = parser.parse_args()
 
     ks = [int(k.strip()) for k in args.ks.split(",")]
@@ -148,11 +160,35 @@ def main() -> None:
     print("\n\n========== COMPARISON: no_rewrite vs with_rewrite ==========")
     comparison = _print_comparison(summary_a, summary_b, "no_rewrite", "with_rewrite")
 
+    cch_a: dict[str, float] = {}
+    cch_b: dict[str, float] = {}
+    cch_comparison: dict = {}
+    if args.check_coverage:
+        print("\nFetching DB URLs for coverage-corrected metrics...")
+        db_urls = _get_db_urls(args.api_base_url)
+        gold_covered = [r for r in gold if normalize_url(r.target_url) in db_urls]
+        print(f"Coverage filter: {len(gold_covered)}/{len(gold)} queries have gold URL in DB\n")
+        if gold_covered:
+            print("=" * 60)
+            print("CCH RUN 1/2 — no rewriting (covered subset only)")
+            print("=" * 60)
+            cch_a = _evaluate(gold_covered, ks, args.api_base_url, use_rerank=True, use_rewrite=False, label="cch_no_rewrite")
+            print("\n" + "=" * 60)
+            print("CCH RUN 2/2 — with rewriting (covered subset only)")
+            print("=" * 60)
+            cch_b = _evaluate(gold_covered, ks, args.api_base_url, use_rerank=True, use_rewrite=True, label="cch_with_rewrite")
+            print("\n\n===== CCH COMPARISON: no_rewrite vs with_rewrite (covered only) =====")
+            cch_comparison = _print_comparison(cch_a, cch_b, "cch_no_rewrite", "cch_with_rewrite")
+
     ts = datetime.now().strftime("%Y%m%dT%H%M%S")
     out_path = output_dir / f"comparison_rewriter_{ts}.json"
+    payload: dict = {"no_rewrite": summary_a, "with_rewrite": summary_b, "delta": comparison}
+    if args.check_coverage:
+        payload["cch_no_rewrite"] = cch_a
+        payload["cch_with_rewrite"] = cch_b
+        payload["cch_delta"] = cch_comparison
     with open(out_path, "w", encoding="utf-8") as f:
-        json.dump({"no_rewrite": summary_a, "with_rewrite": summary_b, "delta": comparison},
-                  f, ensure_ascii=False, indent=2)
+        json.dump(payload, f, ensure_ascii=False, indent=2)
     print(f"\nComparison saved -> {out_path}")
 
 

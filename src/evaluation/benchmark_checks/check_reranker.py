@@ -49,6 +49,14 @@ KEY_METRICS = [
 ]
 
 
+def _get_db_urls(api_base: str) -> set[str]:
+    from urllib.request import Request, urlopen
+    req = Request(api_base.rstrip("/") + "/db-urls")
+    with urlopen(req, timeout=30) as resp:
+        data = json.loads(resp.read())
+    return {normalize_url(u) for u in data["urls"]}
+
+
 def _call_retrieval(api_base: str, query: str, top_k: int,
                     use_rerank: bool, use_rewrite: bool) -> list[str]:
     """POST /retrieval and return ordered deduplicated URLs."""
@@ -125,6 +133,11 @@ def main() -> None:
         action="store_true",
         help="Apply query rewriting in both runs (keeps rewriter constant, isolates reranker).",
     )
+    parser.add_argument(
+        "--check-coverage",
+        action="store_true",
+        help="Also evaluate on covered-only subset (cch@k): queries whose gold URL is in Qdrant.",
+    )
     args = parser.parse_args()
 
     ks = [int(k.strip()) for k in args.ks.split(",")]
@@ -155,11 +168,35 @@ def main() -> None:
     print("\n\n========== COMPARISON: with_rerank vs no_rerank ==========")
     comparison = _print_comparison(summary_a, summary_b, "with_rerank", "no_rerank")
 
+    cch_a: dict[str, float] = {}
+    cch_b: dict[str, float] = {}
+    cch_comparison: dict = {}
+    if args.check_coverage:
+        print("\nFetching DB URLs for coverage-corrected metrics...")
+        db_urls = _get_db_urls(args.api_base_url)
+        gold_covered = [r for r in gold if normalize_url(r.target_url) in db_urls]
+        print(f"Coverage filter: {len(gold_covered)}/{len(gold)} queries have gold URL in DB\n")
+        if gold_covered:
+            print("=" * 60)
+            print("CCH RUN 1/2 — with reranking (covered subset only)")
+            print("=" * 60)
+            cch_a = _evaluate(gold_covered, ks, args.api_base_url, use_rerank=True, use_rewrite=args.rewrite, label="cch_with_rerank")
+            print("\n" + "=" * 60)
+            print("CCH RUN 2/2 — without reranking (covered subset only)")
+            print("=" * 60)
+            cch_b = _evaluate(gold_covered, ks, args.api_base_url, use_rerank=False, use_rewrite=args.rewrite, label="cch_no_rerank")
+            print("\n\n===== CCH COMPARISON: with_rerank vs no_rerank (covered only) =====")
+            cch_comparison = _print_comparison(cch_a, cch_b, "cch_with_rerank", "cch_no_rerank")
+
     ts = datetime.now().strftime("%Y%m%dT%H%M%S")
     out_path = output_dir / f"comparison_reranker_{ts}.json"
+    payload: dict = {"with_rerank": summary_a, "no_rerank": summary_b, "delta": comparison}
+    if args.check_coverage:
+        payload["cch_with_rerank"] = cch_a
+        payload["cch_no_rerank"] = cch_b
+        payload["cch_delta"] = cch_comparison
     with open(out_path, "w", encoding="utf-8") as f:
-        json.dump({"with_rerank": summary_a, "no_rerank": summary_b, "delta": comparison},
-                  f, ensure_ascii=False, indent=2)
+        json.dump(payload, f, ensure_ascii=False, indent=2)
     print(f"\nComparison saved -> {out_path}")
 
 
