@@ -3,8 +3,17 @@ name: Run Benchmark (Hierarchical)
 on:
   workflow_dispatch:
     inputs:
+      metric_mode:
+        description: 'Metric calculation mode'
+        required: false
+        default: 'both'
+        type: choice
+        options:
+          - 'standard'
+          - 'adaptive'
+          - 'both'
       ks:
-        description: 'Rank cut-offs (comma-separated, e.g. 3,5,7,10)'
+        description: 'Rank cut-offs (comma-separated, e.g. 3,5,7,10) — ignored for adaptive-only mode'
         required: false
         default: '3,5,7,10'
       timeout:
@@ -36,6 +45,7 @@ jobs:
               --api-url http://api:8000/chat \
               --output-dir /app/src/evaluation/results \
               --ks "${{ inputs.ks }}" \
+              --metric-mode "${{ inputs.metric_mode }}" \
               --timeout "${{ inputs.timeout }}" \
               --no-plots
 
