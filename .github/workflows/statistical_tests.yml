@@ -45,15 +45,24 @@ on:
         default: "gpt-4-turbo"
         type: string
 
-      metrics:
-        description: "Metrics to compare (space-separated: hit mrr ndcg map)"
+      metric:
+        description: "Metric to compare (e.g. hit@3, mrr@10, hit_adaptive, recall_adaptive)"
         required: false
-        default: "hit@3 hit@5 hit@7 hit@10 mrr@3 mrr@5 mrr@7 mrr@10"
+        default: "hit@10"
         type: string
+      test_type:
+        description: "Statistical test to perform"
+        required: false
+        default: "wilcoxon"
+        type: choice
+        options:
+          - "wilcoxon"
+          - "gamma"
+          - "kappa"
       use_adaptive_k:
         description: "Use adaptive k (actual retrieved count per query)"
         required: false
-        default: "true"
+        default: "false"
         type: choice
         options:
           - "true"
@@ -64,7 +73,7 @@ on:
         default: "0.05"
         type: string
       ks:
-        description: "Rank cut-offs for metrics (default: 3,5,7,10)"
+        description: "Rank cut-offs for benchmark (default: 3,5,7,10)"
         required: false
         default: "3,5,7,10"
         type: string
@@ -109,6 +118,7 @@ jobs:
                     python -m evaluation.benchmark \
                       --output-dir /app/src/evaluation/results/model_a \
                       --ks "${{ inputs.ks }}" \
+                      --metric-mode $([ "${{ inputs.use_adaptive_k }}" == "true" ] && echo "adaptive" || echo "standard") \
                       --no-plots'
         env:
           EXPERIMENT_DIM: ${{ inputs.model_a_experiment_dim }}
@@ -122,6 +132,7 @@ jobs:
                     python -m evaluation.benchmark \
                       --output-dir /app/src/evaluation/results/model_b \
                       --ks "${{ inputs.ks }}" \
+                      --metric-mode $([ "${{ inputs.use_adaptive_k }}" == "true" ] && echo "adaptive" || echo "standard") \
                       --no-plots'
         env:
           EXPERIMENT_DIM: ${{ inputs.model_b_experiment_dim }}
@@ -158,7 +169,8 @@ jobs:
                     python -m evaluation.statistical_comparison \
                       --model_a_csv /app/${{ steps.csv-files.outputs.model_a_csv }} \
                       --model_b_csv /app/${{ steps.csv-files.outputs.model_b_csv }} \
-                      --metrics "${{ inputs.metrics }}" \
+                      --metric "${{ inputs.metric }}" \
+                      --test-type "${{ inputs.test_type }}" \
                       --alpha "${{ inputs.alpha }}" \
                       --output-dir /app/src/evaluation/results/stats \
                       $([ "${{ inputs.use_adaptive_k }}" == "true" ] && echo "--use-adaptive-k" || echo "")' \
@@ -183,7 +195,8 @@ jobs:
           
           ## Statistical Tests Configuration
           
-          - **Metrics tested**: `${{ inputs.metrics }}`
+          - **Metric tested**: `${{ inputs.metric }}`
+          - **Test type**: `${{ inputs.test_type }}`
           - **Use adaptive k**: `${{ inputs.use_adaptive_k }}`
           - **Significance level (α)**: `${{ inputs.alpha }}`
           - **Rank cut-offs (k)**: `${{ inputs.ks }}`

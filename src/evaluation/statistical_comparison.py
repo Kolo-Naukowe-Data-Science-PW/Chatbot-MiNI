@@ -25,6 +25,7 @@ from datetime import datetime
 from itertools import combinations
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlsplit, urlunsplit
 
 import numpy as np
 from scipy import stats
@@ -158,6 +159,19 @@ def count_retrieved_links(sources_str: str) -> int:
     if not sources_str or not sources_str.strip():
         return 0
     return len([u.strip() for u in sources_str.split(";") if u.strip()])
+
+
+def normalize_url(url: str) -> str:
+    """
+    Normalize URL by removing trailing slashes and query/fragment components.
+    Ensures semantically equivalent URLs are treated as the same source.
+    """
+    cleaned = url.strip()
+    if not cleaned:
+        return ""
+    parts = urlsplit(cleaned)
+    normalized_path = parts.path.rstrip("/") or parts.path
+    return urlunsplit((parts.scheme, parts.netloc, normalized_path, "", ""))
 
 
 def extract_ranks_from_csv(csv_path: Path) -> np.ndarray:
@@ -322,34 +336,29 @@ def compare_models(
     csv_B: Path,
     metrics: list[str],
     alpha: float = 0.05,
+    test_type: str = "wilcoxon",
     use_adaptive_k: bool = False,
 ) -> list[ComparisonResult]:
     """
-    Compare two models across multiple metrics.
+    Compare two models across metrics using specified statistical test.
     
     Args:
         csv_A: path to eval_per_query CSV for model A
         csv_B: path to eval_per_query CSV for model B
-        metrics: list of metric column names (e.g., ['mrr@10', 'hit@10'])
+        metrics: list of metric column names (e.g., ['mrr@10'] or ['hit_adaptive'])
         alpha: significance level for statistical tests
-        use_adaptive_k: if True, use adaptive k (actual # of returned links) instead of fixed k
+        test_type: which test to perform: 'wilcoxon', 'gamma', or 'kappa'
+        use_adaptive_k: if True, expect adaptive k metrics already in CSV (hit_adaptive, mrr_adaptive, etc.)
+                       If False, expect fixed k metrics (hit@k, mrr@k, etc.)
     
     Returns:
         list of ComparisonResult objects
     """
-    if use_adaptive_k:
-        # Load adaptive metrics
-        metrics_A = calculate_adaptive_metrics(csv_A)
-        metrics_B = calculate_adaptive_metrics(csv_B)
-        
-        # Use only adaptive metrics
-        metrics = ['hit_adaptive', 'mrr_adaptive']
-    else:
-        # Load metrics from both CSVs
-        metrics_A = load_csv_metrics(csv_A, metrics)
-        metrics_B = load_csv_metrics(csv_B, metrics)
+    # Load metrics from both CSVs
+    metrics_A = load_csv_metrics(csv_A, metrics)
+    metrics_B = load_csv_metrics(csv_B, metrics)
     
-    # Extract ranks
+    # Extract ranks (needed for gamma and kappa tests)
     ranks_A = extract_ranks_from_csv(csv_A)
     ranks_B = extract_ranks_from_csv(csv_B)
     
@@ -369,35 +378,55 @@ def compare_models(
         
         differences = scores_A - scores_B
         
-        # Wilcoxon test
-        wilcox_stat, wilcox_p, is_sig = wilcoxon_test(differences, alpha)
+        # Initialize result with common fields
+        result_dict = {
+            'metric': metric,
+            'n_queries': len(scores_A),
+            'mean_A': float(np.mean(scores_A)),
+            'mean_B': float(np.mean(scores_B)),
+            'mean_diff': float(np.mean(differences)),
+            'std_diff': float(np.std(differences, ddof=1)),
+            'wilcoxon_stat': None,
+            'wilcoxon_pvalue': None,
+            'wilcoxon_sig': None,
+            'gamma_coeff': None,
+            'gamma_concordant': None,
+            'gamma_discordant': None,
+            'kappa_avg': None,
+            'kappa_min': None,
+            'kappa_max': None,
+        }
         
-        # Goodman-Kruskal gamma
-        gamma, concordant, discordant = goodman_kruskal_gamma(ranks_A, ranks_B)
+        # Perform only the selected test type
+        if test_type == "wilcoxon":
+            wilcox_stat, wilcox_p, is_sig = wilcoxon_test(differences, alpha)
+            result_dict['wilcoxon_stat'] = wilcox_stat
+            result_dict['wilcoxon_pvalue'] = wilcox_p
+            result_dict['wilcoxon_sig'] = is_sig
         
-        result = ComparisonResult(
-            metric=metric,
-            n_queries=len(scores_A),
-            mean_A=float(np.mean(scores_A)),
-            mean_B=float(np.mean(scores_B)),
-            mean_diff=float(np.mean(differences)),
-            std_diff=float(np.std(differences, ddof=1)),
-            wilcoxon_stat=wilcox_stat,
-            wilcoxon_pvalue=wilcox_p,
-            wilcoxon_sig=is_sig,
-            gamma_coeff=gamma,
-            gamma_concordant=concordant,
-            gamma_discordant=discordant,
-        )
+        elif test_type == "gamma":
+            gamma, concordant, discordant = goodman_kruskal_gamma(ranks_A, ranks_B)
+            result_dict['gamma_coeff'] = gamma
+            result_dict['gamma_concordant'] = concordant
+            result_dict['gamma_discordant'] = discordant
+        
+        elif test_type == "kappa":
+            # For kappa, we need retrieval sets from sources
+            # This requires parsing the HTML/JSON sources from both CSVs
+            kappa_result = kappa_agreement([ranks_A, ranks_B])
+            if kappa_result:
+                result_dict['kappa_avg'] = kappa_result.get('kappa_mean')
+                result_dict['kappa_min'] = kappa_result.get('kappa_min')
+                result_dict['kappa_max'] = kappa_result.get('kappa_max')
+        
+        result = ComparisonResult(**result_dict)
         results.append(result)
     
     return results
 
 
-def format_result(result: ComparisonResult) -> str:
-    """Format ComparisonResult for human-readable output."""
-    significance_marker = "***" if result.wilcoxon_sig else "n.s."
-    
+def format_result(result: ComparisonResult, test_type: str = "wilcoxon") -> str:
+    """Format ComparisonResult for human-readable output, showing only selected test type."""
     lines = [
         f"\n{'='*70}",
         f"Metric: {result.metric}",
@@ -407,22 +436,32 @@ def format_result(result: ComparisonResult) -> str:
         f"  Model B (mean):       {result.mean_B:.6f}",
         f"  Difference (A - B):   {result.mean_diff:+.6f}",
         f"  Difference (std):     {result.std_diff:.6f}",
-        f"\n  Wilcoxon Signed-Rank Test (α=0.05, two-tailed):",
-        f"    Test statistic:     {result.wilcoxon_stat:.4f}",
-        f"    p-value:            {result.wilcoxon_pvalue:.6f} {significance_marker}",
-        f"\n  Goodman–Kruskal γ Coefficient:",
-        f"    γ:                  {result.gamma_coeff:+.4f}",
-        f"    Concordant pairs:   {result.gamma_concordant}",
-        f"    Discordant pairs:   {result.gamma_discordant}",
     ]
     
-    if result.kappa_avg is not None:
+    if test_type == "wilcoxon":
+        significance_marker = "✓ SIGNIFICANT" if result.wilcoxon_sig else "n.s."
         lines.extend([
-            f"\n  Kappa Agreement (stability):",
-            f"    κ (mean):           {result.kappa_avg:.4f}",
-            f"    κ (min):            {result.kappa_min:.4f}",
-            f"    κ (max):            {result.kappa_max:.4f}",
+            f"\n  Wilcoxon Signed-Rank Test (α=0.05, two-tailed):",
+            f"    Test statistic:     {result.wilcoxon_stat:.4f}",
+            f"    p-value:            {result.wilcoxon_pvalue:.6f} {significance_marker}",
         ])
+    
+    elif test_type == "gamma":
+        lines.extend([
+            f"\n  Goodman–Kruskal γ Coefficient:",
+            f"    γ:                  {result.gamma_coeff:+.4f}",
+            f"    Concordant pairs:   {result.gamma_concordant}",
+            f"    Discordant pairs:   {result.gamma_discordant}",
+        ])
+    
+    elif test_type == "kappa":
+        if result.kappa_avg is not None:
+            lines.extend([
+                f"\n  Kappa Agreement (stability):",
+                f"    κ (mean):           {result.kappa_avg:.4f}",
+                f"    κ (min):            {result.kappa_min:.4f}",
+                f"    κ (max):            {result.kappa_max:.4f}",
+            ])
     
     return "\n".join(lines)
 
@@ -444,10 +483,17 @@ def main() -> None:
         help="Path to eval_per_query CSV for model B.",
     )
     parser.add_argument(
-        "--metrics",
+        "--metric",
         type=str,
-        default="mrr@10,hit@10,ndcg@10",
-        help="Comma-separated list of metrics to compare (e.g., mrr@10,hit@10,ndcg@10).",
+        default="mrr@10",
+        help="Single metric to compare (e.g., mrr@10, hit@10, hit_adaptive, mrr_adaptive).",
+    )
+    parser.add_argument(
+        "--test-type",
+        type=str,
+        choices=["wilcoxon", "gamma", "kappa"],
+        default="wilcoxon",
+        help="Statistical test to perform: wilcoxon (default), gamma, or kappa.",
     )
     parser.add_argument(
         "--alpha",
@@ -460,7 +506,7 @@ def main() -> None:
         action="store_true",
         help=(
             "Use adaptive k (actual # of returned links per query) instead of fixed k. "
-            "Automatically calculates hit_adaptive and mrr_adaptive metrics. "
+            "Expects *_adaptive metrics in CSV (hit_adaptive, mrr_adaptive, etc.). "
             "Useful when number of returned links varies per query."
         ),
     )
@@ -484,31 +530,41 @@ def main() -> None:
     
     args.output_dir.mkdir(parents=True, exist_ok=True)
     
-    metrics = [m.strip() for m in args.metrics.split(",")]
+    # Prepare metric name based on adaptive k setting
+    metric = args.metric.strip()
+    if args.use_adaptive_k:
+        # Auto-convert metric names to adaptive versions if not already
+        if metric.endswith('_adaptive'):
+            pass  # already adaptive
+        elif '@' in metric:
+            base_metric = metric.split('@')[0]
+            metric = f"{base_metric}_adaptive"
     
     print("\n" + "="*70)
     print("STATISTICAL COMPARISON: Model A vs Model B")
     print("="*70)
     print(f"Model A CSV:       {args.model_a_csv}")
     print(f"Model B CSV:       {args.model_b_csv}")
-    print(f"Metrics:           {', '.join(metrics)}")
+    print(f"Metric:            {metric}")
+    print(f"Test type:         {args.test_type.upper()}")
     print(f"Significance:      α = {args.alpha}")
     if args.use_adaptive_k:
-        print(f"Mode:              ADAPTIVE k (per-query actual # of returned links)")
+        print(f"Mode:              ADAPTIVE k (reading *_adaptive metrics from CSV)")
     print("="*70)
     
-    # Run comparisons
+    # Run comparison
     results = compare_models(
         args.model_a_csv, 
         args.model_b_csv, 
-        metrics, 
+        [metric],  # wrap in list for compatibility
         args.alpha,
+        test_type=args.test_type,
         use_adaptive_k=args.use_adaptive_k,
     )
     
     # Print results
     for result in results:
-        print(format_result(result))
+        print(format_result(result, test_type=args.test_type))
     
     # Save results as JSON
     ts = datetime.now().strftime("%Y%m%dT%H%M%S")
@@ -518,6 +574,8 @@ def main() -> None:
         "timestamp": ts,
         "model_a_csv": str(args.model_a_csv),
         "model_b_csv": str(args.model_b_csv),
+        "metric": metric,
+        "test_type": args.test_type,
         "alpha": args.alpha,
         "use_adaptive_k": args.use_adaptive_k,
         "results": [
@@ -534,6 +592,9 @@ def main() -> None:
                 "gamma_coeff": r.gamma_coeff,
                 "gamma_concordant": r.gamma_concordant,
                 "gamma_discordant": r.gamma_discordant,
+                "kappa_mean": r.kappa_avg,
+                "kappa_min": r.kappa_min,
+                "kappa_max": r.kappa_max,
             }
             for r in results
         ],

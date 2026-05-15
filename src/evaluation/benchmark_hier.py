@@ -11,8 +11,8 @@ Two key differences from benchmark.py:
   2. Soft / graded metric variants (prefixed ``soft_``) are added as extra
      columns to the output CSV.  Unlike threshold-based metrics these never
      snap to 0 or 1 — they return the actual fractional relevance score,
-     so returning a parent page earns 0.5 and returning a child page earns
-     0.25 in every metric, rather than a hard 0.
+     so returning a parent page earns 0.75 and returning a child page earns
+     0.5625 in every metric, rather than a hard 0.
 
 Use-case this addresses
 -----------------------
@@ -21,16 +21,16 @@ The test set sometimes contains a general page URL
 while the chatbot correctly returns a link to a specific document
 on that page (e.g. .../regulaminy/regulamin-studiow.pdf).
 With RELEVANCE_THRESHOLD = 0.5 the chatbot would score 0 on all binary
-metrics for that query.  With threshold = 0.25 (a direct child → score 0.25)
-it counts as a hit.  The soft_ metrics give it exactly 0.25 continuous credit.
+metrics for that query.  With threshold = 0.25 (a direct child -> score 0.5625)
+it counts as a hit.  The soft_ metrics give it exactly 0.5625 continuous credit.
 
-Relevance scoring (unchanged from benchmark.py)
-------------------------------------------------
+Relevance scoring
+-----------------
     Exact match                    → 1.00
-    Direct parent (1 level up)     → 0.50
-    Grandparent   (2 levels up)    → 0.25
-    Direct child  (1 level down)   → 0.25   ← now counts as a hit
-    Grandchild    (2 levels down)  → 0.125  ← still NOT a hit (below 0.25)
+    Direct parent (1 level up)     → 0.75
+    Grandparent   (2 levels up)    → 0.5625
+    Direct child  (1 level down)   → 0.5625
+    Grandchild    (2 levels down)  → 0.421875
     Unrelated / different origin   → 0.00
 """
 import argparse
@@ -74,8 +74,9 @@ def _rewrite_query(query: str) -> str:
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 # Lowered threshold vs benchmark.py (0.5 → 0.25) so that direct child URLs
-# (relevance = 0.25) count as hits in binary metrics.
+# (relevance = 0.5625 with HIERARCHICAL_DECAY = 0.75) count as hits in binary metrics.
 RELEVANCE_THRESHOLD: float = 0.25
+HIERARCHICAL_DECAY: float = 0.75
 
 # MRRw parameters (unchanged from benchmark.py)
 MRRW_ALPHA: float = 0.8
@@ -112,16 +113,16 @@ def unique_preserve_order(items: list[str]) -> list[str]:
     return result
 
 
-# ── Hierarchical URL relevance scoring (unchanged from benchmark.py) ─────────
+# ── Hierarchical URL relevance scoring ───────────────────────────────────────
 
 def hierarchical_relevance(retrieved_url: str, target_url: str) -> float:
     """
     Returns a graded relevance score:
         exact match            → 1.00
-        direct parent          → 0.50
-        grandparent            → 0.25
-        direct child           → 0.25
-        grandchild             → 0.125
+        direct parent          → 0.75
+        grandparent            → 0.5625
+        direct child           → 0.5625
+        grandchild             → 0.421875
         unrelated / different  → 0.00
     """
     if not retrieved_url or not target_url:
@@ -141,11 +142,11 @@ def hierarchical_relevance(retrieved_url: str, target_url: str) -> float:
 
     if t_path.startswith(r_path + "/"):
         depth = t_path.count("/") - r_path.count("/")
-        return 0.5 ** depth
+        return HIERARCHICAL_DECAY ** depth
 
     if r_path.startswith(t_path + "/"):
         depth = r_path.count("/") - t_path.count("/")
-        return 0.5 ** (depth + 1)
+        return HIERARCHICAL_DECAY ** (depth + 1)
 
     return 0.0
 
@@ -279,11 +280,11 @@ def r_precision(rel_scores: list[float], total_rel: int,
 
 # ── NEW: Soft / graded metric variants ───────────────────────────────────────
 # These never threshold — the graded relevance score is used directly, so
-# returning a parent earns 0.5 credit and returning a child earns 0.25 credit
+# returning a parent earns 0.75 credit and returning a child earns 0.5625 credit
 # in every metric.
 
 def hit_soft_at_k(rel_scores: list[float], k: int) -> float:
-    """Soft Hit@k: max graded relevance in top-k (1.0 exact, 0.5 parent, 0.25 child)."""
+    """Soft Hit@k: max graded relevance in top-k."""
     return max(rel_scores[:k], default=0.0)
 
 
@@ -675,21 +676,22 @@ def evaluate_to_csv(
     api_url: str | None = None,
     timeout: int = 60,
     use_rewrite: bool = False,
+    metric_mode: str = "both",
 ) -> None:
     """
-    Same as benchmark.py's evaluate_to_csv but adds soft_ metric columns.
+    Same as benchmark.py's evaluate_to_csv but:
+    - Uses soft/graded metric variants (hit_soft, mrr_soft, etc.) for adaptive metrics
+    - Supports metric_mode to choose between standard, adaptive, or both
 
-    Standard columns (threshold=0.25):
-      query | retrieval_query | chatbot_answer | chatbot_links | gold_link |
-      hit@k | mrr@k | mrrw@k | recall@k | precision@k | f1@k | ndcg@k |
-      map@k | r_prec | hit_adaptive | mrr_adaptive
-
-    Extra soft columns (no threshold, continuous relevance):
-      soft_hit@k | soft_mrr@k | soft_recall@k | soft_precision@k |
-      soft_f1@k  | soft_map@k
-
-    When use_rewrite is True, each query is rewritten via rewrite_query() before
-    retrieval (only in direct-retrieval mode; /chat already rewrites internally).
+    Parameters
+    ----------
+    use_rewrite : bool
+        When True, each query is rewritten via rewrite_query() before retrieval.
+        Has no effect when api_url is given (/chat already rewrites internally).
+    metric_mode : str
+        "standard" — compute only fixed-k metrics (hit@k, mrr@k, etc.)
+        "adaptive" — compute only adaptive-k metrics with soft variants
+        "both" (default) — compute both standard and adaptive metrics
     """
     max_k = max(ks)
     total_rel = 1
@@ -715,9 +717,6 @@ def evaluate_to_csv(
         )
         rel_scores = [hierarchical_relevance(u, row.target_url) for u in sources]
 
-        hit_adaptive = 1.0 if any(s >= RELEVANCE_THRESHOLD for s in rel_scores) else 0.0
-        mrr_adaptive = mrr_at_k(rel_scores, len(sources))
-
         csv_row: dict = {
             "query": row.query,
             "retrieval_query": retrieval_q,
@@ -726,43 +725,60 @@ def evaluate_to_csv(
             "gold_link": row.target_url,
         }
 
-        for k in ks:
-            # Standard threshold-based metrics (threshold=0.25)
-            metrics_k = {
-                f"hit@{k}":       hit_at_k(rel_scores, k),
-                f"mrr@{k}":       mrr_at_k(rel_scores, k),
-                f"mrrw@{k}":      mrr_weighted_single(sources[:k], row.target_url),
-                f"recall@{k}":    recall_at_k(rel_scores, k, total_rel),
-                f"precision@{k}": precision_at_k(rel_scores, k),
-                f"f1@{k}":        f_measure_at_k(rel_scores, k, total_rel),
-                f"ndcg@{k}":      ndcg_at_k(rel_scores, k),
-                f"map@{k}":       average_precision_at_k(rel_scores, k, total_rel),
-            }
-            csv_row.update(metrics_k)
-            for col, val in metrics_k.items():
-                accum.setdefault(col, []).append(val)
+        # Only add fixed-k metrics if mode is not "adaptive-only"
+        if metric_mode in ("standard", "both"):
+            for k in ks:
+                # Standard threshold-based metrics (threshold=0.25)
+                metrics_k = {
+                    f"hit@{k}":       hit_at_k(rel_scores, k),
+                    f"mrr@{k}":       mrr_at_k(rel_scores, k),
+                    f"mrrw@{k}":      mrr_weighted_single(sources[:k], row.target_url),
+                    f"recall@{k}":    recall_at_k(rel_scores, k, total_rel),
+                    f"precision@{k}": precision_at_k(rel_scores, k),
+                    f"f1@{k}":        f_measure_at_k(rel_scores, k, total_rel),
+                    f"ndcg@{k}":      ndcg_at_k(rel_scores, k),
+                    f"map@{k}":       average_precision_at_k(rel_scores, k, total_rel),
+                }
+                csv_row.update(metrics_k)
+                for col, val in metrics_k.items():
+                    accum.setdefault(col, []).append(val)
 
-            # Soft / graded metric variants (no threshold)
-            soft_k = {
-                f"soft_hit@{k}":       hit_soft_at_k(rel_scores, k),
-                f"soft_mrr@{k}":       mrr_soft_at_k(rel_scores, k),
-                f"soft_recall@{k}":    recall_soft_at_k(rel_scores, k, total_rel),
-                f"soft_precision@{k}": precision_soft_at_k(rel_scores, k),
-                f"soft_f1@{k}":        f1_soft_at_k(rel_scores, k, total_rel),
-                f"soft_map@{k}":       ap_soft_at_k(rel_scores, k, total_rel),
-            }
-            csv_row.update(soft_k)
-            for col, val in soft_k.items():
-                accum.setdefault(col, []).append(val)
+                # Soft / graded metric variants (no threshold)
+                soft_k = {
+                    f"soft_hit@{k}":       hit_soft_at_k(rel_scores, k),
+                    f"soft_mrr@{k}":       mrr_soft_at_k(rel_scores, k),
+                    f"soft_recall@{k}":    recall_soft_at_k(rel_scores, k, total_rel),
+                    f"soft_precision@{k}": precision_soft_at_k(rel_scores, k),
+                    f"soft_f1@{k}":        f1_soft_at_k(rel_scores, k, total_rel),
+                    f"soft_map@{k}":       ap_soft_at_k(rel_scores, k, total_rel),
+                }
+                csv_row.update(soft_k)
+                for col, val in soft_k.items():
+                    accum.setdefault(col, []).append(val)
 
-        r_prec_val = r_precision(rel_scores, total_rel)
-        csv_row["r_prec"] = r_prec_val
-        accum.setdefault("r_prec", []).append(r_prec_val)
+        # Only add standard metrics if mode is not "adaptive-only"
+        if metric_mode in ("standard", "both"):
+            r_prec_val = r_precision(rel_scores, total_rel)
+            csv_row["r_prec"] = r_prec_val
+            accum.setdefault("r_prec", []).append(r_prec_val)
 
-        csv_row["hit_adaptive"] = hit_adaptive
-        csv_row["mrr_adaptive"] = mrr_adaptive
-        accum.setdefault("hit_adaptive", []).append(hit_adaptive)
-        accum.setdefault("mrr_adaptive", []).append(mrr_adaptive)
+        # Only add adaptive metrics if mode is not "standard-only"
+        if metric_mode in ("adaptive", "both"):
+            # Adaptive metrics: all metrics computed at k = actual number of retrieved links
+            # Uses soft/graded variants for hierarchical benchmark
+            adaptive_k = len(sources)
+            csv_row["hit_adaptive"] = hit_soft_at_k(rel_scores, adaptive_k)
+            csv_row["mrr_adaptive"] = mrr_soft_at_k(rel_scores, adaptive_k)
+            csv_row["mrrw_adaptive"] = mrr_weighted_single(sources[:adaptive_k], row.target_url)
+            csv_row["recall_adaptive"] = recall_soft_at_k(rel_scores, adaptive_k, total_rel)
+            csv_row["precision_adaptive"] = precision_soft_at_k(rel_scores, adaptive_k)
+            csv_row["f1_adaptive"] = f1_soft_at_k(rel_scores, adaptive_k, total_rel)
+            csv_row["map_adaptive"] = ap_soft_at_k(rel_scores, adaptive_k, total_rel)
+            csv_row["r_prec_adaptive"] = r_precision(rel_scores, total_rel)  # k-independent
+
+            for col in ["hit_adaptive", "mrr_adaptive", "mrrw_adaptive", "recall_adaptive",
+                        "precision_adaptive", "f1_adaptive", "map_adaptive", "r_prec_adaptive"]:
+                accum.setdefault(col, []).append(csv_row[col])
 
         per_query_rows.append(csv_row)
         print(f"  [{idx + 1}/{len(gold)}] {row.query[:70]}")
@@ -852,6 +868,12 @@ def main() -> None:
             "Requires OPENROUTER_API_KEY to be set."
         ),
     )
+    parser.add_argument(
+        "--metric-mode",
+        choices=["standard", "adaptive", "both"],
+        default="both",
+        help="Metrics to compute: 'standard' (fixed k only), 'adaptive' (adaptive k only, soft variants), or 'both' (default).",
+    )
     args = parser.parse_args()
 
     ks = [int(k.strip()) for k in args.ks.split(",")]
@@ -874,7 +896,7 @@ def main() -> None:
         print("Query rewriting ENABLED — each query will be rewritten before retrieval.\n")
 
     evaluate_to_csv(gold, ks, output_dir, api_url=args.api_url, timeout=args.timeout,
-                    use_rewrite=args.rewrite)
+                    use_rewrite=args.rewrite, metric_mode=args.metric_mode)
 
     if not args.no_plots:
         print("\nGenerating plots (direct retrieval per k)...")
