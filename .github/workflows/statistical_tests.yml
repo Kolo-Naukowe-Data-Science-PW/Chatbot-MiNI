@@ -1,0 +1,237 @@
+name: Statistical Tests — Compare Two Models
+
+on:
+  workflow_dispatch:
+    inputs:
+      model_a_name:
+        description: "Model A identifier (for logging/results)"
+        required: true
+        default: "model_a_baseline"
+        type: string
+      model_a_experiment_dim:
+        description: "Model A: experiment_dim parameter"
+        required: true
+        default: "1536"
+        type: string
+      model_a_experiment_temp:
+        description: "Model A: experiment_temp parameter"
+        required: true
+        default: "0.7"
+        type: string
+      model_a_experiment_model:
+        description: "Model A: experiment_model parameter"
+        required: true
+        default: "gpt-4o-mini"
+        type: string
+
+      model_b_name:
+        description: "Model B identifier (for logging/results)"
+        required: true
+        default: "model_b_variant"
+        type: string
+      model_b_experiment_dim:
+        description: "Model B: experiment_dim parameter"
+        required: true
+        default: "1536"
+        type: string
+      model_b_experiment_temp:
+        description: "Model B: experiment_temp parameter"
+        required: true
+        default: "0.9"
+        type: string
+      model_b_experiment_model:
+        description: "Model B: experiment_model parameter"
+        required: true
+        default: "gpt-4-turbo"
+        type: string
+
+      metrics:
+        description: "Metrics to compare (space-separated: hit mrr ndcg map)"
+        required: false
+        default: "hit@3 hit@5 hit@7 hit@10 mrr@3 mrr@5 mrr@7 mrr@10"
+        type: string
+      use_adaptive_k:
+        description: "Use adaptive k (actual retrieved count per query)"
+        required: false
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+      alpha:
+        description: "Significance level for statistical tests (default: 0.05)"
+        required: false
+        default: "0.05"
+        type: string
+      ks:
+        description: "Rank cut-offs for metrics (default: 3,5,7,10)"
+        required: false
+        default: "3,5,7,10"
+        type: string
+      timeout:
+        description: "HTTP timeout in seconds for /chat calls (default: 60)"
+        required: false
+        default: "60"
+        type: string
+
+jobs:
+  statistical_comparison:
+    name: Compare Model A vs Model B
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Copy environment from secrets
+        run: |
+          cat > .env << 'EOF'
+          ${{ secrets.ENV_FILE }}
+          EOF
+        env:
+          ENV_FILE: ${{ secrets.ENV_FILE }}
+
+      - name: Create results directories
+        run: |
+          mkdir -p src/evaluation/results/model_a
+          mkdir -p src/evaluation/results/model_b
+          mkdir -p src/evaluation/results/stats
+
+      - name: Build benchmark Docker image
+        run: |
+          docker compose build benchmark
+
+      - name: Run Benchmark for Model A
+        run: |
+          docker compose --profile benchmark run --rm benchmark \
+            bash -c 'micromamba run -n app \
+                    python -m evaluation.benchmark \
+                      --output-dir /app/src/evaluation/results/model_a \
+                      --ks "${{ inputs.ks }}" \
+                      --no-plots'
+        env:
+          EXPERIMENT_DIM: ${{ inputs.model_a_experiment_dim }}
+          EXPERIMENT_TEMP: ${{ inputs.model_a_experiment_temp }}
+          EXPERIMENT_MODEL: ${{ inputs.model_a_experiment_model }}
+
+      - name: Run Benchmark for Model B
+        run: |
+          docker compose --profile benchmark run --rm benchmark \
+            bash -c 'micromamba run -n app \
+                    python -m evaluation.benchmark \
+                      --output-dir /app/src/evaluation/results/model_b \
+                      --ks "${{ inputs.ks }}" \
+                      --no-plots'
+        env:
+          EXPERIMENT_DIM: ${{ inputs.model_b_experiment_dim }}
+          EXPERIMENT_TEMP: ${{ inputs.model_b_experiment_temp }}
+          EXPERIMENT_MODEL: ${{ inputs.model_b_experiment_model }}
+
+      - name: Extract latest CSV files from both models
+        id: csv-files
+        run: |
+          # Find latest per-query CSV for Model A
+          MODEL_A_CSV=$(ls -t src/evaluation/results/model_a/eval_per_query_*.csv 2>/dev/null | head -1)
+          if [ -z "$MODEL_A_CSV" ]; then
+            echo "ERROR: No eval_per_query CSV found for Model A"
+            exit 1
+          fi
+          echo "model_a_csv=${MODEL_A_CSV}" >> "$GITHUB_OUTPUT"
+          
+          # Find latest per-query CSV for Model B
+          MODEL_B_CSV=$(ls -t src/evaluation/results/model_b/eval_per_query_*.csv 2>/dev/null | head -1)
+          if [ -z "$MODEL_B_CSV" ]; then
+            echo "ERROR: No eval_per_query CSV found for Model B"
+            exit 1
+          fi
+          echo "model_b_csv=${MODEL_B_CSV}" >> "$GITHUB_OUTPUT"
+          
+          echo "Model A CSV: $MODEL_A_CSV"
+          echo "Model B CSV: $MODEL_B_CSV"
+
+      - name: Run Statistical Tests
+        id: stats
+        run: |
+          docker compose --profile benchmark run --rm benchmark \
+            bash -c 'micromamba run -n app \
+                    python -m evaluation.statistical_comparison \
+                      --model_a_csv /app/${{ steps.csv-files.outputs.model_a_csv }} \
+                      --model_b_csv /app/${{ steps.csv-files.outputs.model_b_csv }} \
+                      --metrics "${{ inputs.metrics }}" \
+                      --alpha "${{ inputs.alpha }}" \
+                      --output-dir /app/src/evaluation/results/stats \
+                      $([ "${{ inputs.use_adaptive_k }}" == "true" ] && echo "--use-adaptive-k" || echo "")' \
+            2>&1 | tee stats_output.log
+
+      - name: Generate comparison report
+        run: |
+          cat > src/evaluation/results/stats/COMPARISON_REPORT.md << 'EOF'
+          # Statistical Comparison Report
+          
+          ## Configuration
+          
+          ### Model A: ${{ inputs.model_a_name }}
+          - experiment_dim: `${{ inputs.model_a_experiment_dim }}`
+          - experiment_temp: `${{ inputs.model_a_experiment_temp }}`
+          - experiment_model: `${{ inputs.model_a_experiment_model }}`
+          
+          ### Model B: ${{ inputs.model_b_name }}
+          - experiment_dim: `${{ inputs.model_b_experiment_dim }}`
+          - experiment_temp: `${{ inputs.model_b_experiment_temp }}`
+          - experiment_model: `${{ inputs.model_b_experiment_model }}`
+          
+          ## Statistical Tests Configuration
+          
+          - **Metrics tested**: `${{ inputs.metrics }}`
+          - **Use adaptive k**: `${{ inputs.use_adaptive_k }}`
+          - **Significance level (α)**: `${{ inputs.alpha }}`
+          - **Rank cut-offs (k)**: `${{ inputs.ks }}`
+          - **HTTP timeout**: `${{ inputs.timeout }}s`
+          
+          ## Results
+          
+          ### Model A Data
+          - CSV: `${{ steps.csv-files.outputs.model_a_csv }}`
+          
+          ### Model B Data
+          - CSV: `${{ steps.csv-files.outputs.model_b_csv }}`
+          
+          ### Statistical Tests Output
+          
+          See the workflow logs and the JSON/CSV files in this artifact for detailed results.
+          
+          ---
+          
+          Generated: `$(date -u +%Y-%m-%dT%H:%M:%SZ)`
+          Workflow run: [${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          EOF
+
+      - name: Upload results as artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: statistical-tests-results-${{ github.run_number }}
+          path: |
+            src/evaluation/results/model_a/eval_per_query_*.csv
+            src/evaluation/results/model_a/eval_summary_*.csv
+            src/evaluation/results/model_a/eval_summary_*.json
+            src/evaluation/results/model_b/eval_per_query_*.csv
+            src/evaluation/results/model_b/eval_summary_*.csv
+            src/evaluation/results/model_b/eval_summary_*.json
+            src/evaluation/results/stats/
+            stats_output.log
+          retention-days: 30
+
+      - name: Print statistical tests results
+        if: always()
+        run: |
+          if [ -f stats_output.log ]; then
+            echo "=== Statistical Tests Output ===" 
+            tail -100 stats_output.log
+          fi
+          if [ -f src/evaluation/results/stats/COMPARISON_REPORT.md ]; then
+            echo ""
+            echo "=== Comparison Report ===" 
+            cat src/evaluation/results/stats/COMPARISON_REPORT.md
+          fi
