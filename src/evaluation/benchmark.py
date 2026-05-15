@@ -27,6 +27,15 @@ def _get_top_k_chunks(query: str, top_k: int) -> list:
     _get_top_k_chunks = lambda q, top_k: get_top_k_chunks(q, top_k=top_k)  # noqa: E731
     return get_top_k_chunks(query, top_k=top_k)
 
+
+def _rewrite_query(query: str) -> str:
+    """Lazy proxy — loads the query rewriter (and OpenRouter client) only on first call."""
+    from src.api.query_rewriter import rewrite_query  # noqa: PLC0415
+    global _rewrite_query  # noqa: PLW0603
+    _rewrite_query = rewrite_query
+    return rewrite_query(query)
+
+
 #logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICAL)
 
 # ── Constants ─────────────────────────────────────────────────────────────────
@@ -476,6 +485,7 @@ class MetricsAtK:
 def evaluate(
         gold: list[EvalRow],
         k: int,
+        use_rewrite: bool = False,
 ) -> tuple[MetricsAtK, list[tuple[list[float], list[float]]]]:
     """
     Evaluates the retriever on the gold set for a given rank cut-off k.
@@ -492,7 +502,8 @@ def evaluate(
     total_rel = 1
 
     for index, row in enumerate(gold):
-        retrieved_chunks = _get_top_k_chunks(row.query, top_k=k)
+        retrieval_q = _rewrite_query(row.query) if use_rewrite else row.query
+        retrieved_chunks = _get_top_k_chunks(retrieval_q, top_k=k)
         raw_urls = [
             normalize_url(c.get("source_url", ""))
             for c in retrieved_chunks
@@ -737,6 +748,7 @@ def evaluate_to_csv(
     output_dir: Path,
     api_url: str | None = None,
     timeout: int = 60,
+    use_rewrite: bool = False,
 ) -> None:
     """
     Evaluate the chatbot on gold and write two output files:
@@ -744,14 +756,18 @@ def evaluate_to_csv(
       - eval_summary_<timestamp>.csv    — single-row averages (also as .json)
 
     Columns per query:
-      query | chatbot_answer | chatbot_links (;-separated) | gold_link |
+      query | retrieval_query | chatbot_answer | chatbot_links (;-separated) | gold_link |
       hit@k | mrr@k | mrrw@k | recall@k | precision@k | f1@k | ndcg@k |
       map@k | r_prec | hit_adaptive | mrr_adaptive
       (for every k in ks; r_prec is k-independent; adaptive metrics are global)
 
-    If api_url is given, calls /chat to obtain the chatbot answer and links.
-    Otherwise calls the retrieval module directly at max(ks) (no answer text).
-    
+    If api_url is given, calls /chat to obtain the chatbot answer and links
+    (the /chat endpoint already applies query rewriting internally, so
+    use_rewrite has no effect in that mode).
+    Otherwise calls the retrieval module directly at max(ks). When use_rewrite
+    is True, each query is rewritten via rewrite_query() before retrieval,
+    matching the production /chat pipeline exactly.
+
     Adaptive metrics (hit_adaptive, mrr_adaptive) are computed based on the actual
     number of retrieved links for each query, not a fixed k.
     """
@@ -767,9 +783,11 @@ def evaluate_to_csv(
             except RuntimeError as exc:
                 print(f"  WARNING [{idx + 1}]: {exc}")
                 answer, raw_sources = "", []
+            retrieval_q = row.query  # rewriting happens inside /chat
         else:
             answer = ""
-            chunks = _get_top_k_chunks(row.query, top_k=max_k)
+            retrieval_q = _rewrite_query(row.query) if use_rewrite else row.query
+            chunks = _get_top_k_chunks(retrieval_q, top_k=max_k)
             raw_sources = [c.get("source_url", "") for c in chunks]
 
         sources = unique_preserve_order(
@@ -783,6 +801,7 @@ def evaluate_to_csv(
 
         csv_row: dict = {
             "query": row.query,
+            "retrieval_query": retrieval_q,
             "chatbot_answer": answer,
             "chatbot_links": ";".join(sources),
             "gold_link": row.target_url,
@@ -895,6 +914,16 @@ def main() -> None:
         action="store_true",
         help="Skip P-R curve and bar-chart plots.",
     )
+    parser.add_argument(
+        "--rewrite",
+        action="store_true",
+        help=(
+            "Rewrite each query via rewrite_query() before retrieval, matching the "
+            "production /chat pipeline. Has no effect when --api-url is given "
+            "(the /chat endpoint already rewrites queries internally). "
+            "Requires OPENROUTER_API_KEY to be set."
+        ),
+    )
     args = parser.parse_args()
 
     ks = [int(k.strip()) for k in args.ks.split(",")]
@@ -912,8 +941,12 @@ def main() -> None:
 
     print(f"Loaded {len(gold)} evaluation queries from {source_label}\n")
 
+    if args.rewrite:
+        print("Query rewriting ENABLED — each query will be rewritten before retrieval.\n")
+
     # CSV-based evaluation (per-query + summary)
-    evaluate_to_csv(gold, ks, output_dir, api_url=args.api_url, timeout=args.timeout)
+    evaluate_to_csv(gold, ks, output_dir, api_url=args.api_url, timeout=args.timeout,
+                    use_rewrite=args.rewrite)
 
     # Plots use the legacy evaluate() loop (calls retrieval directly per k)
     if not args.no_plots:
@@ -922,7 +955,7 @@ def main() -> None:
         all_pr_curves: dict[int, list[tuple[list[float], list[float]]]] = {}
 
         for k in ks:
-            m, pr_curves = evaluate(gold, k)
+            m, pr_curves = evaluate(gold, k, use_rewrite=args.rewrite)
             all_metrics.append(m)
             all_pr_curves[k] = pr_curves
             print(f"  k={k}: Hit={m.hit:.4f} MRR={m.mrr:.4f} MRRw={m.mrr_weighted:.4f} "

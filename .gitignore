@@ -2,6 +2,7 @@ src/data
 docs
 .env
 .DS_Store
+src/evaluation/RETRIEVAL_IMPROVEMENTS.md
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

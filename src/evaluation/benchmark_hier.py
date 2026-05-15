@@ -63,6 +63,14 @@ def _get_top_k_chunks(query: str, top_k: int) -> list:
     return get_top_k_chunks(query, top_k=top_k)
 
 
+def _rewrite_query(query: str) -> str:
+    """Lazy proxy — loads the query rewriter (and OpenRouter client) only on first call."""
+    from src.api.query_rewriter import rewrite_query  # noqa: PLC0415
+    global _rewrite_query  # noqa: PLW0603
+    _rewrite_query = rewrite_query
+    return rewrite_query(query)
+
+
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 # Lowered threshold vs benchmark.py (0.5 → 0.25) so that direct child URLs
@@ -383,6 +391,7 @@ class MetricsAtK:
 def evaluate(
         gold: list[EvalRow],
         k: int,
+        use_rewrite: bool = False,
 ) -> tuple[MetricsAtK, list[tuple[list[float], list[float]]]]:
     hits, mrrs, mrrws, recalls, precisions = [], [], [], [], []
     f1s, ndcgs, aps, r_precs = [], [], [], []
@@ -393,7 +402,8 @@ def evaluate(
     total_rel = 1
 
     for index, row in enumerate(gold):
-        retrieved_chunks = _get_top_k_chunks(row.query, top_k=k)
+        retrieval_q = _rewrite_query(row.query) if use_rewrite else row.query
+        retrieved_chunks = _get_top_k_chunks(retrieval_q, top_k=k)
         raw_urls = [
             normalize_url(c.get("source_url", ""))
             for c in retrieved_chunks
@@ -664,18 +674,22 @@ def evaluate_to_csv(
     output_dir: Path,
     api_url: str | None = None,
     timeout: int = 60,
+    use_rewrite: bool = False,
 ) -> None:
     """
     Same as benchmark.py's evaluate_to_csv but adds soft_ metric columns.
 
     Standard columns (threshold=0.25):
-      query | chatbot_answer | chatbot_links | gold_link |
+      query | retrieval_query | chatbot_answer | chatbot_links | gold_link |
       hit@k | mrr@k | mrrw@k | recall@k | precision@k | f1@k | ndcg@k |
       map@k | r_prec | hit_adaptive | mrr_adaptive
 
     Extra soft columns (no threshold, continuous relevance):
       soft_hit@k | soft_mrr@k | soft_recall@k | soft_precision@k |
       soft_f1@k  | soft_map@k
+
+    When use_rewrite is True, each query is rewritten via rewrite_query() before
+    retrieval (only in direct-retrieval mode; /chat already rewrites internally).
     """
     max_k = max(ks)
     total_rel = 1
@@ -689,9 +703,11 @@ def evaluate_to_csv(
             except RuntimeError as exc:
                 print(f"  WARNING [{idx + 1}]: {exc}")
                 answer, raw_sources = "", []
+            retrieval_q = row.query  # rewriting happens inside /chat
         else:
             answer = ""
-            chunks = _get_top_k_chunks(row.query, top_k=max_k)
+            retrieval_q = _rewrite_query(row.query) if use_rewrite else row.query
+            chunks = _get_top_k_chunks(retrieval_q, top_k=max_k)
             raw_sources = [c.get("source_url", "") for c in chunks]
 
         sources = unique_preserve_order(
@@ -704,6 +720,7 @@ def evaluate_to_csv(
 
         csv_row: dict = {
             "query": row.query,
+            "retrieval_query": retrieval_q,
             "chatbot_answer": answer,
             "chatbot_links": ";".join(sources),
             "gold_link": row.target_url,
@@ -825,6 +842,16 @@ def main() -> None:
         action="store_true",
         help="Skip P-R curve and bar-chart plots.",
     )
+    parser.add_argument(
+        "--rewrite",
+        action="store_true",
+        help=(
+            "Rewrite each query via rewrite_query() before retrieval, matching the "
+            "production /chat pipeline. Has no effect when --api-url is given "
+            "(the /chat endpoint already rewrites queries internally). "
+            "Requires OPENROUTER_API_KEY to be set."
+        ),
+    )
     args = parser.parse_args()
 
     ks = [int(k.strip()) for k in args.ks.split(",")]
@@ -843,7 +870,11 @@ def main() -> None:
     print(f"RELEVANCE_THRESHOLD = {RELEVANCE_THRESHOLD} "
           f"(child URLs count as hits)\n")
 
-    evaluate_to_csv(gold, ks, output_dir, api_url=args.api_url, timeout=args.timeout)
+    if args.rewrite:
+        print("Query rewriting ENABLED — each query will be rewritten before retrieval.\n")
+
+    evaluate_to_csv(gold, ks, output_dir, api_url=args.api_url, timeout=args.timeout,
+                    use_rewrite=args.rewrite)
 
     if not args.no_plots:
         print("\nGenerating plots (direct retrieval per k)...")
@@ -851,7 +882,7 @@ def main() -> None:
         all_pr_curves: dict[int, list[tuple[list[float], list[float]]]] = {}
 
         for k in ks:
-            m, pr_curves = evaluate(gold, k)
+            m, pr_curves = evaluate(gold, k, use_rewrite=args.rewrite)
             all_metrics.append(m)
             all_pr_curves[k] = pr_curves
             print(f"  k={k}: Hit={m.hit:.4f} Hit_soft={m.hit_soft:.4f} "
