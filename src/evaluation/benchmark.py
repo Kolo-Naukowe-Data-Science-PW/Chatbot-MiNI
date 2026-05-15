@@ -736,7 +736,7 @@ def _call_chat_api(api_url: str, query: str, timeout: int = 60) -> tuple[str, li
         with urlopen(req, timeout=timeout) as resp:
             body = json.loads(resp.read().decode("utf-8"))
         return (body.get("answer") or "").strip(), body.get("sources") or []
-    except (HTTPError, URLError) as exc:
+    except (HTTPError, URLError, TimeoutError, OSError) as exc:
         raise RuntimeError(f"Chat API error: {exc}") from exc
 
 
