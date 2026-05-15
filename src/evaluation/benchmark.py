@@ -737,23 +737,30 @@ def evaluate_to_csv(
     output_dir: Path,
     api_url: str | None = None,
     timeout: int = 60,
+    metric_mode: str = "both",
 ) -> None:
     """
     Evaluate the chatbot on gold and write two output files:
-      - eval_per_query_<timestamp>.csv  — one row per query with all metrics
+      - eval_per_query_<timestamp>.csv  — one row per query with selected metrics
       - eval_summary_<timestamp>.csv    — single-row averages (also as .json)
 
-    Columns per query:
-      query | chatbot_answer | chatbot_links (;-separated) | gold_link |
-      hit@k | mrr@k | mrrw@k | recall@k | precision@k | f1@k | ndcg@k |
-      map@k | r_prec | hit_adaptive | mrr_adaptive
-      (for every k in ks; r_prec is k-independent; adaptive metrics are global)
+    Parameters
+    ----------
+    metric_mode : str
+        \"standard\" — compute only fixed-k metrics (hit@k, mrr@k, etc.)
+        \"adaptive\" — compute only adaptive-k metrics (hit_adaptive, mrr_adaptive, etc.)
+        \"both\" (default) — compute both standard and adaptive metrics
+
+    Columns per query (varies by metric_mode):
+      Standard: query | chatbot_answer | chatbot_links | gold_link | hit@k | mrr@k | ... | r_prec
+      Adaptive: query | chatbot_answer | chatbot_links | gold_link | hit_adaptive | mrr_adaptive | ... | r_prec_adaptive
+      Both: all of the above
 
     If api_url is given, calls /chat to obtain the chatbot answer and links.
     Otherwise calls the retrieval module directly at max(ks) (no answer text).
     
-    Adaptive metrics (hit_adaptive, mrr_adaptive) are computed based on the actual
-    number of retrieved links for each query, not a fixed k.
+    Adaptive metrics are computed at k = actual number of retrieved links per query.
+    Standard metrics use fixed k values from the 'ks' parameter.
     """
     max_k = max(ks)
     total_rel = 1
@@ -777,10 +784,6 @@ def evaluate_to_csv(
         )
         rel_scores = [hierarchical_relevance(u, row.target_url) for u in sources]
 
-        # Adaptive metrics: based on actual number of retrieved links
-        hit_adaptive = 1.0 if any(s >= RELEVANCE_THRESHOLD for s in rel_scores) else 0.0
-        mrr_adaptive = mrr_at_k(rel_scores, len(sources))  # k = actual number of links
-
         csv_row: dict = {
             "query": row.query,
             "chatbot_answer": answer,
@@ -803,15 +806,29 @@ def evaluate_to_csv(
             for col, val in metrics_k.items():
                 accum.setdefault(col, []).append(val)
 
-        r_prec_val = r_precision(rel_scores, total_rel)
-        csv_row["r_prec"] = r_prec_val
-        accum.setdefault("r_prec", []).append(r_prec_val)
+        # Only add standard metrics if mode is not "adaptive-only"
+        if metric_mode in ("standard", "both"):
+            r_prec_val = r_precision(rel_scores, total_rel)
+            csv_row["r_prec"] = r_prec_val
+            accum.setdefault("r_prec", []).append(r_prec_val)
 
-        # Adaptive metrics
-        csv_row["hit_adaptive"] = hit_adaptive
-        csv_row["mrr_adaptive"] = mrr_adaptive
-        accum.setdefault("hit_adaptive", []).append(hit_adaptive)
-        accum.setdefault("mrr_adaptive", []).append(mrr_adaptive)
+        # Only add adaptive metrics if mode is not "standard-only"
+        if metric_mode in ("adaptive", "both"):
+            # Adaptive metrics: all metrics computed at k = actual number of retrieved links
+            adaptive_k = len(sources)
+            csv_row["hit_adaptive"] = hit_at_k(rel_scores, adaptive_k)
+            csv_row["mrr_adaptive"] = mrr_at_k(rel_scores, adaptive_k)
+            csv_row["mrrw_adaptive"] = mrr_weighted_single(sources[:adaptive_k], row.target_url)
+            csv_row["recall_adaptive"] = recall_at_k(rel_scores, adaptive_k, total_rel)
+            csv_row["precision_adaptive"] = precision_at_k(rel_scores, adaptive_k)
+            csv_row["f1_adaptive"] = f_measure_at_k(rel_scores, adaptive_k, total_rel)
+            csv_row["ndcg_adaptive"] = ndcg_at_k(rel_scores, adaptive_k)
+            csv_row["map_adaptive"] = average_precision_at_k(rel_scores, adaptive_k, total_rel)
+            csv_row["r_prec_adaptive"] = r_precision(rel_scores, total_rel)  # k-independent
+
+            for col in ["hit_adaptive", "mrr_adaptive", "mrrw_adaptive", "recall_adaptive",
+                        "precision_adaptive", "f1_adaptive", "ndcg_adaptive", "map_adaptive", "r_prec_adaptive"]:
+                accum.setdefault(col, []).append(csv_row[col])
 
         per_query_rows.append(csv_row)
         print(f"  [{idx + 1}/{len(gold)}] {row.query[:70]}")
@@ -895,6 +912,12 @@ def main() -> None:
         action="store_true",
         help="Skip P-R curve and bar-chart plots.",
     )
+    parser.add_argument(
+        "--metric-mode",
+        choices=["standard", "adaptive", "both"],
+        default="both",
+        help="Metrics to compute: 'standard' (fixed k only), 'adaptive' (adaptive k only), or 'both' (default).",
+    )
     args = parser.parse_args()
 
     ks = [int(k.strip()) for k in args.ks.split(",")]
@@ -913,7 +936,7 @@ def main() -> None:
     print(f"Loaded {len(gold)} evaluation queries from {source_label}\n")
 
     # CSV-based evaluation (per-query + summary)
-    evaluate_to_csv(gold, ks, output_dir, api_url=args.api_url, timeout=args.timeout)
+    evaluate_to_csv(gold, ks, output_dir, api_url=args.api_url, timeout=args.timeout, metric_mode=args.metric_mode)
 
     # Plots use the legacy evaluate() loop (calls retrieval directly per k)
     if not args.no_plots:
