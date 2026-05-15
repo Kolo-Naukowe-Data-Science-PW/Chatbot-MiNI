@@ -8,6 +8,7 @@ All evaluation scripts, metrics, and benchmark data for MiNIonek.
 |---|---|
 | `benchmark.py` | Main benchmark: runs retrieval on the gold eval set, computes Hit@k, MRR@k, nDCG@k, MAP@k, Precision-Recall curves. **Use this.** |
 | `benchmark_v1.py` | Legacy simple benchmark (basic Hit@k / MRR, no hierarchical scoring). |
+| `statistical_comparison.py` | **NEW** Wilcoxon + Goodman–Kruskal γ + Kappa tests for comparing two model variants statistically. Input: two `eval_per_query_<ts>.csv` files. Output: significance tests, JSON results. |
 | `metrics.py` | BERTScore class for text-level answer quality evaluation. |
 | `prepare_data.py` | CSV loading utilities used by the BERTScore pipeline. |
 | `eval_with_playwright.py` | Playwright macro: automates asking questions through the live chatbot UI and collecting answers to a TSV. Requires a running deployment. |
@@ -60,13 +61,19 @@ python -m evaluation.benchmark --no-plots
 
 | File | Content |
 |---|---|
-| `eval_per_query_<ts>.csv` | One row per query: `query`, `chatbot_answer`, `chatbot_links` (`;`-separated), `gold_link`, all metrics at each k |
+| `eval_per_query_<ts>.csv` | One row per query: `query`, `chatbot_answer`, `chatbot_links` (`;`-separated), `gold_link`, all metrics at each k, plus `hit_adaptive` and `mrr_adaptive` (computed on actual # of returned links). |
 | `eval_summary_<ts>.csv` | One-row average of every metric |
 | `eval_summary_<ts>.json` | Same as summary CSV in JSON format |
 | `pr_curves.png` | Mean interpolated P-R curves (without `--no-plots`) |
 | `metrics_summary.png` | Grouped bar chart of metrics (without `--no-plots`) |
 
 **Only `wymagany kontekst = 0` questions are evaluated** — these are the only ones with a reliable gold URL. See `BENCHMARK_VM.md` for step-by-step VM instructions.
+
+**Adaptive metrics in the CSV:**
+- `hit_adaptive` — whether gold link is in the actually returned links (not fixed @k)
+- `mrr_adaptive` — 1/rank of gold link in the actually returned links
+
+These are computed per query based on the actual number of returned links, useful for comparing when retriever returns varying numbers of results.
 
 ## Running LLM-as-a-judge batch evaluation
 
@@ -116,7 +123,49 @@ Output: `src/evaluation/data/golden_answers.csv`
 Pytania z `skip_reason=session_context` są zapisywane z pustymi odpowiedziami —
 nie pomijane całkowicie, żeby CSV miał kompletną listę pytań.
 
+## Statistical comparison of two model variants
+
+`statistical_comparison.py` implementuje trzy testy statystyczne porównujące dwa warianty modelu na tej samej zbiorze pytań:
+
+1. **Wilcoxon Signed-Rank Test** — czy różnica w metrykach jest istotna statystycznie
+2. **Goodman–Kruskal γ** — czy oba modele zgadzają się na temat trudnych pytań
+3. **Kappa Coefficient** (opcjonalnie) — stabilność retrievera między przebiegami
+
+```bash
+export PYTHONPATH=src
+
+# Pokaż wszystkie dostępne opcje
+python -m evaluation.statistical_comparison --help
+
+# Porównanie dwóch benchmarków (fixed k)
+python -m evaluation.statistical_comparison \
+  --model_a_csv src/evaluation/results/temp_0.2/eval_per_query_20260515T100000.csv \
+  --model_b_csv src/evaluation/results/temp_0.8/eval_per_query_20260515T110000.csv \
+  --metrics "mrr@5,hit@5,mrr@10,hit@10,ndcg@10" \
+  --alpha 0.05
+
+# Porównanie (adaptive k — na podstawie rzeczywistej liczby zwróconych linków)
+python -m evaluation.statistical_comparison \
+  --model_a_csv src/evaluation/results/model_a/eval_per_query_*.csv \
+  --model_b_csv src/evaluation/results/model_b/eval_per_query_*.csv \
+  --use-adaptive-k
+```
+
+**Key flags:**
+- `--model_a_csv`, `--model_b_csv` (required) — ścieżki do CSV'ów z benchmarków
+- `--metrics` — lista metryk (default: `mrr@10,hit@10,ndcg@10`)
+- `--alpha` — poziom istotności (default 0.05)
+- `--use-adaptive-k` — użyj adaptacyjnego k zamiast fixed (każdy query ma proprie k = liczba zwróconych linków)
+- `--output-dir` — katalog na wyniki
+
+**Output:** 
+- JSON z wynikami testów (`statistical_comparison_<ts>.json`)
+- Wyniki w standardowym wyjściu (stdout)
+
+Szczegóły: patrz [STATISTICAL_TESTS.md](STATISTICAL_TESTS.md).
+
 ---
+
 
 ## Kontrola eksperymentu A/B (EXPERIMENT_DIM)
 
