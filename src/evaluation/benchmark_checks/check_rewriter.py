@@ -1,15 +1,18 @@
 """
 Ablation: query rewriter ON vs OFF.
 
-Runs the full benchmark twice (baseline then with rewrite) and prints a
-side-by-side comparison table.  Results are saved to:
-    <output-dir>/no_rewrite/   — eval_per_query_*.csv + eval_summary_*.json
-    <output-dir>/with_rewrite/ — eval_per_query_*.csv + eval_summary_*.json
-    <output-dir>/comparison_rewriter_<ts>.json — delta table
+Calls POST /retrieval on the running API for each query (reuses the existing
+Qdrant singleton, no Docker volume conflicts).
 
-Usage (from repo root):
-    python -m evaluation.benchmark_checks.check_rewriter
-    python -m evaluation.benchmark_checks.check_rewriter --ks 3,5,10 --output-dir src/evaluation/results/rewriter_check
+Runs both variants back-to-back and prints a side-by-side comparison table.
+Results saved to:
+    <output-dir>/no_rewrite/   — eval_summary_*.json
+    <output-dir>/with_rewrite/ — eval_summary_*.json
+    <output-dir>/comparison_rewriter_<ts>.json
+
+Usage (from repo root, API must be running):
+    python -m evaluation.benchmark_checks.check_rewriter --api-base-url http://api:8000
+    python -m evaluation.benchmark_checks.check_rewriter --api-base-url http://api:8000 --ks 3,5,10
 """
 
 import argparse
@@ -18,15 +21,25 @@ import sys
 from datetime import datetime
 from pathlib import Path
 from statistics import mean
+from urllib.parse import urlsplit
+from urllib.request import Request, urlopen
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.evaluation.benchmark import (  # noqa: E402
-    evaluate_to_csv,
+    average_precision_at_k,
+    hierarchical_relevance,
+    hit_at_k,
     load_gold,
     load_gold_filtered,
+    mrr_at_k,
+    mrr_weighted_single,
+    ndcg_at_k,
+    normalize_url,
+    recall_at_k,
+    unique_preserve_order,
 )
 
 KEY_METRICS = [
@@ -38,10 +51,48 @@ KEY_METRICS = [
 ]
 
 
+def _call_retrieval(api_base: str, query: str, top_k: int,
+                    use_rerank: bool, use_rewrite: bool) -> list[str]:
+    """POST /retrieval and return ordered deduplicated URLs."""
+    url = api_base.rstrip("/") + "/retrieval"
+    payload = json.dumps({
+        "query": query,
+        "top_k": top_k,
+        "use_rerank": use_rerank,
+        "use_rewrite": use_rewrite,
+    }).encode()
+    req = Request(url, data=payload, headers={"Content-Type": "application/json"})
+    with urlopen(req, timeout=120) as resp:
+        data = json.loads(resp.read())
+    return [normalize_url(u) for u in data["urls"] if u]
+
+
+def _evaluate(gold, ks: list[int], api_base: str,
+              use_rerank: bool, use_rewrite: bool, label: str) -> dict[str, float]:
+    max_k = max(ks)
+    total_rel = 1
+    accum: dict[str, list[float]] = {}
+
+    for idx, row in enumerate(gold):
+        urls = _call_retrieval(api_base, row.query, max_k, use_rerank, use_rewrite)
+        rel_scores = [hierarchical_relevance(u, row.target_url) for u in urls]
+
+        for k in ks:
+            accum.setdefault(f"hit@{k}", []).append(hit_at_k(rel_scores, k))
+            accum.setdefault(f"mrr@{k}", []).append(mrr_at_k(rel_scores, k))
+            accum.setdefault(f"mrrw@{k}", []).append(mrr_weighted_single(urls[:k], row.target_url))
+            accum.setdefault(f"recall@{k}", []).append(recall_at_k(rel_scores, k, total_rel))
+            accum.setdefault(f"ndcg@{k}", []).append(ndcg_at_k(rel_scores, k))
+            accum.setdefault(f"map@{k}", []).append(average_precision_at_k(rel_scores, k, total_rel))
+
+        print(f"  [{label}] [{idx + 1}/{len(gold)}] {row.query[:70]}")
+
+    return {col: mean(vals) for col, vals in accum.items() if vals}
+
+
 def _print_comparison(a: dict, b: dict, label_a: str, label_b: str) -> dict:
     shared = [m for m in KEY_METRICS if m in a and m in b]
     col_w = max(len(m) for m in shared) + 2
-
     header = f"{'Metric':<{col_w}} {label_a:>14} {label_b:>14} {'Delta':>10}"
     sep = "=" * len(header)
     print(f"\n{sep}\n{header}\n{'-' * len(header)}")
@@ -53,11 +104,11 @@ def _print_comparison(a: dict, b: dict, label_a: str, label_b: str) -> dict:
         sign = "+" if delta >= 0 else ""
         flag = " <" if delta < -0.005 else (" >" if delta > 0.005 else "")
         print(f"{m:<{col_w}} {va:>14.4f} {vb:>14.4f} {sign}{delta:>9.4f}{flag}")
-        comparison[m] = {"baseline": round(va, 6), "rewrite": round(vb, 6), "delta": round(delta, 6)}
+        comparison[m] = {"no_rewrite": round(va, 6), "with_rewrite": round(vb, 6), "delta": round(delta, 6)}
 
     print(sep)
     improved = sum(1 for v in comparison.values() if v["delta"] > 0.001)
-    degraded = sum(1 for v in comparison.values() if v["delta"] < -0.001)
+    degraded  = sum(1 for v in comparison.values() if v["delta"] < -0.001)
     print(f"\nImproved: {improved}/{len(shared)}  |  Degraded: {degraded}/{len(shared)}")
     return comparison
 
@@ -66,24 +117,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Ablation: compare retrieval with vs. without query rewriting."
     )
-    parser.add_argument(
-        "--input-csv",
-        default="src/evaluation/data/questions_with_links.csv",
-    )
-    parser.add_argument(
-        "--output-dir",
-        default="src/evaluation/results/rewriter_check",
-    )
-    parser.add_argument(
-        "--ks",
-        default="3,5,10",
-        help="Rank cut-offs (default: 3,5,10).",
-    )
-    parser.add_argument(
-        "--check-coverage",
-        action="store_true",
-        help="Also compute coverage-corrected hit@k (cch@k).",
-    )
+    parser.add_argument("--api-base-url", default="http://api:8000")
+    parser.add_argument("--input-csv", default="src/evaluation/data/questions_with_links.csv")
+    parser.add_argument("--output-dir", default="src/evaluation/results/rewriter_check")
+    parser.add_argument("--ks", default="3,5,10")
     args = parser.parse_args()
 
     ks = [int(k.strip()) for k in args.ks.split(",")]
@@ -93,35 +130,20 @@ def main() -> None:
     input_path = Path(args.input_csv)
     if input_path.name == "questions_with_links.csv":
         gold = load_gold_filtered(str(input_path))
-        print(f"Loaded {len(gold)} queries (wymagany kontekst=0) from {input_path.name}\n")
+        print(f"Loaded {len(gold)} queries (wymagany kontekst=0)\n")
     else:
         gold = load_gold(str(input_path))
-        print(f"Loaded {len(gold)} queries from {input_path.name}\n")
-
-    dir_a = output_dir / "no_rewrite"
-    dir_b = output_dir / "with_rewrite"
-    dir_a.mkdir(exist_ok=True)
-    dir_b.mkdir(exist_ok=True)
+        print(f"Loaded {len(gold)} queries\n")
 
     print("=" * 60)
     print("RUN 1/2 — baseline (no query rewriting)")
     print("=" * 60)
-    summary_a = evaluate_to_csv(
-        gold, ks, dir_a,
-        use_rewrite=False,
-        metric_mode="standard",
-        check_coverage=args.check_coverage,
-    )
+    summary_a = _evaluate(gold, ks, args.api_base_url, use_rerank=True, use_rewrite=False, label="no_rewrite")
 
     print("\n" + "=" * 60)
     print("RUN 2/2 — with query rewriting")
     print("=" * 60)
-    summary_b = evaluate_to_csv(
-        gold, ks, dir_b,
-        use_rewrite=True,
-        metric_mode="standard",
-        check_coverage=args.check_coverage,
-    )
+    summary_b = _evaluate(gold, ks, args.api_base_url, use_rerank=True, use_rewrite=True, label="with_rewrite")
 
     print("\n\n========== COMPARISON: no_rewrite vs with_rewrite ==========")
     comparison = _print_comparison(summary_a, summary_b, "no_rewrite", "with_rewrite")

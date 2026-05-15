@@ -171,6 +171,55 @@ _EXPERIMENT_MODEL_POOL = [
 ]
 
 
+class RetrievalRequest(BaseModel):
+    query: str
+    top_k: int = 10
+    use_rerank: bool = True
+    use_rewrite: bool = False
+
+
+@app.post("/retrieval")
+def retrieval_endpoint(request: RetrievalRequest) -> dict[str, Any]:
+    """Direct retrieval endpoint for ablation experiments (bypasses LLM generation)."""
+    q = rewrite_query(request.query) if request.use_rewrite else request.query
+    chunks = get_top_k_chunks(q, top_k=request.top_k, use_rerank=request.use_rerank)
+    seen: set[str] = set()
+    urls: list[str] = []
+    for chunk in chunks:
+        url = chunk.get("source_url", "")
+        if url and url not in seen:
+            seen.add(url)
+            urls.append(url)
+    return {"retrieval_query": q, "urls": urls}
+
+
+@app.get("/db-urls")
+def db_urls_endpoint() -> dict[str, Any]:
+    """Return all unique source URLs stored in Qdrant. Used by coverage analysis."""
+    from src.api.retrieval import _get_qdrant_client  # noqa: PLC0415
+    from src.ingestion.vector_db import COLLECTION_NAME  # noqa: PLC0415
+
+    client = _get_qdrant_client()
+    urls: set[str] = set()
+    offset = None
+    while True:
+        points, next_offset = client.scroll(
+            collection_name=COLLECTION_NAME,
+            offset=offset,
+            limit=1000,
+            with_payload=["url"],
+            with_vectors=False,
+        )
+        for p in points:
+            url = (p.payload or {}).get("url", "")
+            if url:
+                urls.add(url)
+        if next_offset is None:
+            break
+        offset = next_offset
+    return {"urls": sorted(urls), "count": len(urls)}
+
+
 @app.get("/experiment-config")
 def experiment_config() -> dict:
     """Return the current A/B experiment configuration from environment variables.

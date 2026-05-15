@@ -49,6 +49,7 @@ jobs:
           docker compose --profile benchmark run --rm benchmark \
             micromamba run -n app \
             python -m evaluation.benchmark_checks.check_coverage \
+              --api-base-url http://api:8000 \
               --output-dir /app/src/evaluation/results/coverage \
               $MISSING_FLAG \
               $ALL_FLAG

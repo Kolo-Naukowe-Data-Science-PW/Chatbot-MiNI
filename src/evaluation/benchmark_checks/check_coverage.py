@@ -1,20 +1,18 @@
 """
 Coverage analysis: how many gold URLs from the benchmark are actually in Qdrant?
 
+Calls GET /db-urls on the running API (reuses the existing Qdrant singleton,
+no Docker volume conflicts).
+
 For each gold URL checks:
-  - exact   : URL is in DB verbatim
-  - parent  : direct parent of the URL is in DB (one level up)
-  - child   : at least one direct child of the URL is in DB
-  - missing : not found at any level
+  exact   — URL is in DB verbatim
+  parent  — direct parent of the URL is in DB (one level up)
+  child   — at least one direct child of the URL is in DB
+  missing — not found at any level
 
-Reports aggregate statistics and saves:
-  - coverage_report_<ts>.json  — full per-URL breakdown
-  - coverage_report_<ts>.csv   — same, spreadsheet-friendly
-
-Usage (from repo root):
-    python -m evaluation.benchmark_checks.check_coverage
-    python -m evaluation.benchmark_checks.check_coverage --input-csv src/evaluation/data/questions_with_links.csv
-    python -m evaluation.benchmark_checks.check_coverage --show-missing
+Usage (from repo root, API must be running):
+    python -m evaluation.benchmark_checks.check_coverage --api-base-url http://localhost:8000
+    python -m evaluation.benchmark_checks.check_coverage --api-base-url http://api:8000 --show-missing
 """
 
 import argparse
@@ -25,6 +23,7 @@ from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
+from urllib.request import urlopen
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 if str(PROJECT_ROOT) not in sys.path:
@@ -37,31 +36,14 @@ from src.evaluation.benchmark import (  # noqa: E402
 )
 
 
-def _get_all_db_urls() -> frozenset[str]:
-    """Return all unique normalized URLs stored in the Qdrant collection."""
-    from src.api.retrieval import _get_qdrant_client  # noqa: PLC0415
-    from src.ingestion.vector_db import COLLECTION_NAME  # noqa: PLC0415
-
-    client = _get_qdrant_client()
-    urls: set[str] = set()
-    offset = None
-    while True:
-        points, next_offset = client.scroll(
-            collection_name=COLLECTION_NAME,
-            offset=offset,
-            limit=1000,
-            with_payload=["url"],
-            with_vectors=False,
-        )
-        for p in points:
-            raw = (p.payload or {}).get("url", "")
-            normed = normalize_url(raw)
-            if normed:
-                urls.add(normed)
-        if next_offset is None:
-            break
-        offset = next_offset
-    return frozenset(urls)
+def _fetch_db_urls(api_base: str) -> frozenset[str]:
+    """Fetch all unique URLs from the running API's /db-urls endpoint."""
+    url = api_base.rstrip("/") + "/db-urls"
+    print(f"  GET {url}")
+    with urlopen(url, timeout=120) as resp:
+        data = json.loads(resp.read())
+    raw_urls: list[str] = data["urls"]
+    return frozenset(normalize_url(u) for u in raw_urls if u)
 
 
 def _classify(target_url: str, db_urls: frozenset[str]) -> str:
@@ -105,14 +87,17 @@ def main() -> None:
         description="Analyse how many gold benchmark URLs exist in the Qdrant DB."
     )
     parser.add_argument(
+        "--api-base-url",
+        default="http://api:8000",
+        help="Base URL of the running API (default: http://api:8000).",
+    )
+    parser.add_argument(
         "--input-csv",
         default="src/evaluation/data/questions_with_links.csv",
-        help="Benchmark CSV (default: questions_with_links.csv, auto-filters wymagany kontekst=0).",
     )
     parser.add_argument(
         "--output-dir",
         default="src/evaluation/results/coverage",
-        help="Where to save the report files.",
     )
     parser.add_argument(
         "--show-missing",
@@ -138,19 +123,18 @@ def main() -> None:
         source_label = f"{input_path.name} (wymagany kontekst=0)"
 
     print(f"Loaded {len(gold)} gold queries from {source_label}")
-    print("Loading Qdrant DB URLs... (this may take a moment)")
-    db_urls = _get_all_db_urls()
+    print("Fetching DB URLs from API...")
+    db_urls = _fetch_db_urls(args.api_base_url)
     print(f"Found {len(db_urls)} unique URLs in Qdrant.\n")
 
-    # Deduplicate gold URLs (multiple questions can share the same target URL)
+    # Deduplicate gold URLs
     unique_gold_urls: dict[str, list[str]] = {}
     for row in gold:
         unique_gold_urls.setdefault(row.target_url, []).append(row.query)
 
-    print(f"Unique gold URLs: {len(unique_gold_urls)}")
-    print(f"Total gold questions: {len(gold)}\n")
+    print(f"Unique gold URLs:  {len(unique_gold_urls)}")
+    print(f"Total questions:   {len(gold)}\n")
 
-    # Classify every unique gold URL
     per_url: list[dict] = []
     for url, questions in sorted(unique_gold_urls.items()):
         level = _classify(url, db_urls)
@@ -161,31 +145,30 @@ def main() -> None:
             "example_question": questions[0],
         })
 
-    # Question-level counts (weighted by how many questions point to each URL)
     q_counts: Counter = Counter()
     for entry in per_url:
         q_counts[entry["coverage"]] += entry["question_count"]
-
     url_counts: Counter = Counter(e["coverage"] for e in per_url)
+
     total_urls = len(per_url)
     total_qs = len(gold)
 
     def pct(n, total):
         return f"{100 * n / total:.1f}%" if total else "n/a"
 
-    print("=" * 55)
+    print("=" * 57)
     print(f"{'Coverage level':<15} {'URLs':>8} {'%':>7}  {'Questions':>10} {'%':>7}")
-    print("-" * 55)
+    print("-" * 57)
     for level in ("exact", "parent", "child", "missing"):
         n_urls = url_counts[level]
         n_qs = q_counts[level]
         print(f"{level:<15} {n_urls:>8} {pct(n_urls, total_urls):>7}  {n_qs:>10} {pct(n_qs, total_qs):>7}")
-    print("-" * 55)
+    print("-" * 57)
     covered_urls = url_counts["exact"] + url_counts["parent"] + url_counts["child"]
     covered_qs   = q_counts["exact"]  + q_counts["parent"]  + q_counts["child"]
     print(f"{'COVERED (any)':<15} {covered_urls:>8} {pct(covered_urls, total_urls):>7}  {covered_qs:>10} {pct(covered_qs, total_qs):>7}")
     print(f"{'TOTAL':<15} {total_urls:>8} {'100.0%':>7}  {total_qs:>10} {'100.0%':>7}")
-    print("=" * 55)
+    print("=" * 57)
 
     missing_entries = [e for e in per_url if e["coverage"] == "missing"]
     if missing_entries:
@@ -198,9 +181,7 @@ def main() -> None:
         else:
             print("  Run with --show-missing to list them.")
 
-    # Save reports
     ts = datetime.now().strftime("%Y%m%dT%H%M%S")
-
     summary = {
         "source": source_label,
         "db_url_count": len(db_urls),

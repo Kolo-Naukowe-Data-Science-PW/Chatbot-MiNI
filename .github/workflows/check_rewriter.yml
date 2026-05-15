@@ -41,6 +41,7 @@ jobs:
           docker compose --profile benchmark run --rm benchmark \
             micromamba run -n app \
             python -m evaluation.benchmark_checks.check_rewriter \
+              --api-base-url http://api:8000 \
               --ks "${{ inputs.ks }}" \
               --output-dir /app/src/evaluation/results/rewriter_check \
               $COVERAGE_FLAG
