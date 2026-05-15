@@ -10,6 +10,7 @@ import { useState, useRef, useEffect } from "react";
 const API_URL = "/api/chat";
 const STREAM_API_URL = "/api/chat/stream";
 const FEEDBACK_API_URL = "/api/feedback";
+const ERROR_API_URL = "/api/errors";
 
 
 // Fallback used while /experiment-config is loading (mirrors .env defaults)
@@ -99,6 +100,9 @@ const translations = {
     sources: "Źródła",
     choose: "Wybierz",
     error: "Przepraszam, wystąpił błąd. Spróbuj ponownie.",
+    errorReport: "Opisz błąd",
+    errorPlaceholder: "Opisz, co poszło nie tak...",
+    errorSent: "Dziękujemy za zgłoszenie!",
     majors: [
       "Informatyka i Systemy Informacyjne, I stopień",
       "Informatyka i Systemy Informacyjne, II stopień",
@@ -133,6 +137,9 @@ const translations = {
     sources: "Sources",
     choose: "Choose",
     error: "Sorry, an error occurred. Please try again.",
+    errorReport: "Report an issue",
+    errorPlaceholder: "Describe what went wrong...",
+    errorSent: "Thanks for reporting!",
    majors: [
       "Computer Science and Information Systems, I degree",
       "Computer Science and Information Systems, II degree",
@@ -167,6 +174,9 @@ const translations = {
     sources: "Джерела",
     choose: "Обрати",
     error: "Вибачте, сталася помилка. Спробуйте ще раз.",
+    errorReport: "Повідомити про помилку",
+    errorPlaceholder: "Опишіть, що пішло не так...",
+    errorSent: "Дякуємо за повідомлення!",
     majors: [
       "Інформатика та інформаційні системи, I ступінь",
       "Інформатика та інформаційні системи, II ступінь",
@@ -398,6 +408,9 @@ function Card({ title, version, language, onClick }) {
 function Message({ message, version, language, onFeedbackChange, isDisabled })  {
   const t = translations[language];
   const [showAllSources, setShowAllSources] = useState(false);
+  const [errorOpen, setErrorOpen] = useState(false);
+  const [errorText, setErrorText] = useState('');
+  const [errorSent, setErrorSent] = useState(false);
   const SOURCES_PREVIEW = 3;
 
   const isUser = message.type === 'user';
@@ -504,6 +517,23 @@ if (ext === 'link') {
     onFeedbackChange(message.id, { selected: newSelected }, message.pairId);
   };
 
+  const handleErrorSubmit = () => {
+    if (!errorText.trim()) return;
+    fetch(ERROR_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message_id: message.id,
+        response_text: message.text,
+        error_description: errorText,
+        created_at: new Date().toISOString()
+      })
+    }).catch(console.error);
+    setErrorSent(true);
+    setErrorText('');
+    setTimeout(() => { setErrorOpen(false); setErrorSent(false); }, 2000);
+  };
+
 
 
   return (
@@ -586,6 +616,40 @@ if (ext === 'link') {
 </svg>
 
               </button>
+              <button
+                className={`thumb-btn-inline ${errorOpen ? 'active' : ''}`}
+                onClick={() => { setErrorOpen(v => !v); setErrorSent(false); }}
+                title={t.errorReport}
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="12" cy="12" r="9" stroke="#C0D1C8" strokeWidth="1.5"/>
+                  <path d="M12 8v4M12 16h.01" stroke="#C0D1C8" strokeWidth="1.5" strokeLinecap="round"/>
+                </svg>
+              </button>
+            </div>
+          )}
+          {version === "production" && errorOpen && (
+            <div className="error-report-form">
+              {errorSent ? (
+                <span className="error-sent-msg">{t.errorSent}</span>
+              ) : (
+                <>
+                  <textarea
+                    className="error-report-textarea"
+                    value={errorText}
+                    onChange={(e) => setErrorText(e.target.value)}
+                    placeholder={t.errorPlaceholder}
+                    rows={2}
+                  />
+                  <button
+                    className="error-report-submit"
+                    onClick={handleErrorSubmit}
+                    disabled={!errorText.trim()}
+                  >
+                    {t.errorReport}
+                  </button>
+                </>
+              )}
             </div>
           )}
 
@@ -647,6 +711,7 @@ const USER_TYPES = {
     { key: "master", label: "Student magisterskch", icon: "🎯" },
     { key: "phd", label: "Doktorant", icon: "🔬" },
     { key: "admin", label: "Pracownik administracji", icon: "🏛️" },
+    { key: "research_teaching", label: "Pracownik badawczo-dydaktyczny", icon: "🔭" },
   ],
   EN: [
     { key: "student_junior", label: "1st year student", icon: "🎓" },
@@ -654,6 +719,7 @@ const USER_TYPES = {
     { key: "master", label: "Master's student", icon: "🎯" },
     { key: "phd", label: "PhD student", icon: "🔬" },
     { key: "admin", label: "Faculty staff", icon: "🏛️" },
+    { key: "research_teaching", label: "Research & Teaching Staff", icon: "🔭" },
   ],
   UA: [
     { key: "student_junior", label: "Студент 1 курсу", icon: "🎓" },
@@ -661,6 +727,7 @@ const USER_TYPES = {
     { key: "master", label: "Магістрант", icon: "🎯" },
     { key: "phd", label: "Аспірант", icon: "🔬" },
     { key: "admin", label: "Працівник факультету", icon: "🏛️" },
+    { key: "research_teaching", label: "Науково-педагогічний працівник", icon: "🔭" },
   ],
 };
 
@@ -881,8 +948,8 @@ function MainContent({ language, version, userType, setUserType, selectedMajor, 
               <div className="spinner"></div>
             ) : (
               <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M10 5V15M5 10H15" stroke="#E63312" strokeWidth="2" strokeLinecap="round"/>
-                <path d="M7 8L10 5L13 8" stroke="#E63312" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M10 5V15M5 10H15" stroke="#4ECDC4" strokeWidth="2" strokeLinecap="round"/>
+                <path d="M7 8L10 5L13 8" stroke="#4ECDC4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
             )}
           </button>
@@ -1039,7 +1106,7 @@ export default function App() {
             language: language.toLowerCase(),
             user_type: userType ?? null,
             major: selectedMajor ?? null,
-            semester: selectedSemester ?? null,
+            semester: typeof selectedSemester === 'number' ? selectedSemester : null,
             mode: currentVersion,
             variant: variantLabel,
             modelConfig
@@ -1086,7 +1153,7 @@ export default function App() {
             language: language.toLowerCase(),
             user_type: userType ?? null,
             major: selectedMajor ?? null,
-            semester: selectedSemester ?? null,
+            semester: typeof selectedSemester === 'number' ? selectedSemester : null,
             mode: currentVersion,
             variant: "production",
             modelConfig: randomConfig

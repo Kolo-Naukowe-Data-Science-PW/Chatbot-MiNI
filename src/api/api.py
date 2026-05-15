@@ -348,6 +348,30 @@ def chat_stream_endpoint(request: QueryRequest):
     )
 
 
+class ErrorReportRequest(BaseModel):
+    message_id: int | None = None
+    response_text: str | None = None
+    error_description: str
+    created_at: str | None = None
+
+
+@app.post("/errors")
+def error_report_endpoint(payload: ErrorReportRequest) -> dict[str, str]:
+    error_dir = Path(get_data_dir("errors"))
+    error_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S_%f")
+    error_file = error_dir / f"error_{timestamp}.json"
+    data = {
+        "created_at": payload.created_at or datetime.now(UTC).isoformat(),
+        "message_id": payload.message_id,
+        "response_text": payload.response_text,
+        "error_description": payload.error_description,
+    }
+    with error_file.open("w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    return {"status": "ok"}
+
+
 @app.post("/feedback")
 def feedback_endpoint(payload: FeedbackRequest) -> dict[str, str]:
     """

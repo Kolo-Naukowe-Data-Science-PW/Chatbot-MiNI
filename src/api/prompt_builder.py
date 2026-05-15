@@ -59,6 +59,10 @@ USER_TYPE_PERSONA: dict[str, str] = {
         "Użytkownik to pracownik administracji lub wykładowca. Odpowiadaj formalnie "
         "i precyzyjnie, skup się na aspektach administracyjnych i regulaminowych."
     ),
+    "research_teaching": (
+        "Użytkownik to pracownik badawczo-dydaktyczny. Odpowiadaj formalnie i precyzyjnie, "
+        "uwzględniaj aspekty zarówno naukowo-badawcze, jak i dydaktyczne."
+    ),
 }
 
 
