@@ -628,7 +628,7 @@ if (ext === 'link') {
               </button>
             </div>
           )}
-          {version === "production" && errorOpen && (
+          {errorOpen && (
             <div className="error-report-form">
               {errorSent ? (
                 <span className="error-sent-msg">{t.errorSent}</span>
@@ -661,6 +661,16 @@ if (ext === 'link') {
                 disabled={isDisabled}
               >
                 {t.choose} {message.variantLabel} {/* # dodane */}
+              </button>
+              <button
+                className={`thumb-btn-inline ${errorOpen ? 'active' : ''}`}
+                onClick={() => { setErrorOpen(v => !v); setErrorSent(false); }}
+                title={t.errorReport}
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="12" cy="12" r="9" stroke="#C0D1C8" strokeWidth="1.5"/>
+                  <path d="M12 8v4M12 16h.01" stroke="#C0D1C8" strokeWidth="1.5" strokeLinecap="round"/>
+                </svg>
               </button>
             </div>
           )}
@@ -1094,38 +1104,67 @@ export default function App() {
     const currentVersion = version;
 
     try {
-      const callChatApi = async (variantLabel, modelConfig) => {
-        // Api call with different parameters
-        const response = await fetch(API_URL, {
-          method: "POST", //sending info as json
-          headers: {
-            "Content-Type": "application/json"
-          },
+      const streamVariant = async (config, botMessageId) => {
+        const resp = await fetch(STREAM_API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            query:`${modelConfig.styleInstruction}\n\nPytanie użytkownika: ${messageText}`,
+            query: `${config.styleInstruction}\n\nPytanie użytkownika: ${messageText}`,
             language: language.toLowerCase(),
             user_type: userType ?? null,
             major: selectedMajor ?? null,
             semester: typeof selectedSemester === 'number' ? selectedSemester : null,
             mode: currentVersion,
-            variant: variantLabel,
-            modelConfig
+            variant: config.variant,
+            modelConfig: config
           })
         });
+        if (!resp.ok) throw new Error(`Stream API Error (${config.variant})`);
 
-        if (!response.ok) {
-          throw new Error(`API Error (${variantLabel})`);
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let gotToken = false;
+
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop();
+
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            const payload = line.slice(6);
+            try {
+              const parsed = JSON.parse(payload);
+              if (parsed.event === "done") {
+                setMessages(prev => prev.map(msg =>
+                  msg.id === botMessageId
+                    ? { ...msg, sources: parsed.sources || [], canRate: true }
+                    : msg
+                ));
+              }
+            } catch {
+              gotToken = true;
+              setMessages(prev => prev.map(msg =>
+                msg.id === botMessageId
+                  ? { ...msg, text: msg.text + payload }
+                  : msg
+              ));
+            }
+          }
         }
 
-        const data = await response.json();
-        const answer = data.answer || translations[language].error;
-        // Extract URLs from the text answer
-        const urlRegex = /https?:\/\/[^\s)\]}>,"']+/g;
-        const urlsFromAnswer = answer.match(urlRegex) || [];
-        const sources = data.sources
-          ? Array.from(new Set([...data.sources, ...urlsFromAnswer]))
-          : Array.from(new Set(urlsFromAnswer));
-        return { answer, sources };
+        if (!gotToken) {
+          setMessages(prev => prev.map(msg =>
+            msg.id === botMessageId
+              ? { ...msg, text: translations[language].error, canRate: false }
+              : msg
+          ));
+        }
       };
 
       if (currentVersion === "production") {
@@ -1204,45 +1243,57 @@ export default function App() {
             }
           }
         }
+
+        // Stream ended without any tokens — model or network failure
+        if (!receivedFirstToken) {
+          setMessages(prev => prev.map(msg =>
+            msg.id === botMessageId
+              ? { ...msg, text: translations[language].error, canRate: false }
+              : msg
+          ));
+        }
       } else if (currentVersion === "test" || currentVersion === "testPro") {
         const pairId = Date.now();
         const [configA, configB] = buildVariantPair(experimentConfig);
-        const [variantAResponse, variantBResponse] = await Promise.all([
-          callChatApi(configA.variant, configA),
-          callChatApi(configB.variant, configB)
-        ]);
+        const botMessageIdA = pairId + 1;
+        const botMessageIdB = pairId + 2;
 
-        const botMessages = [
+        setMessages(prev => [...prev,
           {
-            id: Date.now() + 1,
+            id: botMessageIdA,
             type: "bot",
-            text: variantAResponse.answer,
-            sources: variantAResponse.sources,
+            text: "",
+            sources: [],
             timestamp: new Date(),
-            canRate: true,
+            canRate: false,
             isVariant: true,
             variantLabel: configA.variant,
             version: currentVersion,
-            pairId: pairId,
+            pairId,
             variantConfig: configA,
             feedback: { rating: null, selected: false }
           },
           {
-            id: Date.now() + 2,
+            id: botMessageIdB,
             type: "bot",
-            text: variantBResponse.answer,
-            sources: variantBResponse.sources,
+            text: "",
+            sources: [],
             timestamp: new Date(),
-            canRate: true,
+            canRate: false,
             isVariant: true,
             variantLabel: configB.variant,
             version: currentVersion,
-            pairId: pairId,
+            pairId,
             variantConfig: configB,
             feedback: { rating: null, selected: false }
           }
-        ];
-        setMessages(prev => [...prev, ...botMessages]);
+        ]);
+        setIsLoading(false);
+
+        await Promise.all([
+          streamVariant(configA, botMessageIdA),
+          streamVariant(configB, botMessageIdB),
+        ]);
       }
     } catch (error) {
       console.error("Error calling API:", error);

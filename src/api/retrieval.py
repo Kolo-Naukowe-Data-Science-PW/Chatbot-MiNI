@@ -26,6 +26,16 @@ sparse_model = SparseTextEmbedding(model_name="Qdrant/bm25")
 reranker = CrossEncoder("cross-encoder/mmarco-mMiniLMv2-L12-H384-v1")
 logger.info("Embedder and reranker loaded.")
 
+_qdrant_client: QdrantClient | None = None
+
+
+def _get_qdrant_client() -> QdrantClient:
+    global _qdrant_client
+    if _qdrant_client is None:
+        logger.info("Initialising Qdrant client (singleton) at %s", DATABASE_PATH)
+        _qdrant_client = load_vector_db(DATABASE_PATH)
+    return _qdrant_client
+
 
 def _get_sparse_vector(query: str) -> SparseVector:
     result = list(sparse_model.embed([query]))[0]
@@ -41,7 +51,7 @@ def get_top_k_chunks(query: str, top_k: int = 30) -> list[dict[str, Any]]:
     )
 
     try:
-        client: QdrantClient = load_vector_db(DATABASE_PATH)
+        client: QdrantClient = _get_qdrant_client()
 
         dense_vector = embedder.generate_embeddings([query])[0]
         sparse_vector = _get_sparse_vector(query)
