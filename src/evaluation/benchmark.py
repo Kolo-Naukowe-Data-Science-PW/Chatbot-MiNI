@@ -746,10 +746,14 @@ def evaluate_to_csv(
     Columns per query:
       query | chatbot_answer | chatbot_links (;-separated) | gold_link |
       hit@k | mrr@k | mrrw@k | recall@k | precision@k | f1@k | ndcg@k |
-      map@k | r_prec  (for every k in ks; r_prec is k-independent)
+      map@k | r_prec | hit_adaptive | mrr_adaptive
+      (for every k in ks; r_prec is k-independent; adaptive metrics are global)
 
     If api_url is given, calls /chat to obtain the chatbot answer and links.
     Otherwise calls the retrieval module directly at max(ks) (no answer text).
+    
+    Adaptive metrics (hit_adaptive, mrr_adaptive) are computed based on the actual
+    number of retrieved links for each query, not a fixed k.
     """
     max_k = max(ks)
     total_rel = 1
@@ -772,6 +776,10 @@ def evaluate_to_csv(
             [normalize_url(u) for u in raw_sources if u]
         )
         rel_scores = [hierarchical_relevance(u, row.target_url) for u in sources]
+
+        # Adaptive metrics: based on actual number of retrieved links
+        hit_adaptive = 1.0 if any(s >= RELEVANCE_THRESHOLD for s in rel_scores) else 0.0
+        mrr_adaptive = mrr_at_k(rel_scores, len(sources))  # k = actual number of links
 
         csv_row: dict = {
             "query": row.query,
@@ -798,6 +806,12 @@ def evaluate_to_csv(
         r_prec_val = r_precision(rel_scores, total_rel)
         csv_row["r_prec"] = r_prec_val
         accum.setdefault("r_prec", []).append(r_prec_val)
+
+        # Adaptive metrics
+        csv_row["hit_adaptive"] = hit_adaptive
+        csv_row["mrr_adaptive"] = mrr_adaptive
+        accum.setdefault("hit_adaptive", []).append(hit_adaptive)
+        accum.setdefault("mrr_adaptive", []).append(mrr_adaptive)
 
         per_query_rows.append(csv_row)
         print(f"  [{idx + 1}/{len(gold)}] {row.query[:70]}")
@@ -831,7 +845,7 @@ def evaluate_to_csv(
     print(f"Saved summary JSON       -> {summary_json_path}")
 
     print("\n=== Summary ===")
-    for col, val in summary.items():
+    for col, val in sorted(summary.items()):
         print(f"  {col:20s}: {val:.4f}")
 
 
