@@ -1,0 +1,48 @@
+name: Run Benchmark (Hierarchical)
+
+on:
+  workflow_dispatch:
+    inputs:
+      ks:
+        description: 'Rank cut-offs (comma-separated, e.g. 3,5,7,10)'
+        required: false
+        default: '3,5,7,10'
+      timeout:
+        description: 'HTTP timeout per query in seconds'
+        required: false
+        default: '60'
+
+jobs:
+  benchmark:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Copy .env file
+        run: cp ~/.env.backup .env
+
+      - name: Create results directory
+        run: mkdir -p src/evaluation/results
+
+      - name: Build benchmark image
+        run: docker compose build benchmark
+
+      - name: Run hierarchical benchmark
+        run: |
+          docker compose --profile benchmark run --rm benchmark \
+            micromamba run -n app \
+            python -m evaluation.benchmark_hier \
+              --api-url http://api:8000/chat \
+              --output-dir /app/src/evaluation/results \
+              --ks "${{ inputs.ks }}" \
+              --timeout "${{ inputs.timeout }}" \
+              --no-plots
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-hier-results-${{ github.run_id }}
+          path: src/evaluation/results/
+          if-no-files-found: warn
