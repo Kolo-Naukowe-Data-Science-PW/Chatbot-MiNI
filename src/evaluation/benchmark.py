@@ -20,12 +20,12 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 
-def _get_top_k_chunks(query: str, top_k: int) -> list:
+def _get_top_k_chunks(query: str, top_k: int, **kwargs) -> list:
     """Lazy proxy — loads the retrieval module (and ML models) only on first call."""
     from src.api.retrieval import get_top_k_chunks  # noqa: PLC0415
     global _get_top_k_chunks  # replace self with the real function after first load
-    _get_top_k_chunks = lambda q, top_k: get_top_k_chunks(q, top_k=top_k)  # noqa: E731
-    return get_top_k_chunks(query, top_k=top_k)
+    _get_top_k_chunks = lambda q, top_k, **kw: get_top_k_chunks(q, top_k=top_k, **kw)  # noqa: E731
+    return get_top_k_chunks(query, top_k=top_k, **kwargs)
 
 
 def _rewrite_query(query: str) -> str:
@@ -77,6 +77,58 @@ def normalize_url(url: str) -> str:
     parts = urlsplit(cleaned)
     normalized_path = parts.path.rstrip("/") or parts.path
     return urlunsplit((parts.scheme, parts.netloc, normalized_path, "", ""))
+
+
+_DB_URLS_CACHE: frozenset[str] | None = None
+
+
+def _get_db_urls() -> frozenset[str]:
+    """Load all unique normalized URLs stored in the Qdrant collection (cached)."""
+    global _DB_URLS_CACHE
+    if _DB_URLS_CACHE is not None:
+        return _DB_URLS_CACHE
+
+    from src.api.retrieval import _get_qdrant_client  # noqa: PLC0415
+    from src.ingestion.vector_db import COLLECTION_NAME  # noqa: PLC0415
+
+    client = _get_qdrant_client()
+    urls: set[str] = set()
+    offset = None
+    while True:
+        points, next_offset = client.scroll(
+            collection_name=COLLECTION_NAME,
+            offset=offset,
+            limit=1000,
+            with_payload=["url"],
+            with_vectors=False,
+        )
+        for p in points:
+            raw = (p.payload or {}).get("url", "")
+            normed = normalize_url(raw)
+            if normed:
+                urls.add(normed)
+        if next_offset is None:
+            break
+        offset = next_offset
+
+    _DB_URLS_CACHE = frozenset(urls)
+    return _DB_URLS_CACHE
+
+
+def is_covered(target_url: str, db_urls: frozenset[str]) -> bool:
+    """True if target URL or its direct parent is present in the DB."""
+    if not target_url:
+        return False
+    if target_url in db_urls:
+        return True
+    t = urlsplit(target_url)
+    t_path = t.path.rstrip("/")
+    if "/" in t_path[1:]:
+        parent_path = t_path.rsplit("/", 1)[0] or "/"
+        parent = normalize_url(urlunsplit((t.scheme, t.netloc, parent_path, "", "")))
+        if parent in db_urls:
+            return True
+    return False
 
 
 def unique_preserve_order(items: list[str]) -> list[str]:
@@ -750,7 +802,9 @@ def evaluate_to_csv(
     timeout: int = 60,
     use_rewrite: bool = False,
     metric_mode: str = "both",
-) -> None:
+    check_coverage: bool = False,
+    use_rerank: bool = True,
+) -> dict[str, float]:
     """
     Evaluate the chatbot on gold and write two output files:
       - eval_per_query_<timestamp>.csv  — one row per query with selected metrics
@@ -781,6 +835,14 @@ def evaluate_to_csv(
     total_rel = 1
     per_query_rows: list[dict] = []
     accum: dict[str, list[float]] = {}
+    covered_hits: dict[str, list[float]] = {}
+    covered_list: list[bool] = []
+
+    db_urls: frozenset[str] | None = None
+    if check_coverage:
+        print("Loading DB URL index for coverage check...")
+        db_urls = _get_db_urls()
+        print(f"  Found {len(db_urls)} unique URLs in DB.\n")
 
     for idx, row in enumerate(gold):
         if api_url:
@@ -793,7 +855,7 @@ def evaluate_to_csv(
         else:
             answer = ""
             retrieval_q = _rewrite_query(row.query) if use_rewrite else row.query
-            chunks = _get_top_k_chunks(retrieval_q, top_k=max_k)
+            chunks = _get_top_k_chunks(retrieval_q, top_k=max_k, use_rerank=use_rerank)
             raw_sources = [c.get("source_url", "") for c in chunks]
 
         sources = unique_preserve_order(
@@ -848,6 +910,17 @@ def evaluate_to_csv(
                         "precision_adaptive", "f1_adaptive", "ndcg_adaptive", "map_adaptive", "r_prec_adaptive"]:
                 accum.setdefault(col, []).append(csv_row[col])
 
+        # Coverage-corrected hit@k
+        if db_urls is not None:
+            covered = is_covered(row.target_url, db_urls)
+            covered_list.append(covered)
+            csv_row["covered"] = covered
+            if covered:
+                for k in ks:
+                    covered_hits.setdefault(f"cch@{k}", []).append(
+                        hit_at_k(rel_scores, k)
+                    )
+
         per_query_rows.append(csv_row)
         print(f"  [{idx + 1}/{len(gold)}] {row.query[:70]}")
 
@@ -866,6 +939,12 @@ def evaluate_to_csv(
     # Summary (mean of every metric column)
     summary = {col: mean(vals) for col, vals in accum.items() if vals}
 
+    # Coverage-corrected summary
+    if db_urls is not None and covered_list:
+        summary["coverage_rate"] = sum(covered_list) / len(covered_list)
+        for key, vals in covered_hits.items():
+            summary[key] = mean(vals) if vals else 0.0
+
     summary_csv_path = output_dir / f"eval_summary_{ts}.csv"
     with open(summary_csv_path, "w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=list(summary.keys()))
@@ -882,6 +961,8 @@ def evaluate_to_csv(
     print("\n=== Summary ===")
     for col, val in sorted(summary.items()):
         print(f"  {col:20s}: {val:.4f}")
+
+    return summary
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
@@ -946,6 +1027,23 @@ def main() -> None:
         default="both",
         help="Metrics to compute: 'standard' (fixed k only), 'adaptive' (adaptive k only), or 'both' (default).",
     )
+    parser.add_argument(
+        "--check-coverage",
+        action="store_true",
+        help=(
+            "Compute coverage-corrected Hit@k (cch@k): hit rate restricted to queries "
+            "whose target URL (or direct parent) is present in the Qdrant DB. "
+            "Also adds 'coverage_rate' and 'covered' column to output."
+        ),
+    )
+    parser.add_argument(
+        "--no-rerank",
+        action="store_true",
+        help=(
+            "Skip cross-encoder reranking — return raw RRF results instead. "
+            "Useful for ablation: compare with vs. without reranker."
+        ),
+    )
     args = parser.parse_args()
 
     ks = [int(k.strip()) for k in args.ks.split(",")]
@@ -965,10 +1063,13 @@ def main() -> None:
 
     if args.rewrite:
         print("Query rewriting ENABLED — each query will be rewritten before retrieval.\n")
+    if args.no_rerank:
+        print("Cross-encoder reranking DISABLED — using raw RRF output.\n")
 
     # CSV-based evaluation (per-query + summary)
     evaluate_to_csv(gold, ks, output_dir, api_url=args.api_url, timeout=args.timeout,
-                    use_rewrite=args.rewrite, metric_mode=args.metric_mode)
+                    use_rewrite=args.rewrite, metric_mode=args.metric_mode,
+                    check_coverage=args.check_coverage, use_rerank=not args.no_rerank)
 
     # Plots use the legacy evaluate() loop (calls retrieval directly per k)
     if not args.no_plots:

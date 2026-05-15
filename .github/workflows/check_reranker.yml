@@ -1,0 +1,67 @@
+name: Ablation — Cross-Encoder Reranker
+
+on:
+  workflow_dispatch:
+    inputs:
+      ks:
+        description: 'Rank cut-offs (comma-separated)'
+        required: false
+        default: '3,5,10'
+      rewrite:
+        description: 'Apply query rewriting in both runs?'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+      check_coverage:
+        description: 'Compute coverage-corrected hit@k (cch@k)?'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+jobs:
+  check-reranker:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Copy .env file
+        run: cp ~/.env.backup .env
+
+      - name: Create results directory
+        run: mkdir -p src/evaluation/results/reranker_check
+
+      - name: Build benchmark image
+        run: docker compose build benchmark
+
+      - name: Run reranker ablation
+        run: |
+          REWRITE_FLAG=""
+          if [ "${{ inputs.rewrite }}" = "true" ]; then
+            REWRITE_FLAG="--rewrite"
+          fi
+          COVERAGE_FLAG=""
+          if [ "${{ inputs.check_coverage }}" = "true" ]; then
+            COVERAGE_FLAG="--check-coverage"
+          fi
+          docker compose --profile benchmark run --rm benchmark \
+            micromamba run -n app \
+            python -m evaluation.benchmark_checks.check_reranker \
+              --ks "${{ inputs.ks }}" \
+              --output-dir /app/src/evaluation/results/reranker_check \
+              $REWRITE_FLAG \
+              $COVERAGE_FLAG
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reranker-check-${{ github.run_id }}
+          path: src/evaluation/results/reranker_check/
+          if-no-files-found: warn

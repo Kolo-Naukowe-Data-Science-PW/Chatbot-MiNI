@@ -45,9 +45,10 @@ def _get_sparse_vector(query: str) -> SparseVector:
     )
 
 
-def get_top_k_chunks(query: str, top_k: int = 30) -> list[dict[str, Any]]:
+def get_top_k_chunks(query: str, top_k: int = 30, use_rerank: bool = True) -> list[dict[str, Any]]:
     logger.info(
-        "Starting hybrid retrieval for top %d chunks. Query: '%s'", top_k, query
+        "Starting hybrid retrieval for top %d chunks (rerank=%s). Query: '%s'",
+        top_k, use_rerank, query,
     )
 
     try:
@@ -87,6 +88,10 @@ def get_top_k_chunks(query: str, top_k: int = 30) -> list[dict[str, Any]]:
 
         if not candidates_list:
             return []
+
+        if not use_rerank:
+            logger.info("Reranking skipped — returning top %d RRF results.", top_k)
+            return candidates_list[:top_k]
 
         # Re-rank with cross-encoder
         pairs = [(query, c["text_chunk"]) for c in candidates_list]
