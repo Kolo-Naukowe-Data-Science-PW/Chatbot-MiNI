@@ -1,4 +1,6 @@
 src/data
+!src/data/manual_xlsxs/
+!src/data/manual_xlsxs/**
 docs
 .env
 .DS_Store

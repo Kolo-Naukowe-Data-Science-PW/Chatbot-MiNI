@@ -17,3 +17,5 @@ jobs:
         run: docker compose build --no-cache
       - name: Start application
         run: docker compose up -d
+      - name: Clean up dangling images and build cache
+        run: docker system prune -f

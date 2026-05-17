@@ -176,21 +176,13 @@ class RetrievalRequest(BaseModel):
     top_k: int = 10
     use_rerank: bool = True
     use_rewrite: bool = False
-    use_url_aggregation: bool = False
-    use_bm25_prefilter: bool = False
 
 
 @app.post("/retrieval")
 def retrieval_endpoint(request: RetrievalRequest) -> dict[str, Any]:
     """Direct retrieval endpoint for ablation experiments (bypasses LLM generation)."""
     q = rewrite_query(request.query) if request.use_rewrite else request.query
-    chunks = get_top_k_chunks(
-        q,
-        top_k=request.top_k,
-        use_rerank=request.use_rerank,
-        use_url_aggregation=request.use_url_aggregation,
-        use_bm25_prefilter=request.use_bm25_prefilter,
-    )
+    chunks = get_top_k_chunks(q, top_k=request.top_k, use_rerank=request.use_rerank)
     seen: set[str] = set()
     urls: list[str] = []
     for chunk in chunks:

@@ -41,6 +41,7 @@ services:
     command: >
       micromamba run -n app /bin/bash -c "
       python -m ingestion.ingest_manual_pdfs &&
+      python -m ingestion.ingest_manual_xlsx &&
       python -m ingestion.describe_files &&
       python -m ingestion.extract_facts &&
       python -m ingestion.ingest_facts"

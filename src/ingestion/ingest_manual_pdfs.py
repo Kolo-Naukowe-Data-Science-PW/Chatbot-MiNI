@@ -21,8 +21,10 @@ OUTPUT_DIR = "src/data/scraped_raw"
 # Map filename → canonical source URL (used in retrieval metadata).
 # Hash-named files come from BIP PW storage; URL is the direct download link.
 URL_MAP = {
-    # Czytelne regulaminy
-    "regulamin_studiow.pdf": "https://www.bip.pw.edu.pl/index.php/Sprawy-Studenckie/Regulamin-studiow-w-Politechnice-Warszawskiej2",
+    # Czytelne regulaminy i dokumenty
+    "Warunki-rejestracji-na-kolejny-semestr_rok-studiów.pdf": "https://ww2.mini.pw.edu.pl/wp-content/uploads/Warunki-rejestracji-na-kolejny-semestr_rok-studi%C3%B3w.pdf",
+    "zasadyRekrutacjiMINI_20210217.pdf": "https://ww2.mini.pw.edu.pl/wp-content/uploads/zasadyRekrutacjiMINI_20210217.pdf",
+    "regulamin_studiow.pdf": "https://www.bip.pw.edu.pl/Sprawy-Studenckie/Regulamin-studiow-w-Politechnice-Warszawskiej2",
     "regulamin_swiadczen_2025_2026.pdf": "https://www.bss.pw.edu.pl/Stypendia/Stypendia-z-Funduszu-Stypendialnego/Stypendium-Rektora",
     "dyplom.pdf": "https://www.bip.pw.edu.pl/Dokumenty-publiczne/Dyplom-ukonczenia-studiow-w-Politechnice-Warszawskiej",
     # Plany studiów z BIP PW (sekcja "Ważne dokumenty" w links_extended)

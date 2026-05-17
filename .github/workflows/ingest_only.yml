@@ -16,3 +16,5 @@ jobs:
         run: cp ~/.env.backup .env
       - name: Run ingest
         run: docker compose up --no-deps --build ingest
+      - name: Clean up dangling images and build cache
+        run: docker system prune -f

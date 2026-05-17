@@ -13,5 +13,14 @@ jobs:
         run: cp ~/.env.backup .env
       - name: Run scraper
         run: docker compose up --no-deps --build scraper
+      - name: Backup scraped_raw to VM filesystem
+        run: |
+          mkdir -p ~/scraped_raw_backup
+          docker run --rm \
+            -v chatbot-mini_data_storage:/data \
+            -v ~/scraped_raw_backup:/backup \
+            alpine cp -r /data/scraped_raw/. /backup/
       - name: Run ingest
         run: docker compose up --no-deps --build ingest
+      - name: Clean up dangling images and build cache
+        run: docker system prune -f
