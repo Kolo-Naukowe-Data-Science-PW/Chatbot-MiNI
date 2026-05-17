@@ -1,18 +1,16 @@
 """
-Ablation: single-stage reranking vs cascade reranking.
+Ablation: first-occurrence deduplication vs URL-level max-score aggregation.
 
-Baseline:  60 RRF candidates → English CE (mmarco-mMiniLMv2) → top 30
-Cascade:  120 RRF candidates → English CE → top 60 → Polish CE (herbert-base-reranker) → top 30
+Baseline:  cross-encoder scores chunks → first-occurrence URL dedup → top-k URLs
+Aggreg.:   cross-encoder scores chunks → max(score) per URL → sort URLs → top-k URLs
 
 Calls POST /retrieval on the running API.
 
 Results saved to:
-    <output-dir>/baseline/   — eval_summary_*.json
-    <output-dir>/cascade/    — eval_summary_*.json
-    <output-dir>/comparison_cascade_<ts>.json
+    <output-dir>/comparison_url_aggregation_<ts>.json
 
-Usage (API must be running):
-    python -m evaluation.benchmark_checks.check_cascade_reranker --api-base-url http://api:8000
+Usage:
+    python -m evaluation.benchmark_checks.check_url_aggregation --api-base-url http://api:8000
 """
 
 import argparse
@@ -57,30 +55,30 @@ def _get_db_urls(api_base: str) -> set[str]:
 
 
 def _call_retrieval(api_base: str, query: str, top_k: int,
-                    use_cascade: bool) -> list[str]:
-    """POST /retrieval and return ordered deduplicated URLs."""
+                    use_url_aggregation: bool) -> list[str]:
     url = api_base.rstrip("/") + "/retrieval"
     payload = json.dumps({
         "query": query,
         "top_k": top_k,
         "use_rerank": True,
         "use_rewrite": False,
-        "use_cascade_rerank": use_cascade,
+        "use_url_aggregation": use_url_aggregation,
+        "use_bm25_prefilter": False,
     }).encode()
     req = Request(url, data=payload, headers={"Content-Type": "application/json"})
-    with urlopen(req, timeout=180) as resp:
+    with urlopen(req, timeout=120) as resp:
         data = json.loads(resp.read())
     return [normalize_url(u) for u in data["urls"] if u]
 
 
 def _evaluate(gold, ks: list[int], api_base: str,
-              use_cascade: bool, label: str) -> dict[str, float]:
+              use_url_aggregation: bool, label: str) -> dict[str, float]:
     max_k = max(ks)
     total_rel = 1
     accum: dict[str, list[float]] = {}
 
     for idx, row in enumerate(gold):
-        urls = _call_retrieval(api_base, row.query, max_k, use_cascade)
+        urls = _call_retrieval(api_base, row.query, max_k, use_url_aggregation)
         rel_scores = [hierarchical_relevance(u, row.target_url) for u in urls]
 
         for k in ks:
@@ -115,24 +113,21 @@ def _print_comparison(a: dict, b: dict, label_a: str, label_b: str) -> dict:
     print(sep)
     improved = sum(1 for v in comparison.values() if v["delta"] > 0.001)
     degraded  = sum(1 for v in comparison.values() if v["delta"] < -0.001)
-    print(f"\nImproved (cascade > baseline): {improved}/{len(shared)}")
-    print(f"Degraded  (cascade < baseline): {degraded}/{len(shared)}")
+    print(f"\nImproved (aggregation > baseline): {improved}/{len(shared)}")
+    print(f"Degraded  (aggregation < baseline): {degraded}/{len(shared)}")
     return comparison
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Ablation: single-stage EN reranker vs cascade EN→PL reranker."
+        description="Ablation: first-occurrence dedup vs URL-level max-score aggregation."
     )
     parser.add_argument("--api-base-url", default="http://api:8000")
     parser.add_argument("--input-csv", default="src/evaluation/data/questions_with_links.csv")
-    parser.add_argument("--output-dir", default="src/evaluation/results/cascade_check")
+    parser.add_argument("--output-dir", default="src/evaluation/results/url_aggregation_check")
     parser.add_argument("--ks", default="3,5,10")
-    parser.add_argument(
-        "--check-coverage",
-        action="store_true",
-        help="Also evaluate on covered-only subset (cch@k): queries whose gold URL is in Qdrant.",
-    )
+    parser.add_argument("--check-coverage", action="store_true",
+                        help="Also evaluate on covered-only subset (cch@k).")
     args = parser.parse_args()
 
     ks = [int(k.strip()) for k in args.ks.split(",")]
@@ -148,17 +143,17 @@ def main() -> None:
         print(f"Loaded {len(gold)} queries\n")
 
     print("=" * 60)
-    print("RUN 1/2 — baseline: 60 RRF → English CE → top 30")
+    print("RUN 1/2 — baseline: first-occurrence URL deduplication")
     print("=" * 60)
-    summary_a = _evaluate(gold, ks, args.api_base_url, use_cascade=False, label="baseline")
+    summary_a = _evaluate(gold, ks, args.api_base_url, use_url_aggregation=False, label="baseline")
 
     print("\n" + "=" * 60)
-    print("RUN 2/2 — cascade: 120 RRF → English CE → 60 → Polish CE → top 30")
+    print("RUN 2/2 — URL-level max-score aggregation")
     print("=" * 60)
-    summary_b = _evaluate(gold, ks, args.api_base_url, use_cascade=True, label="cascade")
+    summary_b = _evaluate(gold, ks, args.api_base_url, use_url_aggregation=True, label="url_agg")
 
-    print("\n\n========== COMPARISON: baseline vs cascade ==========")
-    comparison = _print_comparison(summary_a, summary_b, "baseline", "cascade")
+    print("\n\n========== COMPARISON: baseline vs url_aggregation ==========")
+    comparison = _print_comparison(summary_a, summary_b, "baseline", "url_agg")
 
     cch_a: dict[str, float] = {}
     cch_b: dict[str, float] = {}
@@ -170,22 +165,22 @@ def main() -> None:
         print(f"Coverage filter: {len(gold_covered)}/{len(gold)} queries have gold URL in DB\n")
         if gold_covered:
             print("=" * 60)
-            print("CCH RUN 1/2 — baseline (covered subset only)")
+            print("CCH RUN 1/2 — baseline (covered only)")
             print("=" * 60)
-            cch_a = _evaluate(gold_covered, ks, args.api_base_url, use_cascade=False, label="cch_baseline")
+            cch_a = _evaluate(gold_covered, ks, args.api_base_url, use_url_aggregation=False, label="cch_baseline")
             print("\n" + "=" * 60)
-            print("CCH RUN 2/2 — cascade (covered subset only)")
+            print("CCH RUN 2/2 — url_aggregation (covered only)")
             print("=" * 60)
-            cch_b = _evaluate(gold_covered, ks, args.api_base_url, use_cascade=True, label="cch_cascade")
-            print("\n\n===== CCH COMPARISON: baseline vs cascade (covered only) =====")
-            cch_comparison = _print_comparison(cch_a, cch_b, "cch_baseline", "cch_cascade")
+            cch_b = _evaluate(gold_covered, ks, args.api_base_url, use_url_aggregation=True, label="cch_url_agg")
+            print("\n\n===== CCH COMPARISON: baseline vs url_aggregation (covered only) =====")
+            cch_comparison = _print_comparison(cch_a, cch_b, "cch_baseline", "cch_url_agg")
 
     ts = datetime.now().strftime("%Y%m%dT%H%M%S")
-    out_path = output_dir / f"comparison_cascade_{ts}.json"
-    payload: dict = {"baseline": summary_a, "cascade": summary_b, "delta": comparison}
+    out_path = output_dir / f"comparison_url_aggregation_{ts}.json"
+    payload: dict = {"baseline": summary_a, "url_agg": summary_b, "delta": comparison}
     if args.check_coverage:
         payload["cch_baseline"] = cch_a
-        payload["cch_cascade"] = cch_b
+        payload["cch_url_agg"] = cch_b
         payload["cch_delta"] = cch_comparison
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
