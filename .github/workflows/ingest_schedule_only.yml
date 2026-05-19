@@ -15,7 +15,11 @@ jobs:
         uses: actions/checkout@v4
       - name: Copy .env file
         run: cp ~/.env.backup .env
+      - name: Stop API to release Qdrant lock
+        run: docker compose stop api
       - name: Run schedule ingest pipeline
         run: docker compose up --no-deps --build schedule
+      - name: Restart API
+        run: docker compose start api
       - name: Clean up dangling images and build cache
         run: docker system prune -f
