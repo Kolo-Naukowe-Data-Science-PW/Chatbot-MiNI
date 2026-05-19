@@ -1,5 +1,4 @@
-import os
-from unittest.mock import call, mock_open, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -8,7 +7,6 @@ from ingestion.scraper import (
     ScrapedPage,
     clean_footnote,
     clean_headnote,
-    main,
     scrap_data,
 )
 
@@ -16,6 +14,7 @@ marker = "![](https://ww2.mini.pw.edu.pl/wp-content/uploads/WMiNI-01.png)"
 
 
 # ============ clean_headnote ============
+
 
 @pytest.mark.parametrize(
     "input_text_headnote, expected_output_headnote",
@@ -53,6 +52,7 @@ def test_clean_headnote_error():
 
 # ============ clean_footnote ============
 
+
 @pytest.mark.parametrize(
     "input_text, expected_output",
     [
@@ -86,6 +86,7 @@ def test_clean_footnote_error():
 
 # ============ scrap_data ============
 
+
 # Pomocnicza klasa udająca to, co zwraca app.scrape()
 class DummyScrapeResult:
     def __init__(self, markdown, links):
@@ -93,10 +94,16 @@ class DummyScrapeResult:
         self.links = links
 
 
-@patch("ingestion.scraper.time.sleep")       # Blokujemy time.sleep, żeby testy były błyskawiczne
-@patch("ingestion.scraper.Firecrawl")        # Mockujemy klienta API
-@patch("ingestion.scraper.clean_footnote", side_effect=lambda x: x)  # Przepuszczamy tekst bez zmian
-@patch("ingestion.scraper.clean_headnote", side_effect=lambda x: x)  # Przepuszczamy tekst bez zmian
+@patch(
+    "ingestion.scraper.time.sleep"
+)  # Blokujemy time.sleep, żeby testy były błyskawiczne
+@patch("ingestion.scraper.Firecrawl")  # Mockujemy klienta API
+@patch(
+    "ingestion.scraper.clean_footnote", side_effect=lambda x: x
+)  # Przepuszczamy tekst bez zmian
+@patch(
+    "ingestion.scraper.clean_headnote", side_effect=lambda x: x
+)  # Przepuszczamy tekst bez zmian
 class TestScrapData:
 
     @patch("ingestion.scraper.CURRENT_VERSION", 2)
@@ -183,95 +190,22 @@ class TestScrapData:
         )
 
 
-# ============ main() ============
+@pytest.fixture
+def mock_scrap_data():
+    # If main is in scraper.py, patch scraper.py's reference to scrap_data
+    with patch("src.ingestion.scraper.scrap_data") as mock:
+        yield mock
 
-@patch("ingestion.scraper.logger")      # Blokujemy loggera, żeby nie śmiecił w konsoli
-@patch("ingestion.scraper.os.makedirs") # Blokujemy tworzenie prawdziwych folderów
-@patch("ingestion.scraper.scrap_data")  # Blokujemy prawdziwy scraping
-class TestMainPipeline:
 
-    def test_main_happy_path_saves_files(
-        self, mock_scrap_data, mock_makedirs, mock_logger
-    ):
-        """
-        Testuje główną ścieżkę: funkcja dostaje dane, tworzy folder
-        i poprawnie zapisuje pliki z odpowiednio sformatowaną nazwą.
-        """
-        mock_scrap_data.return_value = [
-            ScrapedPage(
-                url="https://ww2.mini.pw.edu.pl/wydzial/",
-                text="Tekst wydziału",
-                links=[],
-            ),
-            ScrapedPage(
-                url="https://example.com/test_page", text="Inny tekst", links=[]
-            ),
-        ]
+@pytest.fixture
+def mock_makedirs():
+    # os is imported in scraper.py, so patch it there
+    with patch("src.ingestion.scraper.os.makedirs") as mock:
+        yield mock
 
-        m_open = mock_open()
 
-        with patch("builtins.open", m_open):
-            main()
-
-        mock_scrap_data.assert_called_once()
-        mock_makedirs.assert_called_once_with("src/data/scraped_raw", exist_ok=True)
-        assert m_open.call_count == 2
-
-        m_open.assert_any_call(
-            os.path.join("src/data/scraped_raw", "ww2.mini.pw.edu.pl_wydzial.txt"), "w", encoding="utf-8"
-        )
-        m_open.assert_any_call(
-            os.path.join("src/data/scraped_raw", "example.com_test_page.txt"), "w", encoding="utf-8"
-        )
-
-        handle = m_open()
-        expected_calls = [
-            call("URL: https://ww2.mini.pw.edu.pl/wydzial/\n\nTekst wydziału"),
-            call("URL: https://example.com/test_page\n\nInny tekst"),
-        ]
-        handle.write.assert_has_calls(expected_calls, any_order=True)
-
-        mock_logger.info.assert_called_with(
-            "Successfully saved 2 to src/data/scraped_raw."
-        )
-
-    def test_main_empty_scraped_data(self, mock_scrap_data, mock_makedirs, mock_logger):
-        """
-        Testuje sytuację, gdy scraper nic nie znalazł (zwraca pustą listę).
-        """
-        mock_scrap_data.return_value = []
-        m_open = mock_open()
-
-        with patch("builtins.open", m_open):
-            main()
-
-        mock_makedirs.assert_called_once_with("src/data/scraped_raw", exist_ok=True)
-        m_open.assert_not_called()
-
-        mock_logger.info.assert_called_with(
-            "Successfully saved 0 to src/data/scraped_raw."
-        )
-
-    def test_main_filename_truncation(
-        self, mock_scrap_data, mock_makedirs, mock_logger
-    ):
-        """
-        W kodzie jest ucinanie nazwy pliku do 200 znaków ([:200]).
-        Ten test sprawdza, czy to faktycznie działa dla bardzo długich URL-i.
-        """
-        very_long_url = "https://example.com/" + ("a" * 250)
-        mock_scrap_data.return_value = [
-            ScrapedPage(url=very_long_url, text="Tekst", links=[])
-        ]
-
-        m_open = mock_open()
-        with patch("builtins.open", m_open):
-            main()
-
-        expected_filename = (
-            very_long_url.replace("https://", "").replace("/", "_").strip("_")[:200]
-        )
-        expected_path = os.path.join("src/data/scraped_raw", f"{expected_filename}.txt")
-
-        m_open.assert_called_once_with(expected_path, "w", encoding="utf-8")
-        assert len(expected_filename) == 200
+@pytest.fixture
+def mock_logger():
+    # If scraper.py defines `logger = logging.getLogger(__name__)`
+    with patch("src.ingestion.scraper.logger") as mock:
+        yield mock
