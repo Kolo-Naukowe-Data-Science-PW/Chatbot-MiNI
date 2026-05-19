@@ -93,6 +93,7 @@ const translations = {
     subtitle: "Świetnie! Teraz wybierz proszę swój kierunek studiów — dzięki temu będę mógł udzielać odpowiedzi dopasowanych do Twojego programu.",
     semesterGreeting: "Świetnie, dzięki! 😊",
     semesterSubtitle: "Teraz wybierz proszę, na którym semestrze jesteś.",
+    semesterSubtitlePhd: "Teraz wybierz proszę, na którym roku studiów doktoranckich jesteś.",
     chatGreeting: "Co mogę dzisiaj dla Ciebie zrobić?",
     placeholder: "Najpierw podaj kierunek i semestr",
     disclaimer: "Chatbot MiNI może popełniać błędy, także dokładnie sprawdzaj odpowiedzi.",
@@ -103,18 +104,20 @@ const translations = {
     errorReport: "Opisz błąd",
     errorPlaceholder: "Opisz, co poszło nie tak...",
     errorSent: "Dziękujemy za zgłoszenie!",
-    majors: [
-      "Informatyka i Systemy Informacyjne, I stopień",
-      "Informatyka i Systemy Informacyjne, II stopień",
-      "Computer Science",
+    bachelorMajors: [
+      "Informatyka i Systemy Informacyjne",
       "Inżynieria i Analiza Danych",
+      "Computer Science",
       "Matematyka",
       "Matematyka i Analiza Danych",
+    ],
+    masterMajors: [
+      "Informatyka i Systemy Informacyjne",
       "Data Science",
       "Indywidualne Studia Matematyczne",
       "Matematyka w Cyberbezpieczeństwie",
       "Probabilistyka i Modelowanie",
-      "Statystyka Matematyczna i Analiza Danych"
+      "Statystyka Matematyczna i Analiza Danych",
     ],
     versions: {
       production: "Użytkowa",
@@ -130,6 +133,7 @@ const translations = {
     subtitle: "Great! Now please select your field of study — this way I can provide answers tailored to your program.",
     semesterGreeting: "Great, thanks! 😊",
     semesterSubtitle: "Now please select which semester you are in.",
+    semesterSubtitlePhd: "Now please select which year of your doctoral studies you are in.",
     chatGreeting: "What can I do for you today?",
     placeholder: "First, provide your major and semester",
     disclaimer: "Chatbot MiNI may make mistakes, so please double-check responses.",
@@ -140,18 +144,20 @@ const translations = {
     errorReport: "Report an issue",
     errorPlaceholder: "Describe what went wrong...",
     errorSent: "Thanks for reporting!",
-   majors: [
-      "Computer Science and Information Systems, I degree",
-      "Computer Science and Information Systems, II degree",
-      "Computer Science",
+    bachelorMajors: [
+      "Computer Science and Information Systems",
       "Data Engineering and Analysis",
+      "Computer Science",
       "Mathematics",
       "Mathematics and Data Analysis",
+    ],
+    masterMajors: [
+      "Computer Science and Information Systems",
       "Data Science",
       "Individual Mathematics Studies",
       "Mathematics in Cybersecurity",
       "Probability and Modeling",
-      "Mathematical Statistics and Data Analysis"
+      "Mathematical Statistics and Data Analysis",
     ],
     versions: {
       production: "Production",
@@ -167,6 +173,7 @@ const translations = {
     subtitle: "Чудово! Тепер виберіть свою спеціальність — так я зможу надавати відповіді, адаптовані до вашої програми.",
     semesterGreeting: "Чудово, дякую! 😊",
     semesterSubtitle: "Тепер виберіть, будь ласка, на якому семестрі ви навчаєтесь.",
+    semesterSubtitlePhd: "Тепер оберіть, будь ласка, на якому курсі аспірантури ви навчаєтесь.",
     chatGreeting: "Що я можу для вас зробити сьогодні?",
     placeholder: "Спочатку вкажіть спеціальність і семестр",
     disclaimer: "Chatbot MiNI може помилятися, тому перевіряйте відповіді.",
@@ -177,18 +184,20 @@ const translations = {
     errorReport: "Повідомити про помилку",
     errorPlaceholder: "Опишіть, що пішло не так...",
     errorSent: "Дякуємо за повідомлення!",
-    majors: [
-      "Інформатика та інформаційні системи, I ступінь",
-      "Інформатика та інформаційні системи, II ступінь",
-      "Computer Science",
+    bachelorMajors: [
+      "Інформатика та інформаційні системи",
       "Інженерія та аналіз даних",
+      "Computer Science",
       "Математика",
       "Математика та аналіз даних",
+    ],
+    masterMajors: [
+      "Інформатика та інформаційні системи",
       "Data Science",
       "Індивідуальні математичні студії",
       "Математика в кібербезпеці",
       "Ймовірність і моделювання",
-      "Математична статистика та аналіз даних"
+      "Математична статистика та аналіз даних",
     ],
     versions: {
       production: "Робоча",
@@ -743,6 +752,11 @@ const USER_TYPES = {
 
 const USER_TYPE_NEEDS_MAJOR = ["student_junior", "student_senior", "master"];
 
+// Semester count per major index (mirrors the order in translations[lang].bachelorMajors)
+// Semester counts for bachelorMajors order: ISI, IAD, CS, Matematyka, MAD
+const MAJOR_SEMESTER_COUNTS = [7, 7, 7, 6, 6];
+const SEMESTER_ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII"];
+
 function MainContent({ language, version, userType, setUserType, selectedMajor, setSelectedMajor, selectedSemester, setSelectedSemester, messages, onSendMessage, isLoading, onFeedbackChange }) {
   const t = translations[language];
   const [inputValue, setInputValue] = useState('');
@@ -758,10 +772,21 @@ function MainContent({ language, version, userType, setUserType, selectedMajor, 
 
   const handleUserTypeSelect = (type) => {
     setUserType(type);
-    if (!USER_TYPE_NEEDS_MAJOR.includes(type)) {
+    if (type === "phd") {
+      setSelectedMajor("—"); // skip major selection
+      // selectedSemester stays null → year selection will be shown
+    } else if (!USER_TYPE_NEEDS_MAJOR.includes(type)) {
       setSelectedMajor("—");
       setSelectedSemester("—");
     }
+  };
+
+  const getSemesterOptions = () => {
+    if (userType === "phd") return ["1. rok", "2. rok", "3. rok", "4.+ rok"];
+    if (userType === "master") return SEMESTER_ROMAN.slice(0, 4);
+    const majorIdx = t.bachelorMajors.indexOf(selectedMajor);
+    const count = MAJOR_SEMESTER_COUNTS[majorIdx] ?? 7;
+    return SEMESTER_ROMAN.slice(0, count);
   };
 
   const handleMajorSelect = (major) => {
@@ -842,7 +867,7 @@ function MainContent({ language, version, userType, setUserType, selectedMajor, 
             <p className="subtitle">{t.subtitle}</p>
 
             <div className="cards">
-              {t.majors.map((major, index) => (
+              {(userType === "master" ? t.masterMajors : t.bachelorMajors).map((major, index) => (
                 <Card
                   key={index}
                   title={major}
@@ -874,14 +899,14 @@ function MainContent({ language, version, userType, setUserType, selectedMajor, 
             </div>
 
             <h1>{t.semesterGreeting}</h1>
-            <p className="subtitle">{t.semesterSubtitle}</p>
+            <p className="subtitle">{userType === "phd" ? (t.semesterSubtitlePhd || t.semesterSubtitle) : t.semesterSubtitle}</p>
 
             <div className="semester-selection">
-              {[1, 2, 3, 4, 5, 6, 7].map((semester) => (
+              {getSemesterOptions().map((sem) => (
                 <SemesterCard
-                  key={semester}
-                  semester={semester}
-                  onClick={() => handleSemesterSelect(semester)}
+                  key={sem}
+                  semester={sem}
+                  onClick={() => handleSemesterSelect(sem)}
                 />
               ))}
             </div>
@@ -1113,7 +1138,7 @@ export default function App() {
             language: language.toLowerCase(),
             user_type: userType ?? null,
             major: selectedMajor ?? null,
-            semester: typeof selectedSemester === 'number' ? selectedSemester : null,
+            semester: (selectedSemester && selectedSemester !== "—") ? String(selectedSemester) : null,
             mode: currentVersion,
             variant: config.variant,
             modelConfig: config
@@ -1192,7 +1217,7 @@ export default function App() {
             language: language.toLowerCase(),
             user_type: userType ?? null,
             major: selectedMajor ?? null,
-            semester: typeof selectedSemester === 'number' ? selectedSemester : null,
+            semester: (selectedSemester && selectedSemester !== "—") ? String(selectedSemester) : null,
             mode: currentVersion,
             variant: "production",
             modelConfig: randomConfig

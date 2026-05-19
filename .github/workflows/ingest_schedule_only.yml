@@ -1,0 +1,21 @@
+name: Ingest Schedule Only
+
+# Use when only the USOS schedule pages (plany zajęć) need re-scraping and re-ingesting.
+# Preserves all other data in Qdrant; replaces only schedule facts.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  ingest_schedule:
+    runs-on: self-hosted
+    timeout-minutes: 180
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Copy .env file
+        run: cp ~/.env.backup .env
+      - name: Run schedule ingest pipeline
+        run: docker compose up --no-deps --build schedule
+      - name: Clean up dangling images and build cache
+        run: docker system prune -f

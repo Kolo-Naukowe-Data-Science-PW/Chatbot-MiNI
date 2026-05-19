@@ -114,15 +114,21 @@ def build_messages(
 
         logger.debug("Joined %d context chunks into system message.", len(context))
 
+        # "—" is the frontend sentinel for "not applicable" (admin/research/phd skips major)
+        effective_major = field_of_study if field_of_study and field_of_study != "—" else None
+        effective_sem = semester if semester and semester != "—" else None
+
         student_info = ""
-        if field_of_study and semester:
+        if effective_major and effective_sem:
             student_info = (
-                f"Informacja o użytkowniku: Użytkownik studiuje na kierunku '{field_of_study}', "
-                f"semestr {semester}. Wykorzystaj tę wiedzę przy pytaniach o plan zajęć, "
+                f"Informacja o użytkowniku: Użytkownik studiuje na kierunku '{effective_major}', "
+                f"semestr {effective_sem}. Wykorzystaj tę wiedzę przy pytaniach o plan zajęć, "
                 "przedmioty, sale wykładowe lub egzaminy.\n\n"
             )
-        elif field_of_study:
-            student_info = f"Informacja o użytkowniku: Użytkownik studiuje na kierunku '{field_of_study}'.\n\n"
+        elif effective_major:
+            student_info = f"Informacja o użytkowniku: Użytkownik studiuje na kierunku '{effective_major}'.\n\n"
+        elif effective_sem:
+            student_info = f"Informacja o użytkowniku: {effective_sem}.\n\n"
 
         role_hint = ""
         if user_type and user_type in USER_TYPE_PERSONA:
@@ -138,7 +144,8 @@ def build_messages(
             "Możesz korzystać z własnej wiedzy tylko wtedy, gdy informacji brakuje w obu powyższych źródłach.\n"
             "2. Kontekst rozmowy: Uwzględnij historię rozmowy - użytkownik może nawiązywać do wcześniejszych pytań lub odpowiedzi.\n"
             "3. Styl: Odpowiadaj zwięźle i rzeczowo. Zacznij bezpośrednio od odpowiedzi — bez pozdrowień, bez wstępów w stylu 'Krótka odpowiedź:'. Nie używaj formatowania Markdown (bez gwiazdek, nagłówków, punktorów — chyba że lista jest naprawdę niezbędna). Pisz pełnymi zdaniami.\n"
-            "4. WAŻNE: Odpowiadaj ZAWSZE w języku POLSKIM. Twoja odpowiedź zostanie automatycznie przetłumaczona na język wybrany przez użytkownika. Nie mieszaj języków i nie dodawaj komentarzy o tłumaczeniu.\n\n"
+            "4. Liczby i dane: Jeśli w Kontekście lub Wiedzy ogólnej znajdują się konkretne liczby (godziny, semestry, punkty ECTS, progi zaliczeniowe, daty, numery sal itp.) — zawsze podaj je dokładnie. Nigdy nie stosuj placeholderów (np. '___', '[X]', '...') w miejscu brakujących danych. Jeśli nie masz konkretnej liczby, napisz wprost: 'Nie mam tej informacji w dostępnych zasobach.' Nie odsyłaj do regulaminu, jeśli odpowiedź jest dostępna w Kontekście.\n"
+            "5. WAŻNE: Odpowiadaj ZAWSZE w języku POLSKIM. Twoja odpowiedź zostanie automatycznie przetłumaczona na język wybrany przez użytkownika. Nie mieszaj języków i nie dodawaj komentarzy o tłumaczeniu.\n\n"
             f"{role_hint}"
             f"{student_info}"
             f"---\n{STATIC_FAQ}\n---"

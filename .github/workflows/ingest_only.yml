@@ -9,6 +9,7 @@ on:
 jobs:
   ingest:
     runs-on: self-hosted
+    timeout-minutes: 360
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
