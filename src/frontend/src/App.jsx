@@ -760,6 +760,8 @@ const SEMESTER_ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII"];
 function MainContent({ language, version, userType, setUserType, selectedMajor, setSelectedMajor, selectedSemester, setSelectedSemester, messages, onSendMessage, isLoading, onFeedbackChange }) {
   const t = translations[language];
   const [inputValue, setInputValue] = useState('');
+  const [attachedFile, setAttachedFile] = useState(null); // { name, text }
+  const fileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -797,11 +799,32 @@ function MainContent({ language, version, userType, setUserType, selectedMajor, 
     setSelectedSemester(semester);
   };
 
+  const handleFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      const resp = await fetch("/api/extract-text", { method: "POST", body: formData });
+      if (!resp.ok) throw new Error(await resp.text());
+      const { text, filename } = await resp.json();
+      setAttachedFile({ name: filename, text });
+    } catch (err) {
+      console.error("File extraction failed:", err);
+      alert("Nie udało się odczytać pliku. Obsługiwane formaty: .txt, .md, .csv, .pdf");
+    }
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (inputValue.trim() && !isLoading) {
-      onSendMessage(inputValue);
+    if ((inputValue.trim() || attachedFile) && !isLoading) {
+      const textToSend = attachedFile
+        ? `${inputValue}\n\n[Załącznik: ${attachedFile.name}]\n${attachedFile.text}`
+        : inputValue;
+      onSendMessage(textToSend);
       setInputValue('');
+      setAttachedFile(null);
     }
   };
 
@@ -963,8 +986,21 @@ function MainContent({ language, version, userType, setUserType, selectedMajor, 
       </div>
 
       <div className="input-section">
+        {attachedFile && (
+          <div className="attached-file-chip">
+            <span>📎 {attachedFile.name}</span>
+            <button type="button" onClick={() => setAttachedFile(null)} className="remove-attachment">✕</button>
+          </div>
+        )}
         <form className="input-wrapper" onSubmit={handleSubmit}>
-          <button type="button" className="attach-btn">
+          <input
+            type="file"
+            ref={fileInputRef}
+            style={{ display: "none" }}
+            accept=".txt,.md,.csv,.pdf"
+            onChange={handleFileChange}
+          />
+          <button type="button" className="attach-btn" onClick={() => fileInputRef.current?.click()}>
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M13.25 9.5V14.25C13.25 15.2165 12.4665 16 11.5 16C10.5335 16 9.75 15.2165 9.75 14.25V8C9.75 6.067 11.317 4.5 13.25 4.5C15.183 4.5 16.75 6.067 16.75 8V14.25C16.75 17.1495 14.3995 19.5 11.5 19.5C8.60051 19.5 6.25 17.1495 6.25 14.25V9.5" stroke="#C0D1C8" strokeWidth="1.5" strokeLinecap="round"/>
             </svg>
@@ -1116,6 +1152,12 @@ export default function App() {
   const handleSendMessage = async (messageText) => {
     if (!messageText.trim()) return;
 
+    // Build conversation history from existing messages before adding the new one
+    const conversationHistory = messages
+      .filter(m => (m.type === 'user' || m.type === 'bot') && m.text)
+      .slice(-20) // last 10 exchanges
+      .map(m => ({ role: m.type === 'user' ? 'user' : 'assistant', content: m.text }));
+
     const userMessage = {
       id: Date.now(),
       type: 'user',
@@ -1139,6 +1181,7 @@ export default function App() {
             user_type: userType ?? null,
             major: selectedMajor ?? null,
             semester: (selectedSemester && selectedSemester !== "—") ? String(selectedSemester) : null,
+            conversation_history: conversationHistory,
             mode: currentVersion,
             variant: config.variant,
             modelConfig: config
@@ -1218,6 +1261,7 @@ export default function App() {
             user_type: userType ?? null,
             major: selectedMajor ?? null,
             semester: (selectedSemester && selectedSemester !== "—") ? String(selectedSemester) : null,
+            conversation_history: conversationHistory,
             mode: currentVersion,
             variant: "production",
             modelConfig: randomConfig

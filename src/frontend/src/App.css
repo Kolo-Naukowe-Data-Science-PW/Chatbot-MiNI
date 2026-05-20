@@ -218,6 +218,38 @@ h1 {
   margin: 0;
 }
 
+/* ============ FILE ATTACHMENT CHIP ============ */
+.attached-file-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 20px;
+  padding: 4px 12px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: #C0D1C8;
+  max-width: 800px;
+  width: 100%;
+  pointer-events: auto;
+}
+
+.remove-attachment {
+  background: transparent;
+  border: none;
+  color: #C0D1C8;
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 12px;
+  line-height: 1;
+  margin-left: auto;
+}
+
+.remove-attachment:hover {
+  color: #fff;
+}
+
 /* ============ INPUT ============ */
 .input-section {
   position: fixed;

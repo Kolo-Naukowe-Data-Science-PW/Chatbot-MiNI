@@ -1,4 +1,5 @@
 import csv
+import io
 import json
 import logging
 import os
@@ -7,7 +8,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -149,6 +150,20 @@ def append_feedback_row(payload: FeedbackRequest) -> None:
             writer.writerow(row)
 
 
+_ROMAN_TO_ARABIC = {"I": "1", "II": "2", "III": "3", "IV": "4", "V": "5", "VI": "6", "VII": "7"}
+
+
+def _enrich_retrieval_query(query: str, major: str | None, semester: str | None) -> str:
+    """Append major/semester context so schedule facts are retrievable by hybrid search."""
+    if not major or major == "—":
+        return query
+    q = query + f" kierunek {major}"
+    if semester and semester != "—":
+        arabic = _ROMAN_TO_ARABIC.get(semester, semester)
+        q += f" semestr {arabic} semestr {semester}"
+    return q
+
+
 _EXPERIMENT_PERSONAS = [
     "Odpowiedz bardzo krótko i konkretnie. Bez owijania w bawełnę.",
     "Odpowiedz luzno, prosto i przyjaźnie.",
@@ -267,7 +282,9 @@ def chat_endpoint(request: QueryRequest) -> dict[str, Any]:
         processing_query = translate_text(query, target_lang_code="pl")
         logger.info(f"Translated query to PL: '{processing_query}'")
 
-    retrieval_query = rewrite_query(processing_query)
+    retrieval_query = _enrich_retrieval_query(
+        rewrite_query(processing_query), request.major, request.semester
+    )
     sorted_chunks = get_top_k_chunks(retrieval_query)
 
     if not sorted_chunks:
@@ -341,7 +358,9 @@ def chat_stream_endpoint(request: QueryRequest):
     if lang != "pl":
         processing_query = translate_text(query, target_lang_code="pl")
 
-    retrieval_query = rewrite_query(processing_query)
+    retrieval_query = _enrich_retrieval_query(
+        rewrite_query(processing_query), request.major, request.semester
+    )
     sorted_chunks = get_top_k_chunks(retrieval_query)
     seen: set[str] = set()
     sources = []
@@ -419,6 +438,34 @@ def error_report_endpoint(payload: ErrorReportRequest) -> dict[str, str]:
     with error_file.open("w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
     return {"status": "ok"}
+
+
+@app.post("/extract-text")
+async def extract_text_endpoint(file: UploadFile = File(...)) -> dict[str, str]:
+    """Extract plain text from an uploaded file (.txt, .md, .pdf). Used by the frontend to attach files to chat."""
+    content = await file.read()
+    filename = file.filename or ""
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+
+    if ext in ("txt", "md", "csv"):
+        try:
+            text = content.decode("utf-8")
+        except UnicodeDecodeError:
+            text = content.decode("latin-1", errors="replace")
+    elif ext == "pdf":
+        try:
+            from pypdf import PdfReader  # noqa: PLC0415
+            reader = PdfReader(io.BytesIO(content))
+            text = "\n".join(page.extract_text() or "" for page in reader.pages)
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail=f"PDF extraction failed: {exc}") from exc
+    else:
+        raise HTTPException(status_code=415, detail=f"Unsupported file type: .{ext}")
+
+    if not text.strip():
+        raise HTTPException(status_code=422, detail="File appears to be empty or unreadable.")
+
+    return {"text": text, "filename": filename}
 
 
 @app.post("/feedback")
