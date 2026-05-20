@@ -24,7 +24,7 @@ def _parse_log_level(value: str) -> int:
     try:
         # getLevelByName handles string names ("INFO")
         lvl = value.upper()
-        numeric = logging.getLevelByName(lvl)
+        numeric = logging.getLevelNamesMapping().get(lvl)
         if isinstance(numeric, int):
             return numeric
     except Exception:
