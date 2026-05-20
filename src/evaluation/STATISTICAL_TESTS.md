@@ -294,7 +294,7 @@ def extract_rank_from_sources(sources_str: str) -> int:
 Dla każdej pary pytań $(q_i, q_j)$:
 
 ```
-Concordant: 
+Concordant:
   (rank_A[i] < rank_A[j] AND rank_B[i] < rank_B[j])  OR
   (rank_A[i] > rank_A[j] AND rank_B[i] > rank_B[j])
 
@@ -310,4 +310,3 @@ Discordant:
 - Wilcoxon test: `scipy.stats.wilcoxon` (docs: https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.wilcoxon.html)
 - Goodman-Kruskal gamma: Goodman & Kruskal (1954), "Measures of association for cross classifications"
 - Cohen's kappa: Cohen (1960), "A coefficient of agreement for nominal scales"
-

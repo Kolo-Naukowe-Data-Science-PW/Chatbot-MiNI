@@ -1,9 +1,9 @@
 # Coverage Analysis Findings — 2026-05-15
 
-**Source:** `questions_with_links.csv` — tylko pytania z `wymagany kontekst=0`  
+**Source:** `questions_with_links.csv` — tylko pytania z `wymagany kontekst=0`
 **Raport:** `coverage_report_20260515T212447.json`
 
-> Uwaga: analiza obejmuje TYLKO podzbiór z `wymagany kontekst=0`.  
+> Uwaga: analiza obejmuje TYLKO podzbiór z `wymagany kontekst=0`.
 > Należy powtórzyć z `--all-rows` żeby zobaczyć pełny obraz.
 
 ---

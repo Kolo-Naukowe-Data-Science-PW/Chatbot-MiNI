@@ -106,7 +106,9 @@ def scrap_data() -> list[ScrapedPage]:
         urls = links_curated
 
         total = len(urls)
-        logger.info(f"V{CURRENT_VERSION}: Scraping curated list of {total} URLs (legal/admin focus).")
+        logger.info(
+            f"V{CURRENT_VERSION}: Scraping curated list of {total} URLs (legal/admin focus)."
+        )
 
         for i, url in enumerate(urls, start=1):
             logger.info(f"[{i}/{total}] Scraping: {url}")
@@ -123,7 +125,9 @@ def scrap_data() -> list[ScrapedPage]:
                 text = clean_headnote(result.markdown)
                 text = clean_footnote(text)
                 output.append(ScrapedPage(url=url, text=text, links=result.links))
-                logger.info(f"[{i}/{total}] OK — {len(text)} chars, {len(result.links)} links")
+                logger.info(
+                    f"[{i}/{total}] OK — {len(text)} chars, {len(result.links)} links"
+                )
                 time.sleep(1)
             except Exception as e:
                 logger.warning(f"[{i}/{total}] FAILED: {url} — {e}")
@@ -152,7 +156,9 @@ def scrap_data() -> list[ScrapedPage]:
                 text = clean_headnote(result.markdown)
                 text = clean_footnote(text)
                 output.append(ScrapedPage(url=url, text=text, links=result.links))
-                logger.info(f"[{i}/{total}] OK — {len(text)} chars, {len(result.links)} links")
+                logger.info(
+                    f"[{i}/{total}] OK — {len(text)} chars, {len(result.links)} links"
+                )
                 time.sleep(1)
             except Exception as e:
                 logger.warning(f"[{i}/{total}] FAILED: {url} — {e}")
@@ -341,7 +347,9 @@ def main() -> None:
             _save_page(url, text, output_dir)
             mark_scraped(url)
             saved += 1
-            logger.info(f"[{i}/{total}] OK — {len(text)} chars, {len(result.links)} links")
+            logger.info(
+                f"[{i}/{total}] OK — {len(text)} chars, {len(result.links)} links"
+            )
             time.sleep(1)
         except Exception as e:
             logger.warning(f"[{i}/{total}] FAILED: {url} — {e}")

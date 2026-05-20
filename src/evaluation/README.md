@@ -90,7 +90,7 @@ python -m evaluation.llm_judge.testpro_runner \
 
 ## Generating golden answers (3 supermodels)
 
-Requires `OPENROUTER_API_KEY` set in environment.  
+Requires `OPENROUTER_API_KEY` set in environment.
 Qdrant / running API **not needed** — supermodele odpowiadają bez RAG.
 
 ```bash
@@ -158,7 +158,7 @@ python -m evaluation.statistical_comparison \
 - `--use-adaptive-k` — użyj adaptacyjnego k zamiast fixed (każdy query ma proprie k = liczba zwróconych linków)
 - `--output-dir` — katalog na wyniki
 
-**Output:** 
+**Output:**
 - JSON z wynikami testów (`statistical_comparison_<ts>.json`)
 - Wyniki w standardowym wyjściu (stdout)
 
@@ -169,7 +169,7 @@ Szczegóły: patrz [STATISTICAL_TESTS.md](STATISTICAL_TESTS.md).
 
 ## Kontrola eksperymentu A/B (EXPERIMENT_DIM)
 
-`testpro_runner.py` porównuje dwa warianty odpowiedzi (A vs B).  
+`testpro_runner.py` porównuje dwa warianty odpowiedzi (A vs B).
 Zmienna `EXPERIMENT_DIM` decyduje, co różni A od B — **tylko jedna rzecz na raz**.
 
 | Wartość | Co się losuje | Co jest stałe |

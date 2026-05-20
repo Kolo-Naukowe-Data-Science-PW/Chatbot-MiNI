@@ -171,7 +171,9 @@ def judge_against_context_golden(
         raise RuntimeError("OPENROUTER_API_KEY is not set")
 
     client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key)
-    messages = build_context_judge_prompt(query, chatbot_answer, golden_answer, language)
+    messages = build_context_judge_prompt(
+        query, chatbot_answer, golden_answer, language
+    )
 
     last_error: Exception | None = None
     for attempt in range(max_retries + 1):
@@ -187,10 +189,20 @@ def judge_against_context_golden(
             return parse_golden_judge_response(raw)
         except (json.JSONDecodeError, ValidationError, ValueError) as exc:
             last_error = exc
-            logger.warning("Judge parse failed (attempt %d/%d): %s", attempt + 1, max_retries + 1, exc)
+            logger.warning(
+                "Judge parse failed (attempt %d/%d): %s",
+                attempt + 1,
+                max_retries + 1,
+                exc,
+            )
         except Exception as exc:
             last_error = exc
-            logger.warning("Judge API failed (attempt %d/%d): %s", attempt + 1, max_retries + 1, exc)
+            logger.warning(
+                "Judge API failed (attempt %d/%d): %s",
+                attempt + 1,
+                max_retries + 1,
+                exc,
+            )
 
     raise RuntimeError(f"Context golden judge failed after retries: {last_error}")
 
@@ -239,9 +251,19 @@ def judge_against_golden(
             return parse_golden_judge_response(raw)
         except (json.JSONDecodeError, ValidationError, ValueError) as exc:
             last_error = exc
-            logger.warning("Judge parse failed (attempt %d/%d): %s", attempt + 1, max_retries + 1, exc)
+            logger.warning(
+                "Judge parse failed (attempt %d/%d): %s",
+                attempt + 1,
+                max_retries + 1,
+                exc,
+            )
         except Exception as exc:
             last_error = exc
-            logger.warning("Judge API failed (attempt %d/%d): %s", attempt + 1, max_retries + 1, exc)
+            logger.warning(
+                "Judge API failed (attempt %d/%d): %s",
+                attempt + 1,
+                max_retries + 1,
+                exc,
+            )
 
     raise RuntimeError(f"Golden judge failed after retries: {last_error}")

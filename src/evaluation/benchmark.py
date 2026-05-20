@@ -1,10 +1,7 @@
 import argparse
 import csv
 import json
-import logging
 import sys
-import matplotlib.pyplot as plt
-import matplotlib.ticker as mticker
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime
@@ -15,6 +12,9 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
+import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
@@ -23,20 +23,24 @@ if str(PROJECT_ROOT) not in sys.path:
 def _get_top_k_chunks(query: str, top_k: int, **kwargs) -> list:
     """Lazy proxy — loads the retrieval module (and ML models) only on first call."""
     from src.api.retrieval import get_top_k_chunks  # noqa: PLC0415
+
     global _get_top_k_chunks  # replace self with the real function after first load
-    _get_top_k_chunks = lambda q, top_k, **kw: get_top_k_chunks(q, top_k=top_k, **kw)  # noqa: E731
+    _get_top_k_chunks = lambda q, top_k, **kw: get_top_k_chunks(
+        q, top_k=top_k, **kw
+    )  # noqa: E731
     return get_top_k_chunks(query, top_k=top_k, **kwargs)
 
 
 def _rewrite_query(query: str) -> str:
     """Lazy proxy — loads the query rewriter (and OpenRouter client) only on first call."""
     from src.api.query_rewriter import rewrite_query  # noqa: PLC0415
+
     global _rewrite_query  # noqa: PLW0603
     _rewrite_query = rewrite_query
     return rewrite_query(query)
 
 
-#logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICAL)
+# logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICAL)
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -58,6 +62,7 @@ MRRW_BETA: float = 0.4
 
 # ── Data structures ───────────────────────────────────────────────────────────
 
+
 @dataclass
 class EvalRow:
     query: str
@@ -65,6 +70,7 @@ class EvalRow:
 
 
 # ── URL normalisation and deduplication ──────────────────────────────────────
+
 
 def normalize_url(url: str) -> str:
     """
@@ -145,6 +151,7 @@ def unique_preserve_order(items: list[str]) -> list[str]:
 
 # ── Hierarchical URL relevance scoring ───────────────────────────────────────
 
+
 def hierarchical_relevance(retrieved_url: str, target_url: str) -> float:
     """
     Returns a graded relevance score for a retrieved URL relative to the
@@ -185,7 +192,7 @@ def hierarchical_relevance(retrieved_url: str, target_url: str) -> float:
     # retrieved URL is an ancestor (parent, grandparent, ...) of the target
     if t_path.startswith(r_path + "/"):
         depth = t_path.count("/") - r_path.count("/")
-        return 0.5 ** depth
+        return 0.5**depth
 
     # retrieved URL is a descendant (child, grandchild, ...) of the target
     if r_path.startswith(t_path + "/"):
@@ -255,7 +262,7 @@ def _mrr_weight(d: int, alpha: float = MRRW_ALPHA, beta: float = MRRW_BETA) -> f
     if d == 0:
         return 1.0
     if d > 0:
-        return alpha ** d
+        return alpha**d
     return beta ** abs(d)
 
 
@@ -314,16 +321,19 @@ def mrr_weighted(
     scores = []
     for row in gold:
         retrieved_chunks = _get_top_k_chunks(row.query, top_k=k)
-        urls = unique_preserve_order([
-            normalize_url(c.get("source_url", ""))
-            for c in retrieved_chunks
-            if c.get("source_url", "")
-        ])
+        urls = unique_preserve_order(
+            [
+                normalize_url(c.get("source_url", ""))
+                for c in retrieved_chunks
+                if c.get("source_url", "")
+            ]
+        )
         scores.append(mrr_weighted_single(urls[:k], row.target_url, alpha, beta))
     return mean(scores) if scores else 0.0
 
 
 # ── Gold set loading ──────────────────────────────────────────────────────────
+
 
 def load_gold(path: str) -> list[EvalRow]:
     """
@@ -334,12 +344,9 @@ def load_gold(path: str) -> list[EvalRow]:
     If a URL cell contains multiple URLs separated by '|', only the first
     one is used, since this evaluation assumes exactly one target per query.
     """
+
     def normalize_row(raw: dict[str, str | None]) -> dict[str, str]:
-        return {
-            k.strip().lower(): (v or "").strip()
-            for k, v in raw.items()
-            if k
-        }
+        return {k.strip().lower(): (v or "").strip() for k, v in raw.items() if k}
 
     rows: list[EvalRow] = []
     with open(path, encoding="utf-8", newline="") as f:
@@ -371,14 +378,16 @@ def load_gold(path: str) -> list[EvalRow]:
 #                  (always 1 because each query has exactly one target URL)
 
 
-def hit_at_k(rel_scores: list[float], k: int,
-             threshold: float = RELEVANCE_THRESHOLD) -> float:
+def hit_at_k(
+    rel_scores: list[float], k: int, threshold: float = RELEVANCE_THRESHOLD
+) -> float:
     """Hit@k: 1 if at least one of the top-k results is relevant, else 0."""
     return 1.0 if any(s >= threshold for s in rel_scores[:k]) else 0.0
 
 
-def mrr_at_k(rel_scores: list[float], k: int,
-             threshold: float = RELEVANCE_THRESHOLD) -> float:
+def mrr_at_k(
+    rel_scores: list[float], k: int, threshold: float = RELEVANCE_THRESHOLD
+) -> float:
     """MRR@k: reciprocal rank of the first relevant result within top-k."""
     for rank, score in enumerate(rel_scores[:k], start=1):
         if score >= threshold:
@@ -386,8 +395,12 @@ def mrr_at_k(rel_scores: list[float], k: int,
     return 0.0
 
 
-def recall_at_k(rel_scores: list[float], k: int, total_rel: int,
-                threshold: float = RELEVANCE_THRESHOLD) -> float:
+def recall_at_k(
+    rel_scores: list[float],
+    k: int,
+    total_rel: int,
+    threshold: float = RELEVANCE_THRESHOLD,
+) -> float:
     """Recall@k: fraction of all relevant documents found within top-k."""
     if total_rel == 0:
         return 0.0
@@ -395,8 +408,9 @@ def recall_at_k(rel_scores: list[float], k: int, total_rel: int,
     return hits / total_rel
 
 
-def precision_at_k(rel_scores: list[float], k: int,
-                   threshold: float = RELEVANCE_THRESHOLD) -> float:
+def precision_at_k(
+    rel_scores: list[float], k: int, threshold: float = RELEVANCE_THRESHOLD
+) -> float:
     """Precision@k: fraction of top-k results that are relevant."""
     topk = rel_scores[:k]
     if not topk:
@@ -405,22 +419,26 @@ def precision_at_k(rel_scores: list[float], k: int,
     return hits / len(topk)
 
 
-def f_measure_at_k(rel_scores: list[float], k: int, total_rel: int,
-                   beta: float = 1.0,
-                   threshold: float = RELEVANCE_THRESHOLD) -> float:
+def f_measure_at_k(
+    rel_scores: list[float],
+    k: int,
+    total_rel: int,
+    beta: float = 1.0,
+    threshold: float = RELEVANCE_THRESHOLD,
+) -> float:
     """F_beta@k: weighted harmonic mean of Precision@k and Recall@k."""
     p = precision_at_k(rel_scores, k, threshold)
     r = recall_at_k(rel_scores, k, total_rel, threshold)
-    denom = (beta ** 2) * p + r
+    denom = (beta**2) * p + r
     if denom == 0.0:
         return 0.0
-    return (1 + beta ** 2) * p * r / denom
+    return (1 + beta**2) * p * r / denom
 
 
 def dcg_at_k(rel_scores: list[float], k: int) -> float:
     """DCG@k using graded relevance: gain = 2^rel - 1."""
     return sum(
-        (2 ** rel - 1) / log2(rank + 1)
+        (2**rel - 1) / log2(rank + 1)
         for rank, rel in enumerate(rel_scores[:k], start=1)
     )
 
@@ -436,8 +454,12 @@ def ndcg_at_k(rel_scores: list[float], k: int) -> float:
     return 0.0 if idcg == 0.0 else dcg_at_k(rel_scores, k) / idcg
 
 
-def average_precision_at_k(rel_scores: list[float], k: int, total_rel: int,
-                           threshold: float = RELEVANCE_THRESHOLD) -> float:
+def average_precision_at_k(
+    rel_scores: list[float],
+    k: int,
+    total_rel: int,
+    threshold: float = RELEVANCE_THRESHOLD,
+) -> float:
     """
     AP@k: average of Precision@i over every position i (1 <= i <= k) where
     the i-th document is relevant.  Normalised by total_rel so that a
@@ -453,8 +475,9 @@ def average_precision_at_k(rel_scores: list[float], k: int, total_rel: int,
     return ap / total_rel
 
 
-def r_precision(rel_scores: list[float], total_rel: int,
-                threshold: float = RELEVANCE_THRESHOLD) -> float:
+def r_precision(
+    rel_scores: list[float], total_rel: int, threshold: float = RELEVANCE_THRESHOLD
+) -> float:
     """R-Precision: Precision@R where R = |gold relevant set|."""
     if total_rel == 0:
         return 0.0
@@ -476,9 +499,10 @@ def r_precision(rel_scores: list[float], total_rel: int,
 
 # ── Precision-Recall curve helpers ───────────────────────────────────────────
 
-def pr_curve_points(rel_scores: list[float], total_rel: int,
-                    threshold: float = RELEVANCE_THRESHOLD
-                    ) -> tuple[list[float], list[float]]:
+
+def pr_curve_points(
+    rel_scores: list[float], total_rel: int, threshold: float = RELEVANCE_THRESHOLD
+) -> tuple[list[float], list[float]]:
     """
     Computes raw (recall, precision) pairs at every rank position.
     The full ranking is used (not truncated to k) so that the curve can
@@ -495,9 +519,9 @@ def pr_curve_points(rel_scores: list[float], total_rel: int,
 
 
 def interpolated_precision_at_levels(
-        recalls: list[float],
-        precisions: list[float],
-        levels: list[float] | None = None,
+    recalls: list[float],
+    precisions: list[float],
+    levels: list[float] | None = None,
 ) -> tuple[list[float], list[float]]:
     """
     Computes interpolated precision at standard recall levels:
@@ -516,28 +540,30 @@ def interpolated_precision_at_levels(
 
 # ── Results container ─────────────────────────────────────────────────────────
 
+
 @dataclass
 class MetricsAtK:
     k: int
     hit: float
     mrr: float
-    mrr_weighted: float     # MRRw (Metryka_chatbot.pdf) — depth-aware weighted MRR
+    mrr_weighted: float  # MRRw (Metryka_chatbot.pdf) — depth-aware weighted MRR
     recall: float
     precision: float
     f1: float
     ndcg: float
-    map_score: float        # MAP@k
-    r_prec: float           # R-Precision (rank-cutoff independent)
+    map_score: float  # MAP@k
+    r_prec: float  # R-Precision (rank-cutoff independent)
     # source_diversity: float
     # source_redundancy: float
 
 
 # ── Evaluation loop ───────────────────────────────────────────────────────────
 
+
 def evaluate(
-        gold: list[EvalRow],
-        k: int,
-        use_rewrite: bool = False,
+    gold: list[EvalRow],
+    k: int,
+    use_rewrite: bool = False,
 ) -> tuple[MetricsAtK, list[tuple[list[float], list[float]]]]:
     """
     Evaluates the retriever on the gold set for a given rank cut-off k.
@@ -556,17 +582,13 @@ def evaluate(
     for index, row in enumerate(gold):
         retrieval_q = _rewrite_query(row.query) if use_rewrite else row.query
         retrieved_chunks = _get_top_k_chunks(retrieval_q, top_k=k)
-        raw_urls = [
-            normalize_url(c.get("source_url", ""))
-            for c in retrieved_chunks
-        ]
+        raw_urls = [normalize_url(c.get("source_url", "")) for c in retrieved_chunks]
         raw_urls = [u for u in raw_urls if u]
         unique_urls = unique_preserve_order(raw_urls)
 
         # Graded relevance scores for existing metrics (hierarchical, symmetric decay)
         rel_scores = [
-            hierarchical_relevance(url, row.target_url)
-            for url in unique_urls
+            hierarchical_relevance(url, row.target_url) for url in unique_urls
         ]
 
         # MRRw score for this query (depth-aware, asymmetric α/β weights)
@@ -619,8 +641,8 @@ COLORS = ["#4C72B0", "#DD8452", "#55A868", "#C44E52"]
 
 
 def plot_pr_curves(
-        all_pr_curves: dict[int, list[tuple[list[float], list[float]]]],
-        output_path: str = "pr_curves.png",
+    all_pr_curves: dict[int, list[tuple[list[float], list[float]]]],
+    output_path: str = "pr_curves.png",
 ) -> None:
     """
     Produces a two-panel figure:
@@ -643,8 +665,14 @@ def plot_pr_curves(
                 level_vals.append(interp[level_idx])
             mean_interp.append(mean(level_vals) if level_vals else 0.0)
 
-        ax.plot(recall_levels, mean_interp, marker="o", markersize=5,
-                label=f"k={k}", color=color)
+        ax.plot(
+            recall_levels,
+            mean_interp,
+            marker="o",
+            markersize=5,
+            label=f"k={k}",
+            color=color,
+        )
 
     ax.set_xlabel("Recall")
     ax.set_ylabel("Interpolated Precision")
@@ -670,8 +698,7 @@ def plot_pr_curves(
             )
             mean_raw_pr[level].append(closest[1])
 
-    raw_means = [mean(mean_raw_pr[r]) if mean_raw_pr[r] else 0.0
-                 for r in recall_levels]
+    raw_means = [mean(mean_raw_pr[r]) if mean_raw_pr[r] else 0.0 for r in recall_levels]
 
     mean_interp = []
     for level_idx in range(len(recall_levels)):
@@ -681,11 +708,24 @@ def plot_pr_curves(
             vals.append(interp[level_idx])
         mean_interp.append(mean(vals) if vals else 0.0)
 
-    ax2.plot(recall_levels, raw_means, marker="x", linestyle="--",
-             color=COLORS[0], label="Raw Precision (avg)", alpha=0.7)
-    ax2.step(recall_levels, mean_interp, where="post",
-             marker="o", markersize=5, color=COLORS[1],
-             label="Interpolated Precision (avg)")
+    ax2.plot(
+        recall_levels,
+        raw_means,
+        marker="x",
+        linestyle="--",
+        color=COLORS[0],
+        label="Raw Precision (avg)",
+        alpha=0.7,
+    )
+    ax2.step(
+        recall_levels,
+        mean_interp,
+        where="post",
+        marker="o",
+        markersize=5,
+        color=COLORS[1],
+        label="Interpolated Precision (avg)",
+    )
 
     ax2.set_xlabel("Recall")
     ax2.set_ylabel("Precision")
@@ -702,12 +742,21 @@ def plot_pr_curves(
 
 
 def plot_metrics_summary(
-        all_metrics: list[MetricsAtK],
-        output_path: str = "metrics_summary.png",
+    all_metrics: list[MetricsAtK],
+    output_path: str = "metrics_summary.png",
 ) -> None:
     """Grouped bar chart comparing all metrics across values of k."""
     metric_labels = ["Hit", "MRR", "MRRw", "Recall", "Precision", "F1", "nDCG", "MAP"]
-    attr_names    = ["hit", "mrr", "mrr_weighted", "recall", "precision", "f1", "ndcg", "map_score"]
+    attr_names = [
+        "hit",
+        "mrr",
+        "mrr_weighted",
+        "recall",
+        "precision",
+        "f1",
+        "ndcg",
+        "map_score",
+    ]
 
     ks = [m.k for m in all_metrics]
     x = range(len(metric_labels))
@@ -737,6 +786,7 @@ def plot_metrics_summary(
 
 # ── Filtered gold loader (wymagany kontekst = 0) ─────────────────────────────
 
+
 def load_gold_filtered(path: str) -> list[EvalRow]:
     """
     Load from questions_with_links.csv, keeping only rows where
@@ -751,17 +801,11 @@ def load_gold_filtered(path: str) -> list[EvalRow]:
         reader = csv.DictReader(f)
         for r in reader:
             norm = {
-                (k or "").strip().lower(): (v or "").strip()
-                for k, v in r.items()
-                if k
+                (k or "").strip().lower(): (v or "").strip() for k, v in r.items() if k
             }
             if norm.get("wymagany kontekst") != "0":
                 continue
-            query = (
-                norm.get("pytanie")
-                or norm.get("query")
-                or norm.get("question", "")
-            )
+            query = norm.get("pytanie") or norm.get("query") or norm.get("question", "")
             raw_url = (
                 norm.get("strona")
                 or norm.get("relevant_urls")
@@ -777,11 +821,16 @@ def load_gold_filtered(path: str) -> list[EvalRow]:
 
 # ── Chatbot API helper ────────────────────────────────────────────────────────
 
-def _call_chat_api(api_url: str, query: str, timeout: int = 60) -> tuple[str, list[str]]:
+
+def _call_chat_api(
+    api_url: str, query: str, timeout: int = 60
+) -> tuple[str, list[str]]:
     """POST query to /chat and return (answer_text, source_urls)."""
     data = json.dumps({"query": query, "language": "pl"}).encode("utf-8")
     req = Request(
-        api_url, data=data, method="POST",
+        api_url,
+        data=data,
+        method="POST",
         headers={"Content-Type": "application/json"},
     )
     try:
@@ -793,6 +842,7 @@ def _call_chat_api(api_url: str, query: str, timeout: int = 60) -> tuple[str, li
 
 
 # ── CSV-based evaluation ──────────────────────────────────────────────────────
+
 
 def evaluate_to_csv(
     gold: list[EvalRow],
@@ -858,9 +908,7 @@ def evaluate_to_csv(
             chunks = _get_top_k_chunks(retrieval_q, top_k=max_k, use_rerank=use_rerank)
             raw_sources = [c.get("source_url", "") for c in chunks]
 
-        sources = unique_preserve_order(
-            [normalize_url(u) for u in raw_sources if u]
-        )
+        sources = unique_preserve_order([normalize_url(u) for u in raw_sources if u])
         rel_scores = [hierarchical_relevance(u, row.target_url) for u in sources]
 
         csv_row: dict = {
@@ -873,14 +921,14 @@ def evaluate_to_csv(
 
         for k in ks:
             metrics_k = {
-                f"hit@{k}":       hit_at_k(rel_scores, k),
-                f"mrr@{k}":       mrr_at_k(rel_scores, k),
-                f"mrrw@{k}":      mrr_weighted_single(sources[:k], row.target_url),
-                f"recall@{k}":    recall_at_k(rel_scores, k, total_rel),
+                f"hit@{k}": hit_at_k(rel_scores, k),
+                f"mrr@{k}": mrr_at_k(rel_scores, k),
+                f"mrrw@{k}": mrr_weighted_single(sources[:k], row.target_url),
+                f"recall@{k}": recall_at_k(rel_scores, k, total_rel),
                 f"precision@{k}": precision_at_k(rel_scores, k),
-                f"f1@{k}":        f_measure_at_k(rel_scores, k, total_rel),
-                f"ndcg@{k}":      ndcg_at_k(rel_scores, k),
-                f"map@{k}":       average_precision_at_k(rel_scores, k, total_rel),
+                f"f1@{k}": f_measure_at_k(rel_scores, k, total_rel),
+                f"ndcg@{k}": ndcg_at_k(rel_scores, k),
+                f"map@{k}": average_precision_at_k(rel_scores, k, total_rel),
             }
             csv_row.update(metrics_k)
             for col, val in metrics_k.items():
@@ -898,16 +946,31 @@ def evaluate_to_csv(
             adaptive_k = len(sources)
             csv_row["hit_adaptive"] = hit_at_k(rel_scores, adaptive_k)
             csv_row["mrr_adaptive"] = mrr_at_k(rel_scores, adaptive_k)
-            csv_row["mrrw_adaptive"] = mrr_weighted_single(sources[:adaptive_k], row.target_url)
+            csv_row["mrrw_adaptive"] = mrr_weighted_single(
+                sources[:adaptive_k], row.target_url
+            )
             csv_row["recall_adaptive"] = recall_at_k(rel_scores, adaptive_k, total_rel)
             csv_row["precision_adaptive"] = precision_at_k(rel_scores, adaptive_k)
             csv_row["f1_adaptive"] = f_measure_at_k(rel_scores, adaptive_k, total_rel)
             csv_row["ndcg_adaptive"] = ndcg_at_k(rel_scores, adaptive_k)
-            csv_row["map_adaptive"] = average_precision_at_k(rel_scores, adaptive_k, total_rel)
-            csv_row["r_prec_adaptive"] = r_precision(rel_scores, total_rel)  # k-independent
+            csv_row["map_adaptive"] = average_precision_at_k(
+                rel_scores, adaptive_k, total_rel
+            )
+            csv_row["r_prec_adaptive"] = r_precision(
+                rel_scores, total_rel
+            )  # k-independent
 
-            for col in ["hit_adaptive", "mrr_adaptive", "mrrw_adaptive", "recall_adaptive",
-                        "precision_adaptive", "f1_adaptive", "ndcg_adaptive", "map_adaptive", "r_prec_adaptive"]:
+            for col in [
+                "hit_adaptive",
+                "mrr_adaptive",
+                "mrrw_adaptive",
+                "recall_adaptive",
+                "precision_adaptive",
+                "f1_adaptive",
+                "ndcg_adaptive",
+                "map_adaptive",
+                "r_prec_adaptive",
+            ]:
                 accum.setdefault(col, []).append(csv_row[col])
 
         # Coverage-corrected hit@k
@@ -954,8 +1017,12 @@ def evaluate_to_csv(
 
     summary_json_path = output_dir / f"eval_summary_{ts}.json"
     with open(summary_json_path, "w", encoding="utf-8") as f:
-        json.dump({k: round(v, 6) for k, v in summary.items()}, f,
-                  ensure_ascii=False, indent=2)
+        json.dump(
+            {k: round(v, 6) for k, v in summary.items()},
+            f,
+            ensure_ascii=False,
+            indent=2,
+        )
     print(f"Saved summary JSON       -> {summary_json_path}")
 
     print("\n=== Summary ===")
@@ -966,6 +1033,7 @@ def evaluate_to_csv(
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(
@@ -1062,14 +1130,24 @@ def main() -> None:
     print(f"Loaded {len(gold)} evaluation queries from {source_label}\n")
 
     if args.rewrite:
-        print("Query rewriting ENABLED — each query will be rewritten before retrieval.\n")
+        print(
+            "Query rewriting ENABLED — each query will be rewritten before retrieval.\n"
+        )
     if args.no_rerank:
         print("Cross-encoder reranking DISABLED — using raw RRF output.\n")
 
     # CSV-based evaluation (per-query + summary)
-    evaluate_to_csv(gold, ks, output_dir, api_url=args.api_url, timeout=args.timeout,
-                    use_rewrite=args.rewrite, metric_mode=args.metric_mode,
-                    check_coverage=args.check_coverage, use_rerank=not args.no_rerank)
+    evaluate_to_csv(
+        gold,
+        ks,
+        output_dir,
+        api_url=args.api_url,
+        timeout=args.timeout,
+        use_rewrite=args.rewrite,
+        metric_mode=args.metric_mode,
+        check_coverage=args.check_coverage,
+        use_rerank=not args.no_rerank,
+    )
 
     # Plots use the legacy evaluate() loop (calls retrieval directly per k)
     if not args.no_plots:
@@ -1081,8 +1159,10 @@ def main() -> None:
             m, pr_curves = evaluate(gold, k, use_rewrite=args.rewrite)
             all_metrics.append(m)
             all_pr_curves[k] = pr_curves
-            print(f"  k={k}: Hit={m.hit:.4f} MRR={m.mrr:.4f} MRRw={m.mrr_weighted:.4f} "
-                  f"nDCG={m.ndcg:.4f} MAP={m.map_score:.4f}")
+            print(
+                f"  k={k}: Hit={m.hit:.4f} MRR={m.mrr:.4f} MRRw={m.mrr_weighted:.4f} "
+                f"nDCG={m.ndcg:.4f} MAP={m.map_score:.4f}"
+            )
 
         plot_pr_curves(all_pr_curves, str(output_dir / "pr_curves.png"))
         plot_metrics_summary(all_metrics, str(output_dir / "metrics_summary.png"))

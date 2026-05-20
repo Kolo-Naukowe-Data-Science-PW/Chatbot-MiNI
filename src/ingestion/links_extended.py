@@ -1,22 +1,18 @@
 links = [
-
     # Uzupełnienie
     "https://bss.ca.pw.edu.pl/Stypendia/Stypendia-z-Funduszu-Stypendialnego/Stypendium-Rektora",
     "https://www.ca.pw.edu.pl/Kwestor/Dzial-Plac/Ubezpieczenia/Ubezpieczenie-NNW",
     "https://ww4.mini.pw.edu.pl/for-students/deans-office/",
     "https://ww2.mini.pw.edu.pl/wp-content/uploads/pracownicy/rada/uch_06_2017_07_zal1.pdf",
     "https://ww2.mini.pw.edu.pl/wp-content/uploads/20250529-iad-plan-studiow-mgr-4sem.pdf",
-
     # Studia / Dziekanat
     "https://ww2.mini.pw.edu.pl/studia/dziekanat/kontakt-i-dyzury/",
     "https://ww2.mini.pw.edu.pl/studia/dziekanat/informacje-dziekanatu/",
     "https://ww2.mini.pw.edu.pl/studia/dziekanat/dokumenty-i-formularze/",
     "https://ww2.mini.pw.edu.pl/studia/dziekanat/sprawy-socjalne/",
     "https://ww2.mini.pw.edu.pl/studia/dziekanat/dla-dyplomantow-i-promotorow/",
-
     # Studia / Plany zajęć i procedury
     "https://www.pw.edu.pl/studia/harmonogram-roku-akademickiego",
-
     # Studia / Inżynierskie i licencjackie
     "https://ww2.mini.pw.edu.pl/studia/inzynierskie-i-licencjackie/rekrutacja/",
     "https://ww2.mini.pw.edu.pl/studia/inzynierskie-i-licencjackie/matematyka-i-analiza-danych/",
@@ -27,7 +23,6 @@ links = [
     "https://ww2.mini.pw.edu.pl/studia/inzynierskie-i-licencjackie/rankingi-i-opinie/",
     "https://ww2.mini.pw.edu.pl/studia/inzynierskie-i-licencjackie/wymiana-miedzynarodowa/",
     "https://ww2.mini.pw.edu.pl/studia/inzynierskie-i-licencjackie/praktyki/",
-
     # Studia / Magisterskie
     "https://ww2.mini.pw.edu.pl/studia/magisterskie/kandydaci/",
     "https://ww2.mini.pw.edu.pl/studia/magisterskie/matematyka-i-analiza-danych/",
@@ -35,28 +30,22 @@ links = [
     "https://ww2.mini.pw.edu.pl/studia/magisterskie/informatyka/",
     "https://ww2.mini.pw.edu.pl/studia/magisterskie/inzynieria-i-analiza-danych/",
     "https://ww2.mini.pw.edu.pl/studia/magisterskie/rankingi-i-opinie/",
-
     # Studia / Doktoranci
     "https://ww2.mini.pw.edu.pl/studia/doktoranckie/szkola-doktorska/",
-
     # Badania / Pracownicy i doktoranci
     "https://ww2.mini.pw.edu.pl/badania/pracownicy-naukowi/",
     "https://ww2.mini.pw.edu.pl/worlds-top-2-scientists/",
-
     # Badania / Badania naukowe
     "https://ww2.mini.pw.edu.pl/badania/kategorie-dyscyplin-naukowych/",
     "https://ww2.mini.pw.edu.pl/badania/obszary-badawcze/seminaria/",
     "https://ww2.mini.pw.edu.pl/przyznane-granty-dla-pracownikow-wydzialu-mini/",
     "https://ww2.mini.pw.edu.pl/badania/publikacje/wszystkie-publikacje/",
-
     # Badania / Rada Naukowa Dyscypliny Matematyka
     "https://ww2.mini.pw.edu.pl/badania/rada-naukowa-dyscypliny-matematyka/sklad-rndm/",
     "https://ww2.mini.pw.edu.pl/badania/rada-naukowa-dyscypliny-matematyka/zespoly-rndm/",
     "https://ww2.mini.pw.edu.pl/badania/rada-naukowa-dyscypliny-matematyka/kontakt/",
-
     # Badania / Rada Naukowa Dyscypliny Informatyka Techniczna i Telekomunikacja
     "https://ww2.mini.pw.edu.pl/badania/rada-naukowa-dyscypliny-informatyka-techniczna-i-telekomunikacja/sklad-rnditit/",
-    
     # O Wydziale / Wydział
     "https://ww2.mini.pw.edu.pl/wydzial/o-nas/",
     "https://ww2.mini.pw.edu.pl/wydzial/dziekani/",
@@ -67,7 +56,6 @@ links = [
     "https://ww2.mini.pw.edu.pl/gmach-wydzialu/wynajem-powierzchni-i-garazu-mini/",
     "https://ww2.mini.pw.edu.pl/studia/plany-zajec-i-procedury/bhp-i-ochrona-przeciwpozarowa/",
     "https://ww2.mini.pw.edu.pl/wydzial/kontakt/",
-    
     # O Wydziale / Rada Wydziału i Komisje
     "https://ww2.mini.pw.edu.pl/wydzial/rada-wydzialu/",
     "https://ww2.mini.pw.edu.pl/wydzial/komisje-rady-wydzialu/",
@@ -76,19 +64,16 @@ links = [
     "https://ww2.mini.pw.edu.pl/wydzial/czlonkowie-senatu/",
     "https://ww2.mini.pw.edu.pl/wydzial/czlonkowie-komisji-uczelnianych/",
     "https://ww2.mini.pw.edu.pl/wydzial/czlonkowie-komisji-wyborczych/",
-    
     # O Wydziale / Życie Wydziału
     "https://ww2.mini.pw.edu.pl/zycie-wydzialu/samorzad-studentow/",
     "https://ww2.mini.pw.edu.pl/zycie-wydzialu/kola-naukowe-i-artystyczne/",
     # WYMAGA RĘCZNEGO POBRANIA (BIP PW — cookiewall/blokada scrapowania):
     # "https://www.bip.pw.edu.pl/Sklad-osobowy/Organizacje-spoleczne/Rejestr-uczelnianych-organizacji-studenckich-i-doktoranckich-Politechniki-Warszawskiej/Kolo-Naukowe-Data-Science",
-    
     # O Wydziale / Laboratorium
     "https://ww2.mini.pw.edu.pl/laboratorium/oprogramowanie/",
     "https://ww2.mini.pw.edu.pl/laboratorium/laboratoria/",
     "https://ww2.mini.pw.edu.pl/laboratorium/uslugi/",
     "https://ww2.mini.pw.edu.pl/laboratorium/",
-    
     # Ważne dokumenty i inne ukryte rzeczy
     "https://ww2.mini.pw.edu.pl/wp-content/uploads/uchwala_rady_21_02_2019.pdf",
     "https://ww2.mini.pw.edu.pl/wp-content/uploads/Warunki-rejestracji-na-kolejny-semestr-rok-studiow-22.11.2023.pdf",
@@ -120,7 +105,6 @@ links = [
     "https://ww2.mini.pw.edu.pl/wp-content/uploads/parking_zasady_2013_05_20.pdf",
     "https://ww2.mini.pw.edu.pl/laboratorium/uslugi/usluga-id/",
     "https://ww2.mini.pw.edu.pl/laboratorium/uslugi/usluga-wirtualki/",
-    
     # Ważne newsy
     "https://ww2.mini.pw.edu.pl/2018-04-23-wydzial-matematyki-i-nauk-informacyjnych-podpisalo-porozumie-o-wspolpracy-z-ministerstwem-finansow/",
     "https://ww2.mini.pw.edu.pl/miedzynarodowa-rozpoznawalnosc-absolwentow-wydzialu/",
@@ -177,11 +161,9 @@ links = [
     "https://ww2.mini.pw.edu.pl/prezydent-rp-nadal-tytul-profesora-dr-hab-michalowi-ziembowskiemu/",
     "https://ww2.mini.pw.edu.pl/zespol-combains-z-sukcesem-w-hackcarpathia-2026/",
     "https://ww2.mini.pw.edu.pl/sukces-druzyn-z-mini-w-hackatonie-starkhacks-w-usa/",
-    
     # Socials
     # "https://www.facebook.com/wrsminipw",
     # "https://www.facebook.com/samorzadpw",
-
     # obieraki
     "https://usosweb.usos.pw.edu.pl/kontroler.php?_action=katalog2/przedmioty/szukajPrzedmiotu&method=faculty_groups&jed_org_kod=112000&grupaKod=1120-OBIERALNE&callback=g_181b84c2&cp_showDescriptions=0&cp_showGroupsColumn=0&cp_cdydsDisplayLevel=2&f_tylkoWRejestracji=0&f_obcojezyczne=0&kierujNaPlanyGrupy=0&tab5585_offset=0&tab5585_limit=300&tab5585_order=2a1a",
     "https://usosweb.usos.pw.edu.pl/kontroler.php?_action=katalog2/przedmioty/pokazPrzedmiot&prz_kod=1120-IN000-ISA-0548&callback=g_1bb9ff53",
@@ -220,13 +202,11 @@ links = [
     "https://usosweb.usos.pw.edu.pl/kontroler.php?_action=katalog2/przedmioty/pokazPrzedmiot&prz_kod=1120-MA000-LSP-0648&callback=g_1bb9ff53",
     "https://usosweb.usos.pw.edu.pl/kontroler.php?_action=katalog2/przedmioty/pokazPrzedmiot&prz_kod=1120-DS000-ISP-0236&callback=g_1bb9ff53",
     "https://usosweb.usos.pw.edu.pl/kontroler.php?_action=katalog2/przedmioty/pokazPrzedmiot&prz_kod=1120-INCAD-MSP-0500&callback=g_1bb9ff53",
-    
     # ── BIP PW ───────────────────────────────────────────────────────────────
     # Strony i pliki BIP PW wymagają ręcznego pobrania (cookiewall / JS rendering).
     # PDF-y wrzuć do src/manual_pdfs/ i uruchom workflow "Ingest Only".
     # Strony HTML na razie pominięte — nie da się ich automatycznie zescrapować.
     # ─────────────────────────────────────────────────────────────────────────
-
     # PDF files (pobierz ręcznie):
     # "https://www.bip.pw.edu.pl/var/pw/storage/original/application/d306a4288f0943c31b5e9cd8fcd33f73.pdf",
     # "https://www.bip.pw.edu.pl/var/pw/storage/original/application/a7f6351019e1d70a951c7a1ac1bb0e28.pdf",
@@ -243,7 +223,6 @@ links = [
     # "https://www.bip.pw.edu.pl/var/pw/storage/original/application/2b1c27e1c5245605dfdf71342a8b11b9.pdf",
     # "https://www.bip.pw.edu.pl/var/pw/storage/original/application/e047e0025a88927817f200f6ef12d364.pdf",
     # "https://www.bip.pw.edu.pl/var/pw/storage/original/text/5c2f61cbc7cc5ab7defe27a20a2f1729.xml",
-    
     # HTML pages (cookiewall — niedostępne dla scrapera):
     # "https://www.bip.pw.edu.pl/Sklad-osobowy/Podstawowe-jednostki-organizacyjne/Wydzial-Matematyki-i-Nauk-Informacyjnych",
     # "https://www.bip.pw.edu.pl/Wladze/Senat",
@@ -278,7 +257,6 @@ links = [
     # "https://www.bip.pw.edu.pl/index.php/content/view/full/65915",
     # "https://www.bip.pw.edu.pl/index.php/content/view/full/65916",
     # "https://www.bip.pw.edu.pl/index.php/content/view/full/65917",
-
     # plany zajęć
     "https://usosweb.usos.pw.edu.pl/kontroler.php?_action=katalog2/przedmioty/pokazPlanGrupyPrzedmiotow&grupa_kod=1120-INSIISA-S1&cdyd_kod=2025Z&plan_showSettings=1&plan_showStartTime=1&plan_showEndTime=1&plan_showTypeShort=1&plan_showTypeFull=0&plan_showGroupNumber=1&plan_showCourseName=1&plan_showCourseCode=0&plan_showRoom=1&plan_showBuildingCode=1&plan_showLecturers=1&plan_overridePrintWidth=1&plan_format=html&plan_colorScheme=default",
     "https://usosweb.usos.pw.edu.pl/kontroler.php?_action=katalog2/przedmioty/pokazPlanGrupyPrzedmiotow&grupa_kod=1120-INSIISA-S3&cdyd_kod=2025Z&plan_showSettings=1&plan_showStartTime=1&plan_showEndTime=1&plan_showTypeShort=1&plan_showTypeFull=0&plan_showGroupNumber=1&plan_showCourseName=1&plan_showCourseCode=0&plan_showRoom=1&plan_showBuildingCode=1&plan_showLecturers=1&plan_overridePrintWidth=1&plan_format=html&plan_colorScheme=default",
@@ -353,7 +331,6 @@ links = [
     "https://usosweb.usos.pw.edu.pl/kontroler.php?_action=katalog2/przedmioty/pokazPlanGrupyPrzedmiotow&grupa_kod=1120-MDNSP-PRIMO-2&cdyd_kod=2026L",
     "https://usosweb.usos.pw.edu.pl/kontroler.php?_action=katalog2/przedmioty/pokazPlanGrupyPrzedmiotow&grupa_kod=1120-MDNSP-PRIMO-4&cdyd_kod=2026L",
     "https://usosweb.usos.pw.edu.pl/kontroler.php?_action=katalog2/przedmioty/pokazPlanGrupyPrzedmiotow&grupa_kod=1120-MDNSP-SMAD-2&cdyd_kod=2026L",
-
     # Pracownicy MiNI
     "https://ww2.mini.pw.edu.pl/wydzial/pracownicy/prac_ayoush_rami/",
     "https://ww2.mini.pw.edu.pl/wydzial/pracownicy/prac_balicki_jerzy/",
@@ -537,5 +514,5 @@ links = [
     "https://ww2.mini.pw.edu.pl/wydzial/pracownicy/prac_swiderek_adrian/",
     "https://ww2.mini.pw.edu.pl/wydzial/pracownicy/prac_traczyk_tomasz/",
     "https://ww2.mini.pw.edu.pl/wydzial/pracownicy/prac_zielinska_agnieszka/",
-    "https://ww2.mini.pw.edu.pl/wydzial/pracownicy/prac_zuk_agnieszka/"
+    "https://ww2.mini.pw.edu.pl/wydzial/pracownicy/prac_zuk_agnieszka/",
 ]
