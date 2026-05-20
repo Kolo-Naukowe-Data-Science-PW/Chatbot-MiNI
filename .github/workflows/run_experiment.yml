@@ -1,0 +1,84 @@
+name: Run Experiment
+
+on:
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: 'Pipeline variant'
+        required: true
+        default: 'baseline'
+        type: choice
+        options:
+          - baseline
+          - v1_vector_only
+          - v2_no_rerank
+          - v3_two_step_rerank
+          - v4_chunks
+          - v5_no_rewrite
+          - v6_two_stage_facts
+          - v7_two_stage_chunks
+          - all
+      testset:
+        description: 'Test set'
+        required: true
+        default: 'human'
+        type: choice
+        options:
+          - human
+          - rag
+          - both
+      judge_model:
+        description: 'LLM judge model'
+        required: false
+        default: 'openai/gpt-4o-mini'
+      n_questions:
+        description: 'Number of questions (0=all)'
+        required: false
+        default: '0'
+
+jobs:
+  experiment:
+    runs-on: local-gpu
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Copy .env
+        run: cp ~/.env.backup .env
+
+      - name: Stop API to avoid Qdrant lock
+        run: docker compose stop api
+
+      - name: Run experiment
+        run: |
+          if [ "${{ inputs.testset }}" = "both" ]; then
+            for ts in human rag; do
+              docker compose run --rm \
+                -e VARIANT=${{ inputs.variant }} \
+                -e TESTSET=${ts} \
+                -e JUDGE_MODEL=${{ inputs.judge_model }} \
+                -e N_QUESTIONS=${{ inputs.n_questions }} \
+                api python -m src.evaluation.run_experiment \
+                  --variant ${{ inputs.variant }} \
+                  --testset ${ts} \
+                  --judge-model "${{ inputs.judge_model }}" \
+                  --n-questions ${{ inputs.n_questions }} \
+                  --output-dir src/data/experiments
+            done
+          else
+            docker compose run --rm \
+              -e VARIANT=${{ inputs.variant }} \
+              -e TESTSET=${{ inputs.testset }} \
+              -e JUDGE_MODEL=${{ inputs.judge_model }} \
+              -e N_QUESTIONS=${{ inputs.n_questions }} \
+              api python -m src.evaluation.run_experiment \
+                --variant ${{ inputs.variant }} \
+                --testset ${{ inputs.testset }} \
+                --judge-model "${{ inputs.judge_model }}" \
+                --n-questions ${{ inputs.n_questions }} \
+                --output-dir src/data/experiments
+          fi
+
+      - name: Restart API
+        if: always()
+        run: docker compose start api
