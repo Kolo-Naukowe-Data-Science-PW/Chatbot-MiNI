@@ -6,7 +6,6 @@ links = [
     "https://ww4.mini.pw.edu.pl/for-students/deans-office/",
     "https://ww2.mini.pw.edu.pl/wp-content/uploads/pracownicy/rada/uch_06_2017_07_zal1.pdf",
     "https://ww2.mini.pw.edu.pl/wp-content/uploads/20250529-iad-plan-studiow-mgr-4sem.pdf",
-    "https://www.okno.pw.edu.pl/Zycie-Osrodka",
 
     # Studia / Dziekanat
     "https://ww2.mini.pw.edu.pl/studia/dziekanat/kontakt-i-dyzury/",
@@ -57,11 +56,6 @@ links = [
 
     # Badania / Rada Naukowa Dyscypliny Informatyka Techniczna i Telekomunikacja
     "https://ww2.mini.pw.edu.pl/badania/rada-naukowa-dyscypliny-informatyka-techniczna-i-telekomunikacja/sklad-rnditit/",
-    
-    # Popularyzacja
-    "https://ww2.mini.pw.edu.pl/popularyzacja/mini-akademia-matematyki/",
-    "https://ww2.mini.pw.edu.pl/popularyzacja/dzien-popularyzacji-matematyki/",
-    "https://power.mini.pw.edu.pl/",
     
     # O Wydziale / Wydział
     "https://ww2.mini.pw.edu.pl/wydzial/o-nas/",
@@ -185,8 +179,8 @@ links = [
     "https://ww2.mini.pw.edu.pl/sukces-druzyn-z-mini-w-hackatonie-starkhacks-w-usa/",
     
     # Socials
-    "https://www.facebook.com/wrsminipw",
-    "https://www.facebook.com/samorzadpw",
+    # "https://www.facebook.com/wrsminipw",
+    # "https://www.facebook.com/samorzadpw",
 
     # obieraki
     "https://usosweb.usos.pw.edu.pl/kontroler.php?_action=katalog2/przedmioty/szukajPrzedmiotu&method=faculty_groups&jed_org_kod=112000&grupaKod=1120-OBIERALNE&callback=g_181b84c2&cp_showDescriptions=0&cp_showGroupsColumn=0&cp_cdydsDisplayLevel=2&f_tylkoWRejestracji=0&f_obcojezyczne=0&kierujNaPlanyGrupy=0&tab5585_offset=0&tab5585_limit=300&tab5585_order=2a1a",

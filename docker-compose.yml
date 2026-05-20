@@ -54,6 +54,24 @@ services:
     #  scraper:
     #    condition: service_completed_successfully
 
+  schedule:
+    user: root
+    build: .
+    command: [
+      "micromamba",
+      "run",
+      "-n",
+      "app",
+      "python",
+      "-m",
+      "ingestion.ingest_schedule"
+    ]
+    environment: *env
+    volumes:
+      - data_storage:/app/src/data
+      - qdrant_db:/app/src/data/qdrant_db
+      - hf_cache:/root/.cache/huggingface
+
   api:
     user: root
     build: .

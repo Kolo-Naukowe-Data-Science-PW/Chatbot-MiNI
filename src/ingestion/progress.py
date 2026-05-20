@@ -85,3 +85,12 @@ def mark_ingested(facts_filename: str) -> None:
     if facts_filename not in p["ingested"]:
         p["ingested"].append(facts_filename)
     _save(p)
+
+
+def clear_progress_for_prefix(prefix: str, stages: list[str] | None = None) -> None:
+    """Remove all entries starting with prefix from specified (or all) pipeline stages."""
+    p = _load()
+    for key in (stages or list(p.keys())):
+        if key in p:
+            p[key] = [x for x in p[key] if not str(x).startswith(prefix)]
+    _save(p)

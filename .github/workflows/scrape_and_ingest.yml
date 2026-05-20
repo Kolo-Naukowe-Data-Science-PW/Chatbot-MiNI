@@ -6,6 +6,7 @@ on:
 jobs:
   scrape_and_ingest:
     runs-on: self-hosted
+    timeout-minutes: 720
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

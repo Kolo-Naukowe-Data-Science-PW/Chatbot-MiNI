@@ -13,6 +13,8 @@ jobs:
         run: cp ~/.env.backup .env
       - name: Stop old containers
         run: docker compose down
+      - name: Free disk space before build
+        run: docker system prune -af --volumes
       - name: Build image
         run: docker compose build --no-cache
       - name: Start application

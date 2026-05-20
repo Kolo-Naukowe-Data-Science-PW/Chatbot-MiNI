@@ -57,7 +57,7 @@ class QueryRequest(BaseModel):
     modelConfig: dict | None = None
     user_type: str | None = None
     major: str | None = None
-    semester: int | None = None
+    semester: str | None = None
 
 
 class FeedbackRequest(BaseModel):
