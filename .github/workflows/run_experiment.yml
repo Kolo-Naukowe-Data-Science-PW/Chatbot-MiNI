@@ -38,7 +38,7 @@ on:
 
 jobs:
   experiment:
-    runs-on: local-gpu
+    runs-on: self-hosted
     timeout-minutes: 240
     steps:
       - uses: actions/checkout@v4
