@@ -28,7 +28,6 @@ REQUEST_TIMEOUT = 30
 REQUEST_DELAY = 1.2
 
 _SEMESTER_LABELS = {"2025Z": "zimowy 2025/2026", "2026L": "letni 2025/2026"}
-_TIMETABLE_DAYS = {"Poniedziałek", "Wtorek", "Środa", "Czwartek", "Piątek", "Sobota", "Niedziela"}
 _PROGRAM_LABELS = {
     "INSIISA": "Informatyka i Systemy Informacyjne (inżynierski, ang. Computer Science and Information Systems)",
     "INSIISP": "Informatyka i Systemy Informacyjne (inżynierski)",
@@ -73,14 +72,60 @@ def _extract_url_params(url: str) -> dict[str, str]:
     return dict(urllib.parse.parse_qsl(parsed.query))
 
 
+_TIMETABLE_DAYS = {"Poniedziałek", "Wtorek", "Środa", "Czwartek", "Piątek", "Sobota", "Niedziela"}
+
+
+def _build_grid(table) -> tuple[dict, set, int, int]:
+    """
+    Materialise an HTML table into a virtual 2D grid, correctly handling
+    both colspan AND rowspan.
+
+    USOS timetable tables use colspan on day headers (N sub-columns per day
+    for parallel groups) and rowspan on time-slot cells (one cell spans
+    multiple sub-rows).  Without rowspan support the time column disappears
+    in subsequent sub-rows, shifting every day assignment one column left.
+
+    Returns:
+        grid    – dict[(row, col)] = cell_text
+        origin  – set of (row, col) that are the top-left corner of an HTML cell
+        max_row – number of logical rows
+        max_col – number of logical columns
+    """
+    grid: dict[tuple[int, int], str] = {}
+    origin: set[tuple[int, int]] = set()
+
+    for row_idx, row in enumerate(table.find_all("tr")):
+        col = 0
+        for cell in row.find_all(["th", "td"]):
+            # Skip positions already filled by a rowspan from an earlier row
+            while (row_idx, col) in grid:
+                col += 1
+
+            cs = int(cell.get("colspan", 1))
+            rs = int(cell.get("rowspan", 1))
+            text = " ".join(cell.get_text(separator=" ", strip=True).split())
+
+            origin.add((row_idx, col))
+            for r in range(row_idx, row_idx + rs):
+                for c in range(col, col + cs):
+                    grid[(r, c)] = text
+
+            col += cs
+
+    if not grid:
+        return grid, origin, 0, 0
+    max_row = max(r for r, _ in grid) + 1
+    max_col = max(c for _, c in grid) + 1
+    return grid, origin, max_row, max_col
+
+
 def _parse_schedule_html(html: str, url: str) -> str:
     """
     Convert USOS HTML timetable into structured plain text.
-    USOS uses colspan on day-column headers (each day spans N sub-columns for
-    parallel course groups). Old markdown-table approach lost this mapping
-    and caused courses to be assigned to the wrong day. This version builds
-    an explicit col_index -> day_name map from the header colspan, then emits
-    one "DayName: content" line per non-empty cell.
+
+    Uses _build_grid() to materialise the full virtual grid (handling both
+    colspan and rowspan), reads day names from row 0, then emits one
+    "DayName: content" line per origin cell in data rows.
     """
     params = _extract_url_params(url)
     grup_kod = params.get("grupa_kod", "")
@@ -104,36 +149,27 @@ def _parse_schedule_html(html: str, url: str) -> str:
 
     found_timetable = False
     for table in tables:
-        rows = table.find_all("tr")
-        if not rows:
+        grid, origin, max_row, max_col = _build_grid(table)
+        if not grid:
             continue
 
-        col_to_day: dict[int, str] = {}
-        h_cells = rows[0].find_all(["th", "td"])
-        col = 0
-        for cell in h_cells:
-            cs = int(cell.get("colspan", 1))
-            day = cell.get_text(strip=True)
-            for c in range(col, col + cs):
-                col_to_day[c] = day
-            col += cs
+        # Build col → day-name map from header row (row 0)
+        col_to_day = {c: grid.get((0, c), "") for c in range(max_col)}
 
         if not any(v in _TIMETABLE_DAYS for v in col_to_day.values()):
             continue
 
         found_timetable = True
-        for row in rows[1:]:
-            cells = row.find_all(["th", "td"])
-            col = 0
-            for cell in cells:
-                cs = int(cell.get("colspan", 1))
-                text = cell.get_text(separator=" ", strip=True)
-                text = " ".join(text.split())
-                if text:
-                    day = col_to_day.get(col, "")
-                    if day in _TIMETABLE_DAYS:
-                        lines.append(f"{day}: {text}")
-                col += cs
+        for r in range(1, max_row):
+            for c in range(max_col):
+                if (r, c) not in origin:
+                    continue  # duplicate cell from rowspan/colspan — skip
+                text = grid.get((r, c), "")
+                if not text:
+                    continue
+                day = col_to_day.get(c, "")
+                if day in _TIMETABLE_DAYS:
+                    lines.append(f"{day}: {text}")
 
         lines.append("")
 
