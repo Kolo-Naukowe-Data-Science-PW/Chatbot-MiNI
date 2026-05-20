@@ -2,10 +2,10 @@ import json
 import logging
 import os
 
-from src.ingestion.embedder import Embedder
-from src.ingestion.vector_db import reset_collection, save_to_vector_db
 from src.ingestion.common import CURRENT_VERSION
+from src.ingestion.embedder import Embedder
 from src.ingestion.progress import ingested_count, is_ingested, mark_ingested
+from src.ingestion.vector_db import reset_collection, save_to_vector_db
 from src.utils.paths import get_data_dir
 
 logging.basicConfig(level=logging.INFO)
@@ -23,7 +23,9 @@ def _load_facts_from_file(path: str, filename: str) -> tuple[list[str], list[str
         with open(path, encoding="utf-8") as f:
             facts_list = json.load(f)
         if not isinstance(facts_list, list):
-            logger.warning(f"{filename}: expected a list, got {type(facts_list).__name__}")
+            logger.warning(
+                f"{filename}: expected a list, got {type(facts_list).__name__}"
+            )
             return [], []
         facts = [item for item in facts_list if item.get("fact")]
         texts = [item["fact"] for item in facts]
@@ -68,12 +70,16 @@ def main() -> None:
         logger.info("Fresh start: resetting Qdrant collection...")
         reset_collection(DB_PATH)
     else:
-        logger.info(f"Resuming: {ingested_count()} files already in Qdrant, skipping reset.")
+        logger.info(
+            f"Resuming: {ingested_count()} files already in Qdrant, skipping reset."
+        )
 
     embedder = Embedder()
     total_batches = (len(pending) + BATCH_SIZE - 1) // BATCH_SIZE
 
-    for batch_num, batch_start in enumerate(range(0, len(pending), BATCH_SIZE), start=1):
+    for batch_num, batch_start in enumerate(
+        range(0, len(pending), BATCH_SIZE), start=1
+    ):
         batch_files = pending[batch_start : batch_start + BATCH_SIZE]
         batch_texts: list[str] = []
         batch_urls: list[str] = []
@@ -90,7 +96,9 @@ def main() -> None:
                 logger.warning(f"Skipping empty/broken file: {filename}")
 
         if not batch_texts:
-            logger.warning(f"Batch {batch_num}/{total_batches}: no facts to ingest, skipping.")
+            logger.warning(
+                f"Batch {batch_num}/{total_batches}: no facts to ingest, skipping."
+            )
             for filename in processed_files:
                 mark_ingested(filename)
             continue
@@ -112,7 +120,9 @@ def main() -> None:
             f"Total ingested so far: {ingested_count()} files."
         )
 
-    logger.info(f"Ingestion complete. Total ingested: {ingested_count()}/{len(all_files)} files.")
+    logger.info(
+        f"Ingestion complete. Total ingested: {ingested_count()}/{len(all_files)} files."
+    )
 
 
 if __name__ == "__main__":

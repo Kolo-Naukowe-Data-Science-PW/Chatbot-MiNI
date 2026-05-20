@@ -98,7 +98,9 @@ def main() -> None:
             logger.warning(f"No text extracted from {filename} — skipping")
             continue
 
-        safe_name = source_url.replace("https://", "").replace("/", "_").strip("_")[:200]
+        safe_name = (
+            source_url.replace("https://", "").replace("/", "_").strip("_")[:200]
+        )
         out_path = os.path.join(OUTPUT_DIR, f"{safe_name}.txt")
 
         with open(out_path, "w", encoding="utf-8") as f:

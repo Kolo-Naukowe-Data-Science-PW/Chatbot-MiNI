@@ -159,7 +159,9 @@ def scrape_schedules() -> int:
                 continue
             text = _parse_schedule_html(resp.text, url)
             if len(text.strip()) < 100:
-                logger.warning(f"[{i}/{total}] Very short content ({len(text)} chars): {url}")
+                logger.warning(
+                    f"[{i}/{total}] Very short content ({len(text)} chars): {url}"
+                )
                 continue
             filename = _url_to_filename(url)
             out_path = os.path.join(OUTPUT_DIR, filename)

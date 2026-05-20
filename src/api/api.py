@@ -310,7 +310,11 @@ def chat_endpoint(request: QueryRequest) -> dict[str, Any]:
             seen.add(url)
             sources.append(url)
 
-    return {"answer": final_answer, "sources": sources, "retrieval_query": retrieval_query}
+    return {
+        "answer": final_answer,
+        "sources": sources,
+        "retrieval_query": retrieval_query,
+    }
 
 
 @app.post("/chat/stream")

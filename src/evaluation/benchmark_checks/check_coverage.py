@@ -76,7 +76,7 @@ def _classify(target_url: str, db_urls: frozenset[str]) -> str:
         db_t = urlsplit(db_url)
         if db_t.scheme == t.scheme and db_t.netloc == t.netloc:
             db_path = db_t.path.rstrip("/")
-            if db_path.startswith(prefix) and db_path[len(prefix):].count("/") == 0:
+            if db_path.startswith(prefix) and db_path[len(prefix) :].count("/") == 0:
                 return "child"
 
     return "missing"
@@ -138,12 +138,14 @@ def main() -> None:
     per_url: list[dict] = []
     for url, questions in sorted(unique_gold_urls.items()):
         level = _classify(url, db_urls)
-        per_url.append({
-            "gold_url": url,
-            "coverage": level,
-            "question_count": len(questions),
-            "example_question": questions[0],
-        })
+        per_url.append(
+            {
+                "gold_url": url,
+                "coverage": level,
+                "question_count": len(questions),
+                "example_question": questions[0],
+            }
+        )
 
     q_counts: Counter = Counter()
     for entry in per_url:
@@ -162,11 +164,15 @@ def main() -> None:
     for level in ("exact", "parent", "child", "missing"):
         n_urls = url_counts[level]
         n_qs = q_counts[level]
-        print(f"{level:<15} {n_urls:>8} {pct(n_urls, total_urls):>7}  {n_qs:>10} {pct(n_qs, total_qs):>7}")
+        print(
+            f"{level:<15} {n_urls:>8} {pct(n_urls, total_urls):>7}  {n_qs:>10} {pct(n_qs, total_qs):>7}"
+        )
     print("-" * 57)
     covered_urls = url_counts["exact"] + url_counts["parent"] + url_counts["child"]
-    covered_qs   = q_counts["exact"]  + q_counts["parent"]  + q_counts["child"]
-    print(f"{'COVERED (any)':<15} {covered_urls:>8} {pct(covered_urls, total_urls):>7}  {covered_qs:>10} {pct(covered_qs, total_qs):>7}")
+    covered_qs = q_counts["exact"] + q_counts["parent"] + q_counts["child"]
+    print(
+        f"{'COVERED (any)':<15} {covered_urls:>8} {pct(covered_urls, total_urls):>7}  {covered_qs:>10} {pct(covered_qs, total_qs):>7}"
+    )
     print(f"{'TOTAL':<15} {total_urls:>8} {'100.0%':>7}  {total_qs:>10} {'100.0%':>7}")
     print("=" * 57)
 
@@ -190,24 +196,36 @@ def main() -> None:
         "by_level": {
             level: {
                 "urls": url_counts[level],
-                "url_pct": round(100 * url_counts[level] / total_urls, 2) if total_urls else 0,
+                "url_pct": (
+                    round(100 * url_counts[level] / total_urls, 2) if total_urls else 0
+                ),
                 "questions": q_counts[level],
-                "question_pct": round(100 * q_counts[level] / total_qs, 2) if total_qs else 0,
+                "question_pct": (
+                    round(100 * q_counts[level] / total_qs, 2) if total_qs else 0
+                ),
             }
             for level in ("exact", "parent", "child", "missing")
         },
-        "covered_url_pct": round(100 * covered_urls / total_urls, 2) if total_urls else 0,
-        "covered_question_pct": round(100 * covered_qs / total_qs, 2) if total_qs else 0,
+        "covered_url_pct": (
+            round(100 * covered_urls / total_urls, 2) if total_urls else 0
+        ),
+        "covered_question_pct": (
+            round(100 * covered_qs / total_qs, 2) if total_qs else 0
+        ),
     }
 
     json_path = output_dir / f"coverage_report_{ts}.json"
     with open(json_path, "w", encoding="utf-8") as f:
-        json.dump({"summary": summary, "per_url": per_url}, f, ensure_ascii=False, indent=2)
+        json.dump(
+            {"summary": summary, "per_url": per_url}, f, ensure_ascii=False, indent=2
+        )
     print(f"\nFull report  -> {json_path}")
 
     csv_path = output_dir / f"coverage_report_{ts}.csv"
     with open(csv_path, "w", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=["gold_url", "coverage", "question_count", "example_question"])
+        writer = csv.DictWriter(
+            f, fieldnames=["gold_url", "coverage", "question_count", "example_question"]
+        )
         writer.writeheader()
         writer.writerows(per_url)
     print(f"CSV report   -> {csv_path}")

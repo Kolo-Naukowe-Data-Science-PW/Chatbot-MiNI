@@ -18,12 +18,12 @@ import logging
 import os
 
 from src.ingestion.embedder import Embedder
-from src.utils.paths import get_data_dir
 from src.ingestion.extract_schedule_facts import main as run_extraction
 from src.ingestion.links_extended import links
 from src.ingestion.progress import clear_progress_for_prefix, mark_ingested
 from src.ingestion.scrape_schedule import SCHEDULE_PATTERN, scrape_schedules
 from src.ingestion.vector_db import delete_by_url_list, save_to_vector_db_uuid
+from src.utils.paths import get_data_dir
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -39,7 +39,8 @@ def _get_schedule_urls() -> list[str]:
 def _ingest_schedule_facts() -> int:
     """Embed and ingest all schedule_*_facts.json files into Qdrant."""
     fact_files = sorted(
-        f for f in os.listdir(FACTS_DIR)
+        f
+        for f in os.listdir(FACTS_DIR)
         if f.startswith("schedule_") and f.endswith("_facts.json")
     )
 
