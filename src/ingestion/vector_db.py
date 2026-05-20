@@ -164,3 +164,69 @@ def save_to_vector_db_uuid(
 
 def load_vector_db(path_to_database: str) -> QdrantClient:
     return _get_client(path_to_database)
+
+
+# ---------------------------------------------------------------------------
+# mini_chunks collection helpers
+# ---------------------------------------------------------------------------
+
+COLLECTION_NAME_CHUNKS = "mini_chunks"
+
+
+def _ensure_chunks_collection(client: QdrantClient) -> None:
+    if not client.collection_exists(COLLECTION_NAME_CHUNKS):
+        client.create_collection(
+            collection_name=COLLECTION_NAME_CHUNKS,
+            vectors_config={
+                "dense": VectorParams(size=DENSE_DIM, distance=Distance.COSINE),
+            },
+            sparse_vectors_config={
+                "sparse": SparseVectorParams(index=SparseIndexParams(on_disk=False)),
+            },
+        )
+
+
+def ensure_chunks_collection(path_to_database: str) -> None:
+    """Create mini_chunks Qdrant collection if it doesn't exist."""
+    client = _get_client(path_to_database)
+    _ensure_chunks_collection(client)
+
+
+def save_chunks_to_vector_db(
+    text_chunk: str | list[str],
+    embedding: list[float] | list[list[float]],
+    source_url: str | list[str],
+    path_to_database: str,
+) -> None:
+    """Save text chunks to the mini_chunks collection using UUID point IDs."""
+    if not isinstance(text_chunk, list):
+        text_chunk = [text_chunk]
+    if not isinstance(embedding[0], list):
+        embedding = [embedding]
+    if not isinstance(source_url, list):
+        source_url = [source_url]
+
+    client = _get_client(path_to_database)
+    _ensure_chunks_collection(client)
+    sparse_vectors = _compute_sparse(text_chunk)
+
+    batch_size = 5000
+    for i in range(0, len(text_chunk), batch_size):
+        batch_texts = text_chunk[i : i + batch_size]
+        batch_dense = embedding[i : i + batch_size]
+        batch_sparse = sparse_vectors[i : i + batch_size]
+        batch_urls = source_url[i : i + batch_size]
+
+        points = [
+            PointStruct(
+                id=str(uuid.uuid4()),
+                vector={"dense": batch_dense[j], "sparse": batch_sparse[j]},
+                payload={
+                    "text": batch_texts[j],
+                    "url": batch_urls[j],
+                    "created": str(datetime.now()),
+                },
+            )
+            for j in range(len(batch_texts))
+        ]
+        client.upsert(collection_name=COLLECTION_NAME_CHUNKS, points=points)
