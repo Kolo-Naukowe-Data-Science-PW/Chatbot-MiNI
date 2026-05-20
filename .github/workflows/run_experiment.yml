@@ -58,7 +58,7 @@ jobs:
                 -e TESTSET=${ts} \
                 -e JUDGE_MODEL=${{ inputs.judge_model }} \
                 -e N_QUESTIONS=${{ inputs.n_questions }} \
-                api python -m src.evaluation.run_experiment \
+                api micromamba run -n app python -m src.evaluation.run_experiment \
                   --variant ${{ inputs.variant }} \
                   --testset ${ts} \
                   --judge-model "${{ inputs.judge_model }}" \
@@ -71,7 +71,7 @@ jobs:
               -e TESTSET=${{ inputs.testset }} \
               -e JUDGE_MODEL=${{ inputs.judge_model }} \
               -e N_QUESTIONS=${{ inputs.n_questions }} \
-              api python -m src.evaluation.run_experiment \
+              api micromamba run -n app python -m src.evaluation.run_experiment \
                 --variant ${{ inputs.variant }} \
                 --testset ${{ inputs.testset }} \
                 --judge-model "${{ inputs.judge_model }}" \
