@@ -51,9 +51,11 @@ jobs:
 
       - name: Run experiment
         run: |
+          EVAL_MOUNT="-v $(pwd)/src/evaluation:/app/src/evaluation"
           if [ "${{ inputs.testset }}" = "both" ]; then
             for ts in human rag; do
               docker compose run --rm \
+                $EVAL_MOUNT \
                 -e VARIANT=${{ inputs.variant }} \
                 -e TESTSET=${ts} \
                 -e JUDGE_MODEL=${{ inputs.judge_model }} \
@@ -67,6 +69,7 @@ jobs:
             done
           else
             docker compose run --rm \
+              $EVAL_MOUNT \
               -e VARIANT=${{ inputs.variant }} \
               -e TESTSET=${{ inputs.testset }} \
               -e JUDGE_MODEL=${{ inputs.judge_model }} \
