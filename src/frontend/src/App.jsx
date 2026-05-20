@@ -33,7 +33,6 @@ const DEFAULT_EXPERIMENT_CONFIG = {
     "deepseek/deepseek-chat-v3-0324",
     "mistralai/mistral-small-3.2-24b-instruct",
     "meta-llama/llama-3.1-70b-instruct",
-    "microsoft/phi-4",
     // supermodels
     "openai/gpt-5.5",
     "anthropic/claude-opus-4.7",
@@ -1208,10 +1207,17 @@ export default function App() {
             const payload = line.slice(6);
             try {
               const parsed = JSON.parse(payload);
-              if (parsed.event === "done") {
+              if (parsed !== null && typeof parsed === "object" && parsed.event === "done") {
                 setMessages(prev => prev.map(msg =>
                   msg.id === botMessageId
                     ? { ...msg, sources: parsed.sources || [], canRate: true }
+                    : msg
+                ));
+              } else {
+                gotToken = true;
+                setMessages(prev => prev.map(msg =>
+                  msg.id === botMessageId
+                    ? { ...msg, text: msg.text + payload }
                     : msg
                 ));
               }
@@ -1289,16 +1295,20 @@ export default function App() {
             const payload = line.slice(6); // strip "data: "
 
             // Try to detect the terminal JSON event {"event":"done",...}
+            let isDoneEvent = false;
             try {
               const parsed = JSON.parse(payload);
-              if (parsed.event === "done") {
+              if (parsed !== null && typeof parsed === "object" && parsed.event === "done") {
+                isDoneEvent = true;
                 setMessages(prev => prev.map(msg =>
                   msg.id === botMessageId
                     ? { ...msg, sources: parsed.sources || [], canRate: true }
                     : msg
                 ));
               }
-            } catch {
+            } catch { /* not JSON */ }
+
+            if (!isDoneEvent) {
               // Plain text token — append to the bot bubble
               if (!receivedFirstToken) {
                 setIsLoading(false);

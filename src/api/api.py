@@ -178,7 +178,6 @@ _EXPERIMENT_MODEL_POOL = [
     "deepseek/deepseek-chat-v3-0324",
     "mistralai/mistral-small-3.2-24b-instruct",
     "meta-llama/llama-3.1-70b-instruct",
-    "microsoft/phi-4",
     # supermodels
     "openai/gpt-5.5",
     "anthropic/claude-opus-4.7",

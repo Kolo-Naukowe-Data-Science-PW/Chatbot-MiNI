@@ -28,6 +28,7 @@ REQUEST_TIMEOUT = 30
 REQUEST_DELAY = 1.2
 
 _SEMESTER_LABELS = {"2025Z": "zimowy 2025/2026", "2026L": "letni 2025/2026"}
+_TIMETABLE_DAYS = {"Poniedziałek", "Wtorek", "Środa", "Czwartek", "Piątek", "Sobota", "Niedziela"}
 _PROGRAM_LABELS = {
     "INSIISA": "Informatyka i Systemy Informacyjne (inżynierski, ang. Computer Science and Information Systems)",
     "INSIISP": "Informatyka i Systemy Informacyjne (inżynierski)",
@@ -73,7 +74,14 @@ def _extract_url_params(url: str) -> dict[str, str]:
 
 
 def _parse_schedule_html(html: str, url: str) -> str:
-    """Convert USOS HTML timetable into structured plain text."""
+    """
+    Convert USOS HTML timetable into structured plain text.
+    USOS uses colspan on day-column headers (each day spans N sub-columns for
+    parallel course groups). Old markdown-table approach lost this mapping
+    and caused courses to be assigned to the wrong day. This version builds
+    an explicit col_index -> day_name map from the header colspan, then emits
+    one "DayName: content" line per non-empty cell.
+    """
     params = _extract_url_params(url)
     grup_kod = params.get("grupa_kod", "")
     cdyd_kod = params.get("cdyd_kod", "")
@@ -89,42 +97,48 @@ def _parse_schedule_html(html: str, url: str) -> str:
         "",
     ]
 
-    # Look for the timetable table (USOS typically uses class 'plan' or just the largest table)
     tables = soup.find_all("table")
     if not tables:
-        body_text = soup.get_text(separator="\n", strip=True)
-        lines.append(body_text)
+        lines.append(soup.get_text(separator="\n", strip=True))
         return "\n".join(lines)
 
-    for table_idx, table in enumerate(tables):
+    found_timetable = False
+    for table in tables:
         rows = table.find_all("tr")
         if not rows:
             continue
 
-        # Collect header row if present
-        header_cells = rows[0].find_all(["th", "td"])
-        if header_cells:
-            header_texts = [c.get_text(separator=" ", strip=True) for c in header_cells]
-            if any(t for t in header_texts):
-                lines.append("| " + " | ".join(header_texts) + " |")
-                lines.append("|" + "---|" * len(header_texts))
+        col_to_day: dict[int, str] = {}
+        h_cells = rows[0].find_all(["th", "td"])
+        col = 0
+        for cell in h_cells:
+            cs = int(cell.get("colspan", 1))
+            day = cell.get_text(strip=True)
+            for c in range(col, col + cs):
+                col_to_day[c] = day
+            col += cs
 
-        # Data rows
+        if not any(v in _TIMETABLE_DAYS for v in col_to_day.values()):
+            continue
+
+        found_timetable = True
         for row in rows[1:]:
             cells = row.find_all(["th", "td"])
-            if not cells:
-                continue
-            cell_texts = []
+            col = 0
             for cell in cells:
-                # Preserve newlines within a cell as semicolons
-                cell_text = cell.get_text(separator="; ", strip=True)
-                cell_text = " ".join(cell_text.split())  # collapse extra whitespace
-                cell_texts.append(cell_text)
-            if any(t for t in cell_texts):
-                lines.append("| " + " | ".join(cell_texts) + " |")
+                cs = int(cell.get("colspan", 1))
+                text = cell.get_text(separator=" ", strip=True)
+                text = " ".join(text.split())
+                if text:
+                    day = col_to_day.get(col, "")
+                    if day in _TIMETABLE_DAYS:
+                        lines.append(f"{day}: {text}")
+                col += cs
 
-        if table_idx < len(tables) - 1:
-            lines.append("")
+        lines.append("")
+
+    if not found_timetable:
+        lines.append(soup.get_text(separator="\n", strip=True))
 
     return "\n".join(lines)
 
