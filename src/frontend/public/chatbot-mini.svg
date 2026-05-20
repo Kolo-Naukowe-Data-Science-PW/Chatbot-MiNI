@@ -1,0 +1,5 @@
+<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="32" height="32" rx="8" fill="#1a5c45"/>
+  <path d="M7 10C7 8.895 7.895 8 9 8H23C24.105 8 25 8.895 25 10V19C25 20.105 24.105 21 23 21H18L14 25V21H9C7.895 21 7 20.105 7 19V10Z" fill="white"/>
+  <text x="16" y="17.5" font-family="Arial, sans-serif" font-size="7" font-weight="bold" fill="#1a5c45" text-anchor="middle">MiNI</text>
+</svg>
