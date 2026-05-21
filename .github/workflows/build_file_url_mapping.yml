@@ -1,0 +1,37 @@
+name: Build File-URL Mapping
+
+on:
+  workflow_dispatch:
+    inputs:
+      scraped_dir:
+        description: 'Path to scraped TXT files on VM'
+        required: false
+        default: '/root/scraped_raw_backup'
+
+jobs:
+  build-mapping:
+    runs-on: self-hosted
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Copy .env file
+        run: cp ~/.env.backup .env
+
+      - name: Build file→URL mapping
+        run: |
+          python3 -m src.evaluation.build_file_url_mapping \
+            "${{ github.event.inputs.scraped_dir }}" \
+            > src/evaluation/data/file_url_mapping.json
+          echo "Mapping entries: $(python3 -c "import json; d=json.load(open('src/evaluation/data/file_url_mapping.json')); print(len(d))")"
+
+      - name: Commit and push mapping
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add src/evaluation/data/file_url_mapping.json
+          git diff --staged --quiet && echo "No changes to commit." || \
+            git commit -m "chore: update file-URL mapping from VM scraped files [skip ci]"
+          git push
