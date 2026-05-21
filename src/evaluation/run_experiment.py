@@ -77,7 +77,7 @@ def _load_rag_testset(path: Path, n: int | None) -> list[dict]:
         return []
     rows: list[dict] = []
     with open(path, encoding="utf-8-sig", newline="") as f:
-        reader = csv.DictReader(f)
+        reader = csv.DictReader(f, delimiter="|")
         for r in reader:
             norm = {(k or "").strip().lower(): (v or "").strip() for k, v in r.items() if k}
             query = norm.get("pytanie") or norm.get("query", "")
