@@ -75,6 +75,7 @@ def build_messages(
     semester: str | None = None,
     user_type: str | None = None,
     conversation_history: list["Message"] | None = None,
+    style_instruction: str | None = None,
 ) -> list[dict[str, str]]:
     """
     Builds a messages array for the LLM based on the provided user query and context.
@@ -139,6 +140,11 @@ def build_messages(
         # Build system message with instructions and FAQ only (static)
         now = datetime.now()
         today_str = now.strftime("%d.%m.%Y, godz. %H:%M")
+        style_hint = (
+            f"6. Styl odpowiedzi (priorytet nad regułą 3): {style_instruction}\n"
+            if style_instruction else ""
+        )
+
         system_message = (
             f"Jesteś pomocnym asystentem o imieniu MiNIonek. Odpowiadasz na pytania studentów i pracowników Wydziału Matematyki i Nauk Informacyjnych (MiNI).\n"
             "Stworzyli Cię członkowie Koła Naukowego Data Science (KNDS), działającego przy Wydziale MiNI PW. Projekt merytorycznie nadzorowała dr inż. Anna Wróblewska.\n"
@@ -150,13 +156,15 @@ def build_messages(
             "2. Kontekst rozmowy: Uwzględnij historię rozmowy — użytkownik może nawiązywać do wcześniejszych pytań lub odpowiedzi.\n"
             "3. Styl: Odpowiadaj zwięźle i rzeczowo. Zacznij bezpośrednio od odpowiedzi — bez pozdrowień, bez wstępów w stylu 'Krótka odpowiedź:'. "
             "Nie używaj formatowania Markdown (bez gwiazdek, nagłówków, punktorów — chyba że lista jest naprawdę niezbędna). "
-            "Pisz pełnymi, gramatycznie poprawnymi zdaniami. Zawsze stawiaj spację po kropce, przecinku i każdym innym znaku interpunkcyjnym.\n"
+            "Pisz pełnymi, gramatycznie poprawnymi zdaniami. "
+            "ZAWSZE stawiaj spację po kropce, przecinku i każdym innym znaku interpunkcyjnym — nigdy nie łącz dwóch wyrazów bez spacji.\n"
             "4. Liczby i dane: Jeśli w Kontekście lub Wiedzy ogólnej znajdują się konkretne liczby (godziny, semestry, punkty ECTS, progi zaliczeniowe, daty, numery sal itp.) — zawsze podaj je dokładnie. "
             "Nigdy nie stosuj placeholderów (np. '___', '[X]', '...') w miejscu brakujących danych. "
             "Jeśli nie masz konkretnej liczby, napisz wprost: 'Nie mam tej informacji w dostępnych zasobach.' "
             "Nie odsyłaj do regulaminu, jeśli odpowiedź jest dostępna w Kontekście.\n"
-            "5. WAŻNE: Odpowiadaj ZAWSZE w języku POLSKIM. Twoja odpowiedź zostanie automatycznie przetłumaczona na język wybrany przez użytkownika. Nie mieszaj języków i nie dodawaj komentarzy o tłumaczeniu.\n\n"
-            f"{role_hint}"
+            "5. WAŻNE: Odpowiadaj ZAWSZE w języku POLSKIM. Twoja odpowiedź zostanie automatycznie przetłumaczona na język wybrany przez użytkownika. Nie mieszaj języków i nie dodawaj komentarzy o tłumaczeniu.\n"
+            f"{style_hint}"
+            f"\n{role_hint}"
             f"{student_info}"
             f"---\n{STATIC_FAQ}\n---"
         )

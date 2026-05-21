@@ -170,8 +170,11 @@ def _depth_diff_url(r_url: str, t_url: str) -> int | None:
     return None
 
 
+_EVAL_KS = [1, 3, 5, 10]
+
+
 def _compute_retrieval_metrics(retrieved_urls: list[str], gold_url: str) -> dict[str, float]:
-    """Compute Hit@k, MRR@k, nDCG@k, MRRw@k, MAP@k for k in [1, 5, 10]."""
+    """Compute Hit@k, MRR@k, nDCG@k, MRRw@k, MAP@k for k in _EVAL_KS."""
     from math import log2
 
     unique_urls = _unique_preserve_order([_normalize_url(u) for u in retrieved_urls if u])
@@ -180,7 +183,7 @@ def _compute_retrieval_metrics(retrieved_urls: list[str], gold_url: str) -> dict
     THRESHOLD = 0.5
     results: dict[str, float] = {}
 
-    for k in [1, 5, 10]:
+    for k in _EVAL_KS:
         topk = rel_scores[:k]
         # Hit@k
         results[f"hit@{k}"] = 1.0 if any(s >= THRESHOLD for s in topk) else 0.0

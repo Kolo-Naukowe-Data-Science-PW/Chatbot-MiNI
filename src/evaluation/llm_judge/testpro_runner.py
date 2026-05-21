@@ -216,7 +216,7 @@ def _call_variant(
         ``(answer_text, sources_list)``.
     """
     payload = {
-        "query": f"{model_config['styleInstruction']}\n\nPytanie uzytkownika: {query}",
+        "query": query,
         "language": language,
         "mode": "testPro",
         "variant": variant_label,
