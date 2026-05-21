@@ -152,15 +152,38 @@ def append_feedback_row(payload: FeedbackRequest) -> None:
 
 _ROMAN_TO_ARABIC = {"I": "1", "II": "2", "III": "3", "IV": "4", "V": "5", "VI": "6", "VII": "7"}
 
+# Keywords that indicate a schedule-related query; only these get major/semester enrichment.
+# Enriching every query causes schedule documents to rank high for unrelated questions.
+_SCHEDULE_KEYWORDS = (
+    "plan zajęć", "harmonogram", "siatka zajęć", "wykład", "ćwiczeni",
+    "laboratorium", "godziny zajęć", "sala ", "kiedy są zajęcia",
+    "kiedy mam zajęcia", "kiedy mam wykład",
+    "jakie zajęcia mam", "jakie mam zajęcia", "zajęcia",
+    "plan", "jaki mam plan", "jaki plan jest",
+    "w jakiej sali mam", "w jakiej sali",
+    "kto prowadzi", "prowadzący",
+)
+
+
+def _is_schedule_query(query: str) -> bool:
+    q = query.lower()
+    return any(kw in q for kw in _SCHEDULE_KEYWORDS)
+
 
 def _enrich_retrieval_query(query: str, major: str | None, semester: str | None) -> str:
-    """Append major/semester context so schedule facts are retrievable by hybrid search."""
+    """Append major/semester context for schedule-related queries only.
+
+    Unconditional enrichment floods non-schedule queries with schedule documents
+    because schedule facts are tagged with major/semester keywords.
+    """
     if not major or major == "—":
+        return query
+    if not _is_schedule_query(query):
         return query
     q = query + f" kierunek {major}"
     if semester and semester != "—":
         arabic = _ROMAN_TO_ARABIC.get(semester, semester)
-        q += f" semestr {arabic} semestr {semester}"
+        q += f" semestr {arabic}"
     return q
 
 
@@ -303,6 +326,7 @@ def chat_endpoint(request: QueryRequest) -> dict[str, Any]:
 
     text_only_chunks = [chunk["text_chunk"] for chunk in sorted_chunks]
 
+    style_instruction = (request.modelConfig or {}).get("styleInstruction")
     messages = build_messages(
         processing_query,
         text_only_chunks,
@@ -310,6 +334,7 @@ def chat_endpoint(request: QueryRequest) -> dict[str, Any]:
         field_of_study=request.major,
         semester=str(request.semester) if request.semester else None,
         conversation_history=conversation_history,
+        style_instruction=style_instruction,
     )
 
     polish_answer = query_llm(messages, request.modelConfig)
@@ -380,6 +405,7 @@ def chat_stream_endpoint(request: QueryRequest):
         return StreamingResponse(_empty(), media_type="text/event-stream")
 
     text_only_chunks = [chunk["text_chunk"] for chunk in sorted_chunks]
+    style_instruction = (request.modelConfig or {}).get("styleInstruction")
     messages = build_messages(
         processing_query,
         text_only_chunks,
@@ -387,7 +413,12 @@ def chat_stream_endpoint(request: QueryRequest):
         field_of_study=request.major,
         semester=str(request.semester) if request.semester else None,
         conversation_history=conversation_history,
+        style_instruction=style_instruction,
     )
+
+    def _sse(text: str) -> str:
+        """Encode a text chunk as an SSE data line, escaping embedded newlines."""
+        return f"data: {text.replace(chr(10), chr(92) + 'n').replace(chr(13), '')}\n\n"
 
     def _generate():
         polish_tokens: list[str] = []
@@ -396,12 +427,12 @@ def chat_stream_endpoint(request: QueryRequest):
             # Stream in the original language; if translation needed we accumulate
             # and translate only the final answer (translation requires full text).
             if lang == "pl":
-                yield f"data: {token}\n\n"
+                yield _sse(token)
 
         if lang != "pl":
             polish_answer = "".join(polish_tokens)
             final_answer = translate_text(polish_answer, target_lang_code=lang)
-            yield f"data: {final_answer}\n\n"
+            yield _sse(final_answer)
 
         yield f"data: {json.dumps({'event': 'done', 'sources': sources, 'retrieval_query': retrieval_query})}\n\n"
 

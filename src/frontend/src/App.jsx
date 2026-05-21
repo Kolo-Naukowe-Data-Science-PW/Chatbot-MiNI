@@ -1175,7 +1175,7 @@ export default function App() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            query: `${config.styleInstruction}\n\nPytanie użytkownika: ${messageText}`,
+            query: messageText,
             language: language.toLowerCase(),
             user_type: userType ?? null,
             major: selectedMajor ?? null,
@@ -1215,17 +1215,19 @@ export default function App() {
                 ));
               } else {
                 gotToken = true;
+                const tokenText = payload.replace(/\\n/g, "\n");
                 setMessages(prev => prev.map(msg =>
                   msg.id === botMessageId
-                    ? { ...msg, text: msg.text + payload }
+                    ? { ...msg, text: msg.text + tokenText }
                     : msg
                 ));
               }
             } catch {
               gotToken = true;
+              const tokenText = payload.replace(/\\n/g, "\n");
               setMessages(prev => prev.map(msg =>
                 msg.id === botMessageId
-                  ? { ...msg, text: msg.text + payload }
+                  ? { ...msg, text: msg.text + tokenText }
                   : msg
               ));
             }
@@ -1262,7 +1264,7 @@ export default function App() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            query: `${randomConfig.styleInstruction}\n\nPytanie użytkownika: ${messageText}`,
+            query: messageText,
             language: language.toLowerCase(),
             user_type: userType ?? null,
             major: selectedMajor ?? null,
@@ -1314,9 +1316,10 @@ export default function App() {
                 setIsLoading(false);
                 receivedFirstToken = true;
               }
+              const tokenText = payload.replace(/\\n/g, "\n");
               setMessages(prev => prev.map(msg =>
                 msg.id === botMessageId
-                  ? { ...msg, text: msg.text + payload }
+                  ? { ...msg, text: msg.text + tokenText }
                   : msg
               ));
             }
