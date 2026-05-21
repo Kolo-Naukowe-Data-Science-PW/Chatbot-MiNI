@@ -71,7 +71,21 @@ def _load_human_testset(path: Path, n: int | None) -> list[dict]:
 
 
 def _load_rag_testset(path: Path, n: int | None) -> list[dict]:
-    """Load QA_rag.csv.  Columns: pytanie, odpowiedz, zrodla, pliki, liczba_linkow."""
+    """Load QA_rag.csv.  Columns: pytanie, odpowiedz, zrodla, pliki, liczba_plikow."""
+    from src.ingestion.ingest_manual_pdfs import URL_MAP as _PDF_URL_MAP
+
+    # Also load the generated file→URL mapping (built by build_file_url_mapping workflow),
+    # used for scraped-page TXT references in future QA_rag_extended datasets.
+    _file_url_map: dict[str, str] = {}
+    _fum_path = Path(PROJECT_ROOT) / "src" / "evaluation" / "data" / "file_url_mapping.json"
+    if _fum_path.exists():
+        import json as _json
+        try:
+            with open(_fum_path, encoding="utf-8") as _f:
+                _file_url_map = _json.load(_f)
+        except Exception:
+            pass
+
     if not path.exists():
         logger.error("RAG testset not found: %s", path)
         return []
@@ -84,10 +98,19 @@ def _load_rag_testset(path: Path, n: int | None) -> list[dict]:
             golden = norm.get("odpowiedz", "")
             if not query:
                 continue
-            rows.append({"query": query, "golden_answer": golden})
+            pliki_str = norm.get("pliki", "")
+            gold_urls: list[str] = []
+            for fname in pliki_str.split(";"):
+                fname = fname.strip()
+                if fname:
+                    url = _PDF_URL_MAP.get(fname) or _file_url_map.get(fname, "")
+                    if url:
+                        gold_urls.append(url)
+            rows.append({"query": query, "golden_answer": golden, "gold_urls": gold_urls})
             if n and len(rows) >= n:
                 break
-    logger.info("Loaded %d RAG testset rows.", len(rows))
+    with_gold = sum(1 for r in rows if r["gold_urls"])
+    logger.info("Loaded %d RAG testset rows (%d with gold URLs).", len(rows), with_gold)
     return rows
 
 
@@ -173,12 +196,20 @@ def _depth_diff_url(r_url: str, t_url: str) -> int | None:
 _EVAL_KS = [1, 3, 5, 10]
 
 
-def _compute_retrieval_metrics(retrieved_urls: list[str], gold_url: str) -> dict[str, float]:
-    """Compute Hit@k, MRR@k, nDCG@k, MRRw@k, MAP@k for k in _EVAL_KS."""
+def _compute_retrieval_metrics(retrieved_urls: list[str], gold_urls: list[str]) -> dict[str, float]:
+    """Compute Hit@k, MRR@k, nDCG@k, MRRw@k, MAP@k for k in _EVAL_KS.
+
+    A retrieved document counts as relevant if it matches ANY of the gold URLs
+    (multi-gold evaluation: up to all source documents per question are gold).
+    """
     from math import log2
 
     unique_urls = _unique_preserve_order([_normalize_url(u) for u in retrieved_urls if u])
-    rel_scores = [_hierarchical_relevance(u, _normalize_url(gold_url)) for u in unique_urls]
+    norm_golds = [_normalize_url(g) for g in gold_urls if g]
+    rel_scores = [
+        max((_hierarchical_relevance(u, g) for g in norm_golds), default=0.0)
+        for u in unique_urls
+    ]
 
     THRESHOLD = 0.5
     results: dict[str, float] = {}
@@ -221,13 +252,15 @@ def _compute_retrieval_metrics(retrieved_urls: list[str], gold_url: str) -> dict
 
         mrrw = 0.0
         for rank, url in enumerate(unique_urls[:k], start=1):
-            d = _depth_diff(url, gold_url)
-            if d is None:
-                continue
-            w = 1.0 if d == 0 else (0.8 ** d if d > 0 else 0.4 ** abs(d))
-            s = w / rank
-            if s > mrrw:
-                mrrw = s
+            best_s = 0.0
+            for g in norm_golds:
+                d = _depth_diff(url, g)
+                if d is None:
+                    continue
+                w = 1.0 if d == 0 else (0.8 ** d if d > 0 else 0.4 ** abs(d))
+                best_s = max(best_s, w / rank)
+            if best_s > mrrw:
+                mrrw = best_s
         results[f"mrrw@{k}"] = mrrw
 
         # MAP@k
@@ -241,8 +274,12 @@ def _compute_retrieval_metrics(retrieved_urls: list[str], gold_url: str) -> dict
     return results
 
 
-def _compute_adaptive_metrics(retrieved_urls: list[str], gold_url: str) -> dict[str, float]:
-    """Same metrics as above but evaluated at k = actual number of retrieved docs."""
+def _compute_adaptive_metrics(retrieved_urls: list[str], gold_urls: list[str]) -> dict[str, float]:
+    """Same metrics as above but evaluated at k = actual number of retrieved docs.
+
+    A retrieved document counts as relevant if it matches ANY of the gold URLs
+    (multi-gold evaluation: up to all source documents per question are gold).
+    """
     from math import log2
 
     unique_urls = _unique_preserve_order([_normalize_url(u) for u in retrieved_urls if u])
@@ -255,8 +292,11 @@ def _compute_adaptive_metrics(retrieved_urls: list[str], gold_url: str) -> dict[
     if k == 0:
         return _zero
 
-    norm_gold = _normalize_url(gold_url)
-    rel_scores = [_hierarchical_relevance(u, norm_gold) for u in unique_urls]
+    norm_golds = [_normalize_url(g) for g in gold_urls if g]
+    rel_scores = [
+        max((_hierarchical_relevance(u, g) for g in norm_golds), default=0.0)
+        for u in unique_urls
+    ]
     THRESHOLD = 0.5
 
     hit = 1.0 if any(s >= THRESHOLD for s in rel_scores) else 0.0
@@ -274,13 +314,15 @@ def _compute_adaptive_metrics(retrieved_urls: list[str], gold_url: str) -> dict[
 
     mrrw = 0.0
     for rank, url in enumerate(unique_urls, start=1):
-        d = _depth_diff_url(url, gold_url)
-        if d is None:
-            continue
-        w = 1.0 if d == 0 else (0.8 ** abs(d) if d > 0 else 0.4 ** abs(d))
-        s = w / rank
-        if s > mrrw:
-            mrrw = s
+        best_s = 0.0
+        for g in norm_golds:
+            d = _depth_diff_url(url, g)
+            if d is None:
+                continue
+            w = 1.0 if d == 0 else (0.8 ** abs(d) if d > 0 else 0.4 ** abs(d))
+            best_s = max(best_s, w / rank)
+        if best_s > mrrw:
+            mrrw = best_s
 
     n_rel, ap = 0, 0.0
     for i, s in enumerate(rel_scores, start=1):
@@ -300,16 +342,16 @@ def _compute_adaptive_metrics(retrieved_urls: list[str], gold_url: str) -> dict[
     }
 
 
-def _get_pr_points(retrieved_urls: list[str], gold_url: str) -> list[tuple[float, float]]:
+def _get_pr_points(retrieved_urls: list[str], gold_urls: list[str]) -> list[tuple[float, float]]:
     """Return (precision@i, recall@i) for i=1..n_retrieved (single-relevant-doc)."""
     unique_urls = _unique_preserve_order([_normalize_url(u) for u in retrieved_urls if u])
-    norm_gold = _normalize_url(gold_url)
+    norm_golds = [_normalize_url(g) for g in gold_urls if g]
     THRESHOLD = 0.5
 
     points: list[tuple[float, float]] = []
     n_rel = 0
     for i, url in enumerate(unique_urls, start=1):
-        if _hierarchical_relevance(url, norm_gold) >= THRESHOLD:
+        if max((_hierarchical_relevance(url, g) for g in norm_golds), default=0.0) >= THRESHOLD:
             n_rel += 1
         points.append((n_rel / i, float(n_rel > 0)))
     return points
@@ -410,7 +452,7 @@ def run_experiment(
         has_gold_urls = True
     elif testset == "rag":
         questions = _load_rag_testset(RAG_TESTSET_PATH, n_questions)
-        has_gold_urls = False
+        has_gold_urls = True
     else:
         raise ValueError(f"Unknown testset '{testset}'. Use 'human' or 'rag'.")
 
@@ -438,7 +480,13 @@ def run_experiment(
 
     for idx, row in enumerate(questions):
         query = row["query"]
-        gold_url = row.get("gold_url", "")
+        # Unify gold URL handling: human testset has single gold_url, rag has list gold_urls.
+        if testset == "human":
+            _gu = row.get("gold_url", "")
+            gold_urls_row: list[str] = [_gu] if _gu else []
+        else:
+            gold_urls_row = row.get("gold_urls", [])
+        gold_url_display = gold_urls_row[0] if gold_urls_row else ""
         logger.info("[%d/%d] %s", idx + 1, len(questions), query[:70])
 
         # 1. Retrieve
@@ -456,25 +504,26 @@ def run_experiment(
         # 3. Build per-query row
         csv_row: dict = {
             "query": query,
-            "gold_url": gold_url,
+            "gold_url": gold_url_display,
+            "gold_urls_count": len(gold_urls_row),
             "generated_answer": generated_answer,
             "retrieved_urls": ";".join(u for u in retrieved_urls if u),
             "n_retrieved": len(chunks),
         }
 
-        # 4. Retrieval metrics (only when gold URL available)
-        if has_gold_urls and gold_url:
-            ret_metrics = _compute_retrieval_metrics(retrieved_urls, gold_url)
+        # 4. Retrieval metrics (only when gold URLs available)
+        if has_gold_urls and gold_urls_row:
+            ret_metrics = _compute_retrieval_metrics(retrieved_urls, gold_urls_row)
             csv_row.update(ret_metrics)
             for k, v in ret_metrics.items():
                 retrieval_metrics_accum.setdefault(k, []).append(v)
             # Adaptive metrics (evaluated at actual retrieved k)
-            adap = _compute_adaptive_metrics(retrieved_urls, gold_url)
+            adap = _compute_adaptive_metrics(retrieved_urls, gold_urls_row)
             csv_row.update(adap)
             for k, v in adap.items():
                 adaptive_metrics_accum.setdefault(k, []).append(v)
             # P-R points for interpolated curve
-            pr_data_per_query.append(_get_pr_points(retrieved_urls, gold_url))
+            pr_data_per_query.append(_get_pr_points(retrieved_urls, gold_urls_row))
 
         # 5. LLM judge
         if judge_model:
@@ -544,9 +593,19 @@ def run_experiment(
     # --- Build summary ---
     avg = lambda lst: round(mean(lst), 6) if lst else None
 
+    n_with_gold = sum(1 for r in per_query_rows if r.get("gold_urls_count", 0) > 0)
+    max_gold = max((r.get("gold_urls_count", 0) for r in per_query_rows), default=0)
+    gold_eval_note = (
+        f"multi-gold via PDF_URL_MAP+file_url_mapping (up to {max_gold} gold URLs/question, "
+        f"{n_with_gold}/{len(per_query_rows)} questions evaluated)"
+        if testset == "rag"
+        else "single-gold (human-labeled URL)"
+    )
+
     summary: dict = {
         "variant": variant,
         "testset": testset,
+        "gold_evaluation": gold_eval_note,
         "judge_model": judge_model,
         "timestamp": ts,
         "n_questions": len(questions),
