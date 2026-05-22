@@ -1,0 +1,26 @@
+name: Ingest Curriculum Only
+
+# Use when study programme documents (plany studiów) need re-extraction and re-ingesting.
+# Preserves all other data in Qdrant; adds only curriculum facts.
+# Re-run after updating plan-studiow PDFs on the MiNI website.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  ingest_curriculum:
+    runs-on: self-hosted
+    timeout-minutes: 60
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Copy .env file
+        run: cp ~/.env.backup .env
+      - name: Stop API to release Qdrant lock
+        run: docker compose stop api
+      - name: Run curriculum ingest pipeline
+        run: docker compose up --no-deps --build curriculum
+      - name: Restart API
+        run: docker compose start api
+      - name: Clean up dangling images and build cache
+        run: docker system prune -f

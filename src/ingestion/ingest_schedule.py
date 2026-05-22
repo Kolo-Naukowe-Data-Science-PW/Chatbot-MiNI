@@ -23,7 +23,7 @@ from src.ingestion.extract_schedule_facts import main as run_extraction
 from src.ingestion.links_extended import links
 from src.ingestion.progress import clear_progress_for_prefix, mark_ingested
 from src.ingestion.scrape_schedule import SCHEDULE_PATTERN, scrape_schedules
-from src.ingestion.vector_db import delete_by_url_list, save_to_vector_db_uuid
+from src.ingestion.vector_db import delete_by_url_substring, save_to_vector_db_uuid
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -82,8 +82,8 @@ def main() -> None:
     scrape_schedules()
 
     logger.info("--- STEP 2: Deleting old schedule facts from Qdrant ---")
-    delete_by_url_list(schedule_urls, DB_PATH)
-    logger.info(f"  Deleted points for {len(schedule_urls)} URLs.")
+    deleted = delete_by_url_substring("pokazPlanGrupyPrzedmiotow", DB_PATH)
+    logger.info(f"  Deleted {deleted} points matching schedule URL pattern.")
 
     logger.info("--- STEP 3: Clearing progress markers for schedule files ---")
     clear_progress_for_prefix("schedule_", stages=["facts_extracted", "ingested"])

@@ -9,6 +9,7 @@ from qdrant_client.models import (
     Filter,
     FilterSelector,
     MatchAny,
+    PointIdsList,
     PointStruct,
     SparseIndexParams,
     SparseVector,
@@ -120,6 +121,47 @@ def delete_by_url_list(urls: list[str], path_to_database: str) -> None:
                 )
             ),
         )
+
+
+def delete_by_url_substring(substring: str, path_to_database: str) -> int:
+    """Delete all Qdrant points whose 'url' payload contains the given substring.
+
+    Unlike delete_by_url_list (exact match), this handles URL variants that
+    differ in query parameters — e.g. old short URLs vs current long URLs for
+    the same resource.  Uses scroll-based iteration so it works on any
+    collection size.  Returns the number of deleted points.
+    """
+    client = _get_client(path_to_database)
+    if not client.collection_exists(COLLECTION_NAME):
+        return 0
+
+    ids_to_delete: list = []
+    offset = None
+    while True:
+        results, next_offset = client.scroll(
+            collection_name=COLLECTION_NAME,
+            limit=1000,
+            offset=offset,
+            with_payload=["url"],
+            with_vectors=False,
+        )
+        for point in results:
+            url = point.payload.get("url", "")
+            if substring in url:
+                ids_to_delete.append(point.id)
+        if next_offset is None:
+            break
+        offset = next_offset
+
+    if ids_to_delete:
+        batch_size = 1000
+        for i in range(0, len(ids_to_delete), batch_size):
+            client.delete(
+                collection_name=COLLECTION_NAME,
+                points_selector=PointIdsList(points=ids_to_delete[i : i + batch_size]),
+            )
+
+    return len(ids_to_delete)
 
 
 def save_to_vector_db_uuid(
