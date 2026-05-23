@@ -20,7 +20,8 @@ STATIC_FAQ = (
     "Prodziekan ds. Nauczania: dr inż. Krzysztof Kaczmarski. "
     "Prodziekan ds. Nauki: prof. dr hab. Janina Kotus. "
     "Prodziekan ds. Ogólnych: dr hab. Wojciech Matysiak, prof. uczelni. "
-    "Pełna lista: [dziekani] https://ww2.mini.pw.edu.pl/wydzial/dziekani/.\n"
+    "Pełna lista: [dziekani] https://ww2.mini.pw.edu.pl/wydzial/dziekani/. "
+    "WAŻNE: Jerzy Błaszczyk NIE jest i NIE był dziekanem ani prodziekanem MiNI — jest pracownikiem wydziału. Nie przypisuj mu żadnej funkcji dziekańskiej.\n"
     "- Kierunki studiów I stopnia (inżynierskie/licencjackie): "
     "1. Informatyka i Systemy Informacyjne (ISI), "
     "2. Inżynieria i Analiza Danych (IAD), "
@@ -56,6 +57,10 @@ USER_TYPE_PERSONA: dict[str, str] = {
     "phd": (
         "Użytkownik to doktorant. Traktuj go jak partnera, możesz dyskutować "
         "o procedurach administracyjnych i naukowych na poziomie zaawansowanym."
+    ),
+    "candidate": (
+        "Użytkownik jest kandydatem na studia w MiNI PW. Wyjaśniaj zasady rekrutacji, "
+        "wymagania wstępne i charakterystykę kierunków. Używaj przystępnego, zachęcającego języka."
     ),
     "admin": (
         "Użytkownik to pracownik administracji lub wykładowca. Odpowiadaj formalnie "
@@ -157,7 +162,9 @@ def build_messages(
             "3. Styl: Odpowiadaj zwięźle i rzeczowo. Zacznij bezpośrednio od odpowiedzi — bez pozdrowień, bez wstępów w stylu 'Krótka odpowiedź:'. "
             "Nie używaj formatowania Markdown (bez gwiazdek, nagłówków, punktorów — chyba że lista jest naprawdę niezbędna). "
             "Pisz pełnymi, gramatycznie poprawnymi zdaniami. "
-            "ZAWSZE stawiaj spację po kropce, przecinku i każdym innym znaku interpunkcyjnym — nigdy nie łącz dwóch wyrazów bez spacji.\n"
+            "ZAWSZE stawiaj spację po kropce, przecinku i każdym innym znaku interpunkcyjnym — nigdy nie łącz dwóch wyrazów bez spacji. "
+            "Wyjątek dla planu zajęć: każde zajęcie wypisuj w OSOBNEJ LINII (oddzielone enterem), w formacie: 'GG:MM–GG:MM — Nazwa przedmiotu (typ, gr. N), sala X, bud. Y, prowadzący: Imię Nazwisko.' "
+            "WAŻNE: kontekst może zawierać fakty z planów RÓŻNYCH kierunków. Przy pytaniach o plan zajęć użytkownika uwzględniaj WYŁĄCZNIE fakty, które jawnie dotyczą jego kierunku (np. 'Inżynieria i Analiza Danych' dla IAD). Ignoruj fakty z innych kierunków (np. ISI, MAD, Matematyka), nawet jeśli dotyczą tego samego semestru i dnia tygodnia.\n"
             "4. Liczby i dane: Jeśli w Kontekście lub Wiedzy ogólnej znajdują się konkretne liczby (godziny, semestry, punkty ECTS, progi zaliczeniowe, daty, numery sal itp.) — zawsze podaj je dokładnie. "
             "Nigdy nie stosuj placeholderów (np. '___', '[X]', '...') w miejscu brakujących danych. "
             "Jeśli nie masz konkretnej liczby, napisz wprost: 'Nie mam tej informacji w dostępnych zasobach.' "

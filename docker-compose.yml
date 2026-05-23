@@ -44,6 +44,7 @@ services:
       python -m ingestion.ingest_manual_xlsx &&
       python -m ingestion.describe_files &&
       python -m ingestion.extract_facts &&
+      python -m ingestion.extract_curriculum_facts &&
       python -m ingestion.ingest_facts"
     environment: *env
     volumes:
@@ -65,6 +66,24 @@ services:
       "python",
       "-m",
       "ingestion.ingest_schedule"
+    ]
+    environment: *env
+    volumes:
+      - data_storage:/app/src/data
+      - qdrant_db:/app/src/data/qdrant_db
+      - hf_cache:/root/.cache/huggingface
+
+  curriculum:
+    user: root
+    build: .
+    command: [
+      "micromamba",
+      "run",
+      "-n",
+      "app",
+      "python",
+      "-m",
+      "ingestion.ingest_curriculum"
     ]
     environment: *env
     volumes:

@@ -159,9 +159,21 @@ _SCHEDULE_KEYWORDS = (
     "laboratorium", "godziny zajęć", "sala ", "kiedy są zajęcia",
     "kiedy mam zajęcia", "kiedy mam wykład",
     "jakie zajęcia mam", "jakie mam zajęcia", "zajęcia",
-    "plan", "jaki mam plan", "jaki plan jest",
+    "jaki mam plan", "jaki plan jest",
     "w jakiej sali mam", "w jakiej sali",
     "kto prowadzi", "prowadzący",
+)
+
+_CURRICULUM_KEYWORDS = (
+    "plan studiów", "plan studiow", "program studiów", "program studiow",
+    "siatka studiów", "ile ects", "punkty ects", "ile punktów",
+    "przedmioty obowiązkowe", "przedmioty w semestrze", "przedmioty na semestrze",
+)
+
+_NEXT_SEM_KEYWORDS = (
+    "następny semestr", "następnym semestrze", "następnego semestru",
+    "kolejny semestr", "kolejnym semestrze", "kolejnego semestru",
+    "przyszły semestr", "przyszłym semestrze",
 )
 
 
@@ -170,21 +182,41 @@ def _is_schedule_query(query: str) -> bool:
     return any(kw in q for kw in _SCHEDULE_KEYWORDS)
 
 
-def _enrich_retrieval_query(query: str, major: str | None, semester: str | None) -> str:
-    """Append major/semester context for schedule-related queries only.
+def _enrich_retrieval_query(
+    query: str, major: str | None, semester: str | None, original_query: str | None = None
+) -> str:
+    """Append major/semester context to schedule and curriculum queries.
 
-    Unconditional enrichment floods non-schedule queries with schedule documents
-    because schedule facts are tagged with major/semester keywords.
+    Schedule queries get current semester; curriculum/next-semester queries get
+    next semester (so 'następny semestr' for a sem-4 student resolves to sem 5).
+    'plan' alone is intentionally excluded from schedule keywords — it also matches
+    'plan studiów' which is a curriculum query.
     """
     if not major or major == "—":
         return query
-    if not _is_schedule_query(query):
-        return query
-    q = query + f" kierunek {major}"
-    if semester and semester != "—":
-        arabic = _ROMAN_TO_ARABIC.get(semester, semester)
-        q += f" semestr {arabic}"
-    return q
+    orig = (original_query or query).lower()
+    q_lower = query.lower()
+
+    if _is_schedule_query(query):
+        q = query + f" kierunek {major}"
+        if semester and semester != "—":
+            arabic = _ROMAN_TO_ARABIC.get(semester, semester)
+            q += f" semestr {arabic}"
+        return q
+
+    is_curriculum = any(kw in q_lower for kw in _CURRICULUM_KEYWORDS)
+    is_next_sem = any(kw in orig for kw in _NEXT_SEM_KEYWORDS)
+    if is_curriculum or is_next_sem:
+        q = query + f" kierunek {major}"
+        if semester and semester != "—" and is_next_sem:
+            arabic = _ROMAN_TO_ARABIC.get(semester, semester)
+            try:
+                q += f" semestr {int(arabic) + 1}"
+            except (ValueError, TypeError):
+                pass
+        return q
+
+    return query
 
 
 _EXPERIMENT_PERSONAS = [
@@ -305,7 +337,8 @@ def chat_endpoint(request: QueryRequest) -> dict[str, Any]:
         logger.info(f"Translated query to PL: '{processing_query}'")
 
     retrieval_query = _enrich_retrieval_query(
-        rewrite_query(processing_query), request.major, request.semester
+        rewrite_query(processing_query), request.major, request.semester,
+        original_query=processing_query,
     )
     sorted_chunks = get_top_k_chunks(retrieval_query)
 
@@ -383,7 +416,8 @@ def chat_stream_endpoint(request: QueryRequest):
         processing_query = translate_text(query, target_lang_code="pl")
 
     retrieval_query = _enrich_retrieval_query(
-        rewrite_query(processing_query), request.major, request.semester
+        rewrite_query(processing_query), request.major, request.semester,
+        original_query=processing_query,
     )
     sorted_chunks = get_top_k_chunks(retrieval_query)
     seen: set[str] = set()

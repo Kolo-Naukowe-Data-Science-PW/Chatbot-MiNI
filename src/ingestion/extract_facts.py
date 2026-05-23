@@ -132,6 +132,11 @@ def main() -> None:
         files = [f for f in os.listdir(folder) if f.endswith(".txt")]
 
         for txt_file in files:
+            # Skip files handled by dedicated specialized extractors
+            if txt_file.startswith("schedule_"):
+                logger.info(f"SKIP (handled by schedule pipeline): {txt_file}")
+                continue
+
             base_name = os.path.splitext(txt_file)[0]
             txt_path = os.path.join(folder, txt_file)
 
@@ -144,6 +149,16 @@ def main() -> None:
             else:
                 source_url = txt_file  # Fallback to filename
                 text_content = "".join(lines).strip()
+
+            # Skip USOS schedule pages regardless of filename (Firecrawl-scraped)
+            if "pokazPlanGrupyPrzedmiotow" in source_url:
+                logger.info(f"SKIP (USOS schedule URL, handled by schedule pipeline): {txt_file}")
+                continue
+
+            # Skip study programme PDFs (handled by curriculum pipeline)
+            if "plan-studiow" in source_url or "Plan-studiow" in source_url:
+                logger.info(f"SKIP (plan studiów, handled by curriculum pipeline): {txt_file}")
+                continue
 
             # Check if there is a metadata file that should override the URL
             meta_path = os.path.join(INPUT_DIR, f"{txt_file.replace('.txt', '.json')}")

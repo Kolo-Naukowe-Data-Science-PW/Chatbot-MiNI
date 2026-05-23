@@ -101,8 +101,8 @@ def _build_grid(table) -> tuple[dict, set, int, int]:
             while (row_idx, col) in grid:
                 col += 1
 
-            cs = int(cell.get("colspan", 1))
-            rs = int(cell.get("rowspan", 1))
+            cs = int(cell.get("colspan") or 1)
+            rs = int(cell.get("rowspan") or 1)
             text = " ".join(cell.get_text(separator=" ", strip=True).split())
 
             origin.add((row_idx, col))

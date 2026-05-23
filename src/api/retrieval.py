@@ -97,22 +97,17 @@ def get_top_k_chunks(
             logger.info("Reranking skipped — returning top %d RRF results.", top_k)
             return candidates_list[:top_k]
 
-        # Score all chunks, then keep best chunk per URL (URL-level max aggregation)
+        # Score all chunks and return top_k by reranker score, no per-URL cap.
         pairs = [(query, c["text_chunk"]) for c in candidates_list]
         scores = reranker.predict(pairs)
 
-        url_best: dict[str, tuple[float, dict]] = {}
-        for score, chunk in zip(scores, candidates_list):
-            url = chunk["source_url"]
-            if url not in url_best or score > url_best[url][0]:
-                url_best[url] = (score, chunk)
         structured_results = [
             chunk for _, chunk in
-            sorted(url_best.values(), key=lambda x: x[0], reverse=True)
+            sorted(zip(scores, candidates_list), key=lambda x: x[0], reverse=True)
         ][:top_k]
 
         logger.info(
-            "Retrieved %d candidates, re-ranked to top %d unique URLs.",
+            "Retrieved %d candidates, re-ranked to top %d.",
             len(candidates_list),
             len(structured_results),
         )

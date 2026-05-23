@@ -46,14 +46,14 @@ const _pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 const buildSingleConfig = (cfg) => ({
   model: _pick(cfg.model_pool),
   temperature: cfg.baseline_temp,
-  max_tokens: 1024,
+  max_tokens: 2048,
   styleInstruction: cfg.baseline_persona,
 });
 
 // Pair for test/testPro mode: vary ONLY the dimension set in EXPERIMENT_DIM
 const buildVariantPair = (cfg) => {
   const { dim, baseline_model, baseline_temp, baseline_persona, personas, model_pool } = cfg;
-  const max_tokens = 1024;
+  const max_tokens = 2048;
 
   if (dim === "temperature") {
     const LOW  = [0.0, 0.1, 0.2, 0.3];
@@ -419,7 +419,7 @@ function Message({ message, version, language, onFeedbackChange, isDisabled })  
   const [errorOpen, setErrorOpen] = useState(false);
   const [errorText, setErrorText] = useState('');
   const [errorSent, setErrorSent] = useState(false);
-  const SOURCES_PREVIEW = 3;
+
 
   const isUser = message.type === 'user';
 
@@ -560,34 +560,33 @@ if (ext === 'link') {
 
         {!isUser && message.sources && message.sources.length > 0 && (
           <div className="message-sources">
-            <div className="sources-title">{t.sources}:</div>
-            <div className="sources-files">
-              {(showAllSources ? message.sources : message.sources.slice(0, SOURCES_PREVIEW)).map((source, index) => (
-                <button
-                  key={index}
-                  className="file-attachment"
-                  onClick={() => {
-                    if (source.startsWith('http://') || source.startsWith('https://')) {
-                      window.open(source, '_blank');
-                    }
-                  }}
-                >
-                  <div className="file-icon">
-                    {getFileIcon(source)}
-                  </div>
-                  <span className="file-name">{source}</span>
-                </button>
-              ))}
-            </div>
-            {message.sources.length > SOURCES_PREVIEW && (
-              <button
-                className="sources-toggle"
-                onClick={() => setShowAllSources((v) => !v)}
-              >
-                {showAllSources
-                  ? "Zwiń źródła"
-                  : `Pokaż więcej (${message.sources.length - SOURCES_PREVIEW})`}
-              </button>
+            <button
+              className="sources-toggle"
+              onClick={() => setShowAllSources((v) => !v)}
+            >
+              {showAllSources
+                ? "Zwiń źródła"
+                : `Pokaż źródła (${message.sources.length})`}
+            </button>
+            {showAllSources && (
+              <div className="sources-files">
+                {message.sources.map((source, index) => (
+                  <button
+                    key={index}
+                    className="file-attachment"
+                    onClick={() => {
+                      if (source.startsWith('http://') || source.startsWith('https://')) {
+                        window.open(source, '_blank');
+                      }
+                    }}
+                  >
+                    <div className="file-icon">
+                      {getFileIcon(source)}
+                    </div>
+                    <span className="file-name">{source}</span>
+                  </button>
+                ))}
+              </div>
             )}
           </div>
         )}
@@ -724,24 +723,27 @@ function SemesterCard({ semester, onClick }) {
 // ============ MAIN CONTENT COMPONENT ============
 const USER_TYPES = {
   PL: [
+    { key: "candidate", label: "Kandydat na studia", icon: "🏫" },
     { key: "student_junior", label: "Student I roku", icon: "🎓" },
-    { key: "student_senior", label: "Student II/III roku", icon: "📚" },
+    { key: "student_senior", label: "Student II-IV roku", icon: "📚" },
     { key: "master", label: "Student magisterskch", icon: "🎯" },
     { key: "phd", label: "Doktorant", icon: "🔬" },
     { key: "admin", label: "Pracownik administracji", icon: "🏛️" },
     { key: "research_teaching", label: "Pracownik badawczo-dydaktyczny", icon: "🔭" },
   ],
   EN: [
+    { key: "candidate", label: "Prospective student", icon: "🏫" },
     { key: "student_junior", label: "1st year student", icon: "🎓" },
-    { key: "student_senior", label: "2nd / 3rd year student", icon: "📚" },
+    { key: "student_senior", label: "2nd–4th year student", icon: "📚" },
     { key: "master", label: "Master's student", icon: "🎯" },
     { key: "phd", label: "PhD student", icon: "🔬" },
     { key: "admin", label: "Faculty staff", icon: "🏛️" },
     { key: "research_teaching", label: "Research & Teaching Staff", icon: "🔭" },
   ],
   UA: [
+    { key: "candidate", label: "Абітурієнт", icon: "🏫" },
     { key: "student_junior", label: "Студент 1 курсу", icon: "🎓" },
-    { key: "student_senior", label: "Студент 2/3 курсу", icon: "📚" },
+    { key: "student_senior", label: "Студент 2-4 курсу", icon: "📚" },
     { key: "master", label: "Магістрант", icon: "🎯" },
     { key: "phd", label: "Аспірант", icon: "🔬" },
     { key: "admin", label: "Працівник факультету", icon: "🏛️" },
@@ -787,7 +789,8 @@ function MainContent({ language, version, userType, setUserType, selectedMajor, 
     if (userType === "master") return SEMESTER_ROMAN.slice(0, 4);
     const majorIdx = t.bachelorMajors.indexOf(selectedMajor);
     const count = MAJOR_SEMESTER_COUNTS[majorIdx] ?? 7;
-    return SEMESTER_ROMAN.slice(0, count);
+    if (userType === "student_junior") return SEMESTER_ROMAN.slice(0, 2);
+    return SEMESTER_ROMAN.slice(2, count); // student_senior: III through last semester of their program
   };
 
   const handleMajorSelect = (major) => {
