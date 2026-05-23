@@ -181,6 +181,11 @@ h1 {
   max-width: 760px;
 }
 
+/* center a lone last card in a 3-column grid */
+.cards .role-card:last-child:nth-child(3n + 1) {
+  grid-column: 2;
+}
+
 .card {
   background: rgba(44, 52, 64, 0.6);
   border: 1px solid rgba(255, 255, 255, 0.1);

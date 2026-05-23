@@ -39,6 +39,12 @@ app.add_middleware(
 )
 
 
+class FileAttachment(BaseModel):
+    filename: str
+    data: str  # base64-encoded file content
+    mime_type: str = "application/pdf"
+
+
 class QueryRequest(BaseModel):
     """
     Pydantic model representing the structure of a chat query request.
@@ -48,6 +54,7 @@ class QueryRequest(BaseModel):
                 - mode: Optional string indicating the frontend mode (e.g., "production", "testPro").
                 - variant: Optional string indicating the A/B test variant (e.g., "A", "B").
                 - modelConfig: Optional dictionary containing model parameters used for generating the response.
+                - attachments: Optional list of file attachments (e.g., PDFs) sent as base64 to the model.
     """
 
     query: str
@@ -59,6 +66,7 @@ class QueryRequest(BaseModel):
     user_type: str | None = None
     major: str | None = None
     semester: str | None = None
+    attachments: list[FileAttachment] = []
 
 
 class FeedbackRequest(BaseModel):
@@ -368,6 +376,7 @@ def chat_endpoint(request: QueryRequest) -> dict[str, Any]:
         semester=str(request.semester) if request.semester else None,
         conversation_history=conversation_history,
         style_instruction=style_instruction,
+        attachments=[{"filename": a.filename, "data": a.data, "mime_type": a.mime_type} for a in request.attachments],
     )
 
     polish_answer = query_llm(messages, request.modelConfig)
@@ -448,6 +457,7 @@ def chat_stream_endpoint(request: QueryRequest):
         semester=str(request.semester) if request.semester else None,
         conversation_history=conversation_history,
         style_instruction=style_instruction,
+        attachments=[{"filename": a.filename, "data": a.data, "mime_type": a.mime_type} for a in request.attachments],
     )
 
     def _sse(text: str) -> str:

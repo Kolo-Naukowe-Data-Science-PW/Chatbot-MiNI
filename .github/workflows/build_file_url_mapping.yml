@@ -22,7 +22,7 @@ jobs:
 
       - name: Build file→URL mapping
         run: |
-          python3 -m src.evaluation.build_file_url_mapping \
+          python3 -m src.utils.build_file_url_mapping \
             "${{ github.event.inputs.scraped_dir }}" \
             > src/evaluation/data/file_url_mapping.json
           echo "Mapping entries: $(python3 -c "import json; d=json.load(open('src/evaluation/data/file_url_mapping.json')); print(len(d))")"

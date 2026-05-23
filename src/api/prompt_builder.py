@@ -81,7 +81,8 @@ def build_messages(
     user_type: str | None = None,
     conversation_history: list["Message"] | None = None,
     style_instruction: str | None = None,
-) -> list[dict[str, str]]:
+    attachments: list[dict] | None = None,
+) -> list[dict]:
     """
     Builds a messages array for the LLM based on the provided user query and context.
 
@@ -164,6 +165,7 @@ def build_messages(
             "Pisz pełnymi, gramatycznie poprawnymi zdaniami. "
             "ZAWSZE stawiaj spację po kropce, przecinku i każdym innym znaku interpunkcyjnym — nigdy nie łącz dwóch wyrazów bez spacji. "
             "Wyjątek dla planu zajęć: każde zajęcie wypisuj w OSOBNEJ LINII (oddzielone enterem), w formacie: 'GG:MM–GG:MM — Nazwa przedmiotu (typ, gr. N), sala X, bud. Y, prowadzący: Imię Nazwisko.' "
+            "Jeśli pytanie dotyczy zajęć w danym dniu, ZAWSZE wymieniaj ABSOLUTNIE WSZYSTKIE zajęcia w tym dniu dla danego kierunku i semestru — nie pomijaj żadnych, nawet jeśli jest ich dużo. "
             "WAŻNE: kontekst może zawierać fakty z planów RÓŻNYCH kierunków. Przy pytaniach o plan zajęć użytkownika uwzględniaj WYŁĄCZNIE fakty, które jawnie dotyczą jego kierunku (np. 'Inżynieria i Analiza Danych' dla IAD). Ignoruj fakty z innych kierunków (np. ISI, MAD, Matematyka), nawet jeśli dotyczą tego samego semestru i dnia tygodnia.\n"
             "4. Liczby i dane: Jeśli w Kontekście lub Wiedzy ogólnej znajdują się konkretne liczby (godziny, semestry, punkty ECTS, progi zaliczeniowe, daty, numery sal itp.) — zawsze podaj je dokładnie. "
             "Nigdy nie stosuj placeholderów (np. '___', '[X]', '...') w miejscu brakujących danych. "
@@ -179,16 +181,26 @@ def build_messages(
         # Build context message for current query
         context_message = f"---\nKontekst (informacje, które mogą - ale nie muszą - okazać się przydatne przy odpowiadaniu na bieżące pytanie):\n{joined_context}\n---"
 
+        user_text = f"{context_message}\n\nBieżące pytanie użytkownika:\n{query}"
+
+        if attachments:
+            user_content: list[dict] = [{"type": "text", "text": user_text}]
+            for att in attachments:
+                user_content.append({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:{att['mime_type']};base64,{att['data']}"
+                    },
+                })
+            last_user_msg: dict = {"role": "user", "content": user_content}
+        else:
+            last_user_msg = {"role": "user", "content": user_text}
+
         # Build messages array: system + history + combined context + query
         messages = (
             [{"role": "system", "content": system_message}]
             + [msg.model_dump() for msg in (conversation_history or [])]
-            + [
-                {
-                    "role": "user",
-                    "content": f"{context_message}\n\nBieżące pytanie użytkownika:\n{query}",
-                }
-            ]
+            + [last_user_msg]
         )
 
         logger.info("Messages built successfully. Total messages: %d", len(messages))

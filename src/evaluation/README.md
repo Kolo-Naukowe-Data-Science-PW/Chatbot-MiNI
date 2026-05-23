@@ -8,7 +8,8 @@ All evaluation scripts, metrics, and benchmark data for MiNIonek.
 |---|---|
 | `benchmark.py` | Main benchmark: runs retrieval on the gold eval set, computes Hit@k, MRR@k, nDCG@k, MAP@k, Precision-Recall curves. **Use this.** |
 | `benchmark_v1.py` | Legacy simple benchmark (basic Hit@k / MRR, no hierarchical scoring). |
-| `statistical_comparison.py` | **NEW** Wilcoxon + Goodman–Kruskal γ + Kappa tests for comparing two model variants statistically. Input: two `eval_per_query_<ts>.csv` files. Output: significance tests, JSON results. |
+| `text_metrics.py` | **NEW** Text-generation metrics: BLEU, ROUGE-{1,2,L,W,S}, METEOR, BERTScore(P/R/F1). Compares generated answers against QA_rag.csv references. |
+| `statistical_comparison.py` | Wilcoxon + Goodman–Kruskal γ + Kappa tests for comparing two model variants statistically. Input: two `eval_per_query_<ts>.csv` files. |
 | `metrics.py` | BERTScore class for text-level answer quality evaluation. |
 | `prepare_data.py` | CSV loading utilities used by the BERTScore pipeline. |
 | `eval_with_playwright.py` | Playwright macro: automates asking questions through the live chatbot UI and collecting answers to a TSV. Requires a running deployment. |

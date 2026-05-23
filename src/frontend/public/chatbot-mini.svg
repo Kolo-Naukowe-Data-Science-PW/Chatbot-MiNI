@@ -1,6 +1,5 @@
 <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="32" height="32" rx="6" fill="#1a5c45"/>
-  <g transform="scale(0.72) translate(3, 3)">
+  <g transform="translate(4.5, 1) scale(0.72)">
     <mask id="path-1-inside-1_200_268" fill="white">
       <ellipse cx="12.9441" cy="16.525" rx="2.99429" ry="4.5"/>
     </mask>

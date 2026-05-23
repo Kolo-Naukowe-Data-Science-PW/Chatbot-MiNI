@@ -1,0 +1,54 @@
+name: Text Metrics Evaluation
+
+on:
+  workflow_dispatch:
+    inputs:
+      generated_csv:
+        description: 'Path to CSV with generated answers (columns: pytanie, odpowiedz)'
+        required: true
+        default: 'src/evaluation/data/generated_answers.csv'
+      lang:
+        description: 'Language code for BERTScore'
+        required: false
+        default: 'pl'
+      bertscore_model:
+        description: 'HuggingFace model for BERTScore'
+        required: false
+        default: 'allegro/herbert-base-cased'
+
+jobs:
+  text-metrics:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Copy .env file
+        run: cp ~/.env.backup .env
+
+      - name: Create results directory
+        run: mkdir -p src/evaluation/results
+
+      - name: Install metric dependencies
+        run: |
+          docker compose run --rm --no-deps api \
+            micromamba run -n app \
+            pip install --quiet sacrebleu rouge bert-score nltk
+
+      - name: Run text metrics
+        run: |
+          docker compose run --rm --no-deps api \
+            micromamba run -n app \
+            python -m evaluation.text_metrics \
+              --generated-csv "${{ inputs.generated_csv }}" \
+              --output-dir src/evaluation/results \
+              --lang "${{ inputs.lang }}" \
+              --bertscore-model "${{ inputs.bertscore_model }}"
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: text-metrics-${{ github.run_id }}
+          path: src/evaluation/results/text_metrics_*
+          if-no-files-found: warn

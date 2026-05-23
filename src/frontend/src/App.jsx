@@ -412,6 +412,27 @@ function Card({ title, version, language, onClick }) {
   );
 }
 
+function renderTextWithLinks(text) {
+  if (!text) return null;
+  const LINK_RE = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/\S+)/g;
+  const parts = [];
+  let last = 0;
+  let match;
+  let key = 0;
+  while ((match = LINK_RE.exec(text)) !== null) {
+    if (match.index > last) parts.push(text.slice(last, match.index));
+    if (match[1] && match[2]) {
+      parts.push(<a key={key++} href={match[2]} target="_blank" rel="noopener noreferrer">{match[1]}</a>);
+    } else {
+      const url = match[3];
+      parts.push(<a key={key++} href={url} target="_blank" rel="noopener noreferrer">{url}</a>);
+    }
+    last = match.index + match[0].length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
+}
+
 // ============ MESSAGE COMPONENT ============
 function Message({ message, version, language, onFeedbackChange, isDisabled })  {
   const t = translations[language];
@@ -555,7 +576,7 @@ if (ext === 'link') {
             <span /><span /><span />
           </span>
         ) : (
-          <p>{message.text}</p>
+          <p>{renderTextWithLinks(message.text)}</p>
         )}
 
         {!isUser && message.sources && message.sources.length > 0 && (
@@ -724,30 +745,30 @@ function SemesterCard({ semester, onClick }) {
 const USER_TYPES = {
   PL: [
     { key: "candidate", label: "Kandydat na studia", icon: "🏫" },
-    { key: "student_junior", label: "Student I roku", icon: "🎓" },
+    { key: "student_junior", label: "Student I roku", icon: "📝" },
     { key: "student_senior", label: "Student II-IV roku", icon: "📚" },
     { key: "master", label: "Student magisterskch", icon: "🎯" },
     { key: "phd", label: "Doktorant", icon: "🔬" },
     { key: "admin", label: "Pracownik administracji", icon: "🏛️" },
-    { key: "research_teaching", label: "Pracownik badawczo-dydaktyczny", icon: "🔭" },
+    { key: "research_teaching", label: "Pracownik badawczo-dydaktyczny", icon: "📊" },
   ],
   EN: [
     { key: "candidate", label: "Prospective student", icon: "🏫" },
-    { key: "student_junior", label: "1st year student", icon: "🎓" },
+    { key: "student_junior", label: "1st year student", icon: "📝" },
     { key: "student_senior", label: "2nd–4th year student", icon: "📚" },
     { key: "master", label: "Master's student", icon: "🎯" },
     { key: "phd", label: "PhD student", icon: "🔬" },
     { key: "admin", label: "Faculty staff", icon: "🏛️" },
-    { key: "research_teaching", label: "Research & Teaching Staff", icon: "🔭" },
+    { key: "research_teaching", label: "Research & Teaching Staff", icon: "📊" },
   ],
   UA: [
     { key: "candidate", label: "Абітурієнт", icon: "🏫" },
-    { key: "student_junior", label: "Студент 1 курсу", icon: "🎓" },
+    { key: "student_junior", label: "Студент 1 курсу", icon: "📝" },
     { key: "student_senior", label: "Студент 2-4 курсу", icon: "📚" },
     { key: "master", label: "Магістрант", icon: "🎯" },
     { key: "phd", label: "Аспірант", icon: "🔬" },
     { key: "admin", label: "Працівник факультету", icon: "🏛️" },
-    { key: "research_teaching", label: "Науково-педагогічний працівник", icon: "🔭" },
+    { key: "research_teaching", label: "Науково-педагогічний працівник", icon: "📊" },
   ],
 };
 
@@ -805,26 +826,45 @@ function MainContent({ language, version, userType, setUserType, selectedMajor, 
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = "";
-    const formData = new FormData();
-    formData.append("file", file);
-    try {
-      const resp = await fetch("/api/extract-text", { method: "POST", body: formData });
-      if (!resp.ok) throw new Error(await resp.text());
-      const { text, filename } = await resp.json();
-      setAttachedFile({ name: filename, text });
-    } catch (err) {
-      console.error("File extraction failed:", err);
-      alert("Nie udało się odczytać pliku. Obsługiwane formaty: .txt, .md, .csv, .pdf");
+    const ext = file.name.split(".").pop()?.toLowerCase();
+    if (ext === "pdf") {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64 = reader.result.split(",")[1];
+        setAttachedFile({ name: file.name, isPdf: true, data: base64, mimeType: "application/pdf" });
+      };
+      reader.readAsDataURL(file);
+    } else {
+      const formData = new FormData();
+      formData.append("file", file);
+      try {
+        const resp = await fetch("/api/extract-text", { method: "POST", body: formData });
+        if (!resp.ok) throw new Error(await resp.text());
+        const { text, filename } = await resp.json();
+        setAttachedFile({ name: filename, isPdf: false, text });
+      } catch (err) {
+        console.error("File extraction failed:", err);
+        alert("Nie udało się odczytać pliku. Obsługiwane formaty: .txt, .md, .csv, .pdf");
+      }
     }
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if ((inputValue.trim() || attachedFile) && !isLoading) {
-      const textToSend = attachedFile
-        ? `${inputValue}\n\n[Załącznik: ${attachedFile.name}]\n${attachedFile.text}`
-        : inputValue;
-      onSendMessage(textToSend);
+      if (attachedFile?.isPdf) {
+        const textToSend = inputValue.trim() || `[Załącznik: ${attachedFile.name}]`;
+        onSendMessage(textToSend, [{
+          filename: attachedFile.name,
+          data: attachedFile.data,
+          mime_type: attachedFile.mimeType,
+        }]);
+      } else {
+        const textToSend = attachedFile
+          ? `${inputValue}\n\n[Załącznik: ${attachedFile.name}]\n${attachedFile.text}`
+          : inputValue;
+        onSendMessage(textToSend, []);
+      }
       setInputValue('');
       setAttachedFile(null);
     }
@@ -1151,7 +1191,7 @@ export default function App() {
     }
   };
 
-  const handleSendMessage = async (messageText) => {
+  const handleSendMessage = async (messageText, attachments = []) => {
     if (!messageText.trim()) return;
 
     // Build conversation history from existing messages before adding the new one
@@ -1186,7 +1226,8 @@ export default function App() {
             conversation_history: conversationHistory,
             mode: currentVersion,
             variant: config.variant,
-            modelConfig: config
+            modelConfig: config,
+            attachments: attachments,
           })
         });
         if (!resp.ok) throw new Error(`Stream API Error (${config.variant})`);
@@ -1275,7 +1316,8 @@ export default function App() {
             conversation_history: conversationHistory,
             mode: currentVersion,
             variant: "production",
-            modelConfig: randomConfig
+            modelConfig: randomConfig,
+            attachments: attachments,
           })
         });
 
