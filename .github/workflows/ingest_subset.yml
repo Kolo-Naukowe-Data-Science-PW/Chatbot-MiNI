@@ -56,12 +56,18 @@ jobs:
           INGEST_MOUNT="-v $(pwd)/src/ingestion:/app/src/ingestion"
           docker compose run --rm \
             $INGEST_MOUNT \
-            -e SCRAPED_RAW_DIR=/app/src/data/subset_workspace/scraped_subset \
             -e FACTS_DIR=/app/src/data/subset_workspace/subset_facts \
             -e QDRANT_DIR=/app/src/data/qdrant_subset_db \
             ingest micromamba run -n app /bin/bash -c "
-              python -m ingestion.extract_facts &&
-              python -m ingestion.extract_curriculum_facts &&
+              mkdir -p /app/src/data/subset_workspace/subset_facts
+              while IFS= read -r key; do
+                for f in \"/app/src/data/facts/\${key}_facts.json\" \"/app/src/data/facts/curriculum_\${key}_facts.json\"; do
+                  if [ -f \"\$f\" ]; then
+                    cp \"\$f\" /app/src/data/subset_workspace/subset_facts/
+                    echo \"[copy] \$(basename \$f)\"
+                  fi
+                done
+              done < /app/src/data/subset_workspace/selected_sources.txt
               python -m ingestion.ingest_facts --force"
 
       - name: Ingest chunks into subset DB
