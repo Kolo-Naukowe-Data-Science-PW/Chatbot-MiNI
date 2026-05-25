@@ -154,6 +154,7 @@ def ingest_chunks(
             if client.collection_exists(COLLECTION_NAME_CHUNKS):
                 client.delete_collection(COLLECTION_NAME_CHUNKS)
                 logger.info("Dropped existing collection: %s", COLLECTION_NAME_CHUNKS)
+            client.close()
         except Exception as exc:
             logger.warning("Could not drop collection: %s", exc)
 
