@@ -41,9 +41,10 @@ logger = logging.getLogger(__name__)
 # Paths
 # ---------------------------------------------------------------------------
 
-HUMAN_TESTSET_PATH = Path(PROJECT_ROOT) / "src" / "evaluation" / "data" / "questions_with_links.csv"
-RAG_TESTSET_PATH   = Path(PROJECT_ROOT) / "src" / "evaluation" / "data" / "QA_rag.csv"
-GOLDEN_ANSWERS_PATH = Path(PROJECT_ROOT) / "src" / "evaluation" / "data" / "golden_answers.csv"
+HUMAN_TESTSET_PATH     = Path(PROJECT_ROOT) / "src" / "evaluation" / "data" / "questions_with_links.csv"
+RAG_TESTSET_PATH       = Path(PROJECT_ROOT) / "src" / "evaluation" / "data" / "QA_rag.csv"
+GENERATED_TESTSET_PATH = Path(PROJECT_ROOT) / "src" / "evaluation" / "data" / "final_notebooklm_QA.jsonl"
+GOLDEN_ANSWERS_PATH    = Path(PROJECT_ROOT) / "src" / "evaluation" / "data" / "golden_answers.csv"
 
 # ---------------------------------------------------------------------------
 # Test-set loading
@@ -111,6 +112,45 @@ def _load_rag_testset(path: Path, n: int | None) -> list[dict]:
                 break
     with_gold = sum(1 for r in rows if r["gold_urls"])
     logger.info("Loaded %d RAG testset rows (%d with gold URLs).", len(rows), with_gold)
+    return rows
+
+
+def _load_generated_testset(path: Path, n: int | None) -> list[dict]:
+    """Load final_notebooklm_QA.jsonl.  Fields: Pytanie, Odpowiedź, Źródła."""
+    _file_url_map: dict[str, str] = {}
+    _fum_path = Path(PROJECT_ROOT) / "src" / "evaluation" / "data" / "file_url_mapping.json"
+    if _fum_path.exists():
+        try:
+            with open(_fum_path, encoding="utf-8") as _f:
+                _file_url_map = json.load(_f)
+        except Exception:
+            pass
+
+    if not path.exists():
+        logger.error("Generated testset not found: %s", path)
+        return []
+    rows: list[dict] = []
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            query = (rec.get("Pytanie") or "").strip()
+            golden = (rec.get("Odpowiedź") or "").strip()
+            if not query:
+                continue
+            fname = (rec.get("Źródła") or "").strip()
+            fname_key = fname[:-4] if fname.endswith(".txt") else fname
+            gold_url = _file_url_map.get(fname_key, "")
+            rows.append({"query": query, "golden_answer": golden, "gold_urls": [gold_url] if gold_url else []})
+            if n and len(rows) >= n:
+                break
+    with_gold = sum(1 for r in rows if r["gold_urls"])
+    logger.info("Loaded %d generated testset rows (%d with gold URLs).", len(rows), with_gold)
     return rows
 
 
@@ -453,8 +493,11 @@ def run_experiment(
     elif testset == "rag":
         questions = _load_rag_testset(RAG_TESTSET_PATH, n_questions)
         has_gold_urls = True
+    elif testset == "generated":
+        questions = _load_generated_testset(GENERATED_TESTSET_PATH, n_questions)
+        has_gold_urls = True
     else:
-        raise ValueError(f"Unknown testset '{testset}'. Use 'human' or 'rag'.")
+        raise ValueError(f"Unknown testset '{testset}'. Use 'human', 'rag', or 'generated'.")
 
     if not questions:
         raise RuntimeError(f"No questions loaded from testset '{testset}'.")
@@ -465,8 +508,7 @@ def run_experiment(
         if testset == "human":
             golden_map = _load_golden_map(GOLDEN_ANSWERS_PATH)
             logger.info("Loaded %d golden answers for judge.", len(golden_map))
-        elif testset == "rag":
-            # For rag testset, golden answer is in the row itself
+        elif testset in ("rag", "generated"):
             golden_map = {r["query"]: r.get("golden_answer", "") for r in questions}
 
     # Per-query accumulators
@@ -595,12 +637,15 @@ def run_experiment(
 
     n_with_gold = sum(1 for r in per_query_rows if r.get("gold_urls_count", 0) > 0)
     max_gold = max((r.get("gold_urls_count", 0) for r in per_query_rows), default=0)
-    gold_eval_note = (
-        f"multi-gold via PDF_URL_MAP+file_url_mapping (up to {max_gold} gold URLs/question, "
-        f"{n_with_gold}/{len(per_query_rows)} questions evaluated)"
-        if testset == "rag"
-        else "single-gold (human-labeled URL)"
-    )
+    if testset == "rag":
+        gold_eval_note = (
+            f"multi-gold via PDF_URL_MAP+file_url_mapping (up to {max_gold} gold URLs/question, "
+            f"{n_with_gold}/{len(per_query_rows)} questions evaluated)"
+        )
+    elif testset == "generated":
+        gold_eval_note = f"single-gold via file_url_mapping ({n_with_gold}/{len(per_query_rows)} questions with URL)"
+    else:
+        gold_eval_note = "single-gold (human-labeled URL)"
 
     summary: dict = {
         "variant": variant,
@@ -663,8 +708,8 @@ def main() -> None:
     parser.add_argument(
         "--testset",
         required=True,
-        choices=["human", "rag"],
-        help="'human' = questions_with_links.csv, 'rag' = QA_rag.csv.",
+        choices=["human", "rag", "generated"],
+        help="'human' = questions_with_links.csv, 'rag' = QA_rag.csv, 'generated' = final_notebooklm_QA.jsonl.",
     )
     parser.add_argument(
         "--judge-model",

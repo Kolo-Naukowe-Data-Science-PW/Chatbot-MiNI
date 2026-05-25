@@ -26,7 +26,9 @@ on:
         options:
           - human
           - rag
+          - generated
           - both
+          - all
       judge_model:
         description: 'LLM judge model'
         required: false
@@ -53,7 +55,14 @@ jobs:
         run: |
           EVAL_MOUNT="-v $(pwd)/src/evaluation:/app/src/evaluation"
           if [ "${{ inputs.testset }}" = "both" ]; then
-            for ts in human rag; do
+            TESTSETS="human rag"
+          elif [ "${{ inputs.testset }}" = "all" ]; then
+            TESTSETS="human rag generated"
+          else
+            TESTSETS=""
+          fi
+          if [ -n "$TESTSETS" ]; then
+            for ts in $TESTSETS; do
               docker compose run --rm \
                 $EVAL_MOUNT \
                 -e VARIANT=${{ inputs.variant }} \

@@ -1,0 +1,54 @@
+name: Ingest Chunks Only
+
+on:
+  workflow_dispatch:
+    inputs:
+      drop_existing:
+        description: 'Drop existing mini_chunks collection before ingestion'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+      skip_schedules:
+        description: 'Exclude schedule_*.txt files'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+jobs:
+  ingest:
+    runs-on: self-hosted
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Copy .env
+        run: cp ~/.env.backup .env
+
+      - name: Stop API to avoid Qdrant lock
+        run: docker compose stop api
+
+      - name: Run chunk ingestion
+        run: |
+          DROP_FLAG=""
+          if [ "${{ inputs.drop_existing }}" = "true" ]; then
+            DROP_FLAG="--drop-existing"
+          fi
+          SKIP_FLAG=""
+          if [ "${{ inputs.skip_schedules }}" = "true" ]; then
+            SKIP_FLAG="--skip-schedules"
+          fi
+          INGEST_MOUNT="-v $(pwd)/src/ingestion:/app/src/ingestion"
+          docker compose run --rm \
+            $INGEST_MOUNT \
+            api micromamba run -n app python -m src.ingestion.ingest_chunks \
+              $DROP_FLAG $SKIP_FLAG
+
+      - name: Restart API
+        if: always()
+        run: docker compose start api
