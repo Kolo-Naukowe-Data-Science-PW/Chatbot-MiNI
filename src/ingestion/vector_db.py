@@ -232,6 +232,7 @@ def ensure_chunks_collection(path_to_database: str) -> None:
     """Create mini_chunks Qdrant collection if it doesn't exist."""
     client = _get_client(path_to_database)
     _ensure_chunks_collection(client)
+    client.close()
 
 
 def save_chunks_to_vector_db(
@@ -272,3 +273,4 @@ def save_chunks_to_vector_db(
             for j in range(len(batch_texts))
         ]
         client.upsert(collection_name=COLLECTION_NAME_CHUNKS, points=points)
+    client.close()
