@@ -11,7 +11,7 @@ from src.utils.paths import get_data_dir
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-INPUT_DIR = "src/data/facts"
+INPUT_DIR = os.environ.get("FACTS_DIR", "src/data/facts")
 DB_PATH = os.environ.get("QDRANT_DIR", get_data_dir("qdrant_db"))
 
 BATCH_SIZE = 10
@@ -34,11 +34,11 @@ def _load_facts_from_file(path: str, filename: str) -> tuple[list[str], list[str
         return [], []
 
 
-def main() -> None:
+def main(force: bool = False) -> None:
     """
     Ingest facts into Qdrant in batches of BATCH_SIZE files.
 
-    - Skips files already recorded in the progress tracker.
+    - Skips files already recorded in the progress tracker (unless --force).
     - Resets the Qdrant collection only on a fresh start (nothing ingested yet).
     - Safe to re-run after interruption: picks up where it left off.
 
@@ -46,13 +46,14 @@ def main() -> None:
     and src/data/qdrant_db/.
     """
     logger.info(f"Starting ingestion for pipeline version: {CURRENT_VERSION}")
+    logger.info(f"Input dir: {INPUT_DIR} | DB: {DB_PATH} | force={force}")
 
     if not os.path.exists(INPUT_DIR):
         logger.error(f"Input directory does not exist: {INPUT_DIR}")
         return
 
     all_files = sorted(f for f in os.listdir(INPUT_DIR) if f.endswith(".json"))
-    pending = [f for f in all_files if not is_ingested(f)]
+    pending = all_files if force else [f for f in all_files if not is_ingested(f)]
 
     already_done = len(all_files) - len(pending)
     logger.info(
@@ -64,8 +65,8 @@ def main() -> None:
         logger.info("Nothing to ingest — all files already processed.")
         return
 
-    if ingested_count() == 0:
-        logger.info("Fresh start: resetting Qdrant collection...")
+    if force or ingested_count() == 0:
+        logger.info("Resetting Qdrant collection...")
         reset_collection(DB_PATH)
     else:
         logger.info(f"Resuming: {ingested_count()} files already in Qdrant, skipping reset.")
@@ -116,4 +117,11 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--force", action="store_true",
+                        help="Ignore progress tracker and ingest all files in FACTS_DIR.")
+    parser.add_argument("--drop-existing", action="store_true",
+                        help="Alias for --force (drop existing collection and re-ingest).")
+    args = parser.parse_args()
+    main(force=args.force or args.drop_existing)

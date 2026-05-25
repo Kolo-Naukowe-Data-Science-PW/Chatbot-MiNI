@@ -468,6 +468,7 @@ def run_experiment(
     judge_model: str | None,
     output_dir: Path,
     n_questions: int | None,
+    subset_dir: Path | None = None,
 ) -> dict:
     """
     Run the full experiment for one *variant* on one *testset*.
@@ -486,15 +487,22 @@ def run_experiment(
 
     logger.info("=== Experiment: variant=%s  testset=%s  judge=%s ===", variant, testset, judge_model)
 
+    # Resolve test-set paths (subset_dir overrides defaults)
+    human_path     = (subset_dir / "human_subset.csv")     if subset_dir else HUMAN_TESTSET_PATH
+    rag_path       = (subset_dir / "rag_subset.csv")       if subset_dir else RAG_TESTSET_PATH
+    generated_path = (subset_dir / "generated_subset.jsonl") if subset_dir else GENERATED_TESTSET_PATH
+    if subset_dir:
+        logger.info("Subset mode: loading test sets from %s", subset_dir)
+
     # Load test questions
     if testset == "human":
-        questions = _load_human_testset(HUMAN_TESTSET_PATH, n_questions)
+        questions = _load_human_testset(human_path, n_questions)
         has_gold_urls = True
     elif testset == "rag":
-        questions = _load_rag_testset(RAG_TESTSET_PATH, n_questions)
+        questions = _load_rag_testset(rag_path, n_questions)
         has_gold_urls = True
     elif testset == "generated":
-        questions = _load_generated_testset(GENERATED_TESTSET_PATH, n_questions)
+        questions = _load_generated_testset(generated_path, n_questions)
         has_gold_urls = True
     else:
         raise ValueError(f"Unknown testset '{testset}'. Use 'human', 'rag', or 'generated'.")
@@ -728,17 +736,24 @@ def main() -> None:
         default=0,
         help="Maximum number of questions to evaluate (0 = all).",
     )
+    parser.add_argument(
+        "--subset-dir",
+        default=None,
+        help="Path to subset_workspace directory (contains *_subset.csv/.jsonl). "
+             "When set, test sets are loaded from there instead of the default data dir.",
+    )
     args = parser.parse_args()
 
     n = args.n_questions if args.n_questions > 0 else None
     output_dir = Path(args.output_dir)
+    subset_dir = Path(args.subset_dir) if args.subset_dir else None
 
     if args.variant == "all":
         from src.evaluation.pipeline_config import ALL_VARIANTS
         for v in ALL_VARIANTS:
-            run_experiment(v, args.testset, args.judge_model, output_dir, n)
+            run_experiment(v, args.testset, args.judge_model, output_dir, n, subset_dir)
     else:
-        run_experiment(args.variant, args.testset, args.judge_model, output_dir, n)
+        run_experiment(args.variant, args.testset, args.judge_model, output_dir, n, subset_dir)
 
 
 if __name__ == "__main__":

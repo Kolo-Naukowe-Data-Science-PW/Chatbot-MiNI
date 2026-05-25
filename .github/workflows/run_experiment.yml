@@ -29,6 +29,14 @@ on:
           - generated
           - both
           - all
+      subset:
+        description: 'Use subset DB + subset test sets (37 sources, 75% coverage each)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
       judge_model:
         description: 'LLM judge model'
         required: false
@@ -54,6 +62,15 @@ jobs:
       - name: Run experiment
         run: |
           EVAL_MOUNT="-v $(pwd)/src/evaluation:/app/src/evaluation"
+
+          # Subset mode: override Qdrant dirs + pass --subset-dir
+          SUBSET_ENV=""
+          SUBSET_FLAG=""
+          if [ "${{ inputs.subset }}" = "true" ]; then
+            SUBSET_ENV="-e QDRANT_DIR=/app/src/data/qdrant_subset_db -e QDRANT_CHUNKS_DIR=/app/src/data/qdrant_subset_db"
+            SUBSET_FLAG="--subset-dir /app/src/data/subset_workspace"
+          fi
+
           if [ "${{ inputs.testset }}" = "both" ]; then
             TESTSETS="human rag"
           elif [ "${{ inputs.testset }}" = "all" ]; then
@@ -65,6 +82,7 @@ jobs:
             for ts in $TESTSETS; do
               docker compose run --rm \
                 $EVAL_MOUNT \
+                $SUBSET_ENV \
                 -e VARIANT=${{ inputs.variant }} \
                 -e TESTSET=${ts} \
                 -e JUDGE_MODEL=${{ inputs.judge_model }} \
@@ -74,11 +92,13 @@ jobs:
                   --testset ${ts} \
                   --judge-model "${{ inputs.judge_model }}" \
                   --n-questions ${{ inputs.n_questions }} \
-                  --output-dir src/data/experiments
+                  --output-dir src/data/experiments \
+                  $SUBSET_FLAG
             done
           else
             docker compose run --rm \
               $EVAL_MOUNT \
+              $SUBSET_ENV \
               -e VARIANT=${{ inputs.variant }} \
               -e TESTSET=${{ inputs.testset }} \
               -e JUDGE_MODEL=${{ inputs.judge_model }} \
@@ -88,7 +108,8 @@ jobs:
                 --testset ${{ inputs.testset }} \
                 --judge-model "${{ inputs.judge_model }}" \
                 --n-questions ${{ inputs.n_questions }} \
-                --output-dir src/data/experiments
+                --output-dir src/data/experiments \
+                $SUBSET_FLAG
           fi
 
       - name: Restart API

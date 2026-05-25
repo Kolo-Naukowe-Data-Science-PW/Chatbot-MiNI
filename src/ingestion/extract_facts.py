@@ -13,7 +13,8 @@ from src.ingestion.progress import is_facts_extracted, mark_facts_extracted
 config = get_config()
 
 INPUT_DIR = "src/data/processed_text"
-OUTPUT_DIR = "src/data/facts"
+OUTPUT_DIR = os.environ.get("FACTS_DIR", "src/data/facts")
+SCRAPED_RAW_DIR = os.environ.get("SCRAPED_RAW_DIR", "src/data/scraped_raw")
 
 SYSTEM_PROMPT = """
     Jesteś inteligentnym asystentem z Wydziału MiNI PW, który pomaga wyodrębniać fakty z różnych dokumentów.
@@ -116,7 +117,7 @@ def main() -> None:
     """
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    input_folders = ["src/data/scraped_raw", "src/data/processed_text"]
+    input_folders = [SCRAPED_RAW_DIR, "src/data/processed_text"]
 
     mode_info = (
         "LLM extraction" if config["use_llm_for_facts"] else "Raw text passthrough"

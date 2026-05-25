@@ -20,8 +20,8 @@ from src.ingestion.progress import is_facts_extracted, mark_facts_extracted
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-INPUT_DIR = "src/data/scraped_raw"
-OUTPUT_DIR = "src/data/facts"
+INPUT_DIR = os.environ.get("SCRAPED_RAW_DIR", "src/data/scraped_raw")
+OUTPUT_DIR = os.environ.get("FACTS_DIR", "src/data/facts")
 
 _CURRICULUM_URL_PATTERNS = ["plan-studiow", "Plan-studiow"]
 

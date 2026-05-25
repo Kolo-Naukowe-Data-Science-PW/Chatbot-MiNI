@@ -4,6 +4,7 @@ volumes:
   final_storage:
   qdrant_db:
   qdrant_chunks_db:
+  qdrant_subset_db:
   hf_cache:
   data_storage:
 
@@ -16,6 +17,7 @@ x-env: &env
   PIPELINE_VERSION: ${PIPELINE_VERSION:-3}
   QDRANT_DIR: /app/src/data/qdrant_db
   QDRANT_CHUNKS_DIR: /app/src/data/qdrant_chunks_db
+  QDRANT_SUBSET_DIR: /app/src/data/qdrant_subset_db
 
 services:
 
@@ -53,6 +55,7 @@ services:
       - data_storage:/app/src/data
       - qdrant_db:/app/src/data/qdrant_db
       - qdrant_chunks_db:/app/src/data/qdrant_chunks_db
+      - qdrant_subset_db:/app/src/data/qdrant_subset_db
       - hf_cache:/root/.cache/huggingface
     #depends_on:
     #  scraper:
@@ -113,6 +116,7 @@ services:
     volumes:
       - qdrant_db:/app/src/data/qdrant_db
       - qdrant_chunks_db:/app/src/data/qdrant_chunks_db
+      - qdrant_subset_db:/app/src/data/qdrant_subset_db
     expose:
       - "8000"
     restart: always
