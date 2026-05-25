@@ -46,7 +46,7 @@ jobs:
           INGEST_MOUNT="-v $(pwd)/src/ingestion:/app/src/ingestion"
           docker compose run --rm \
             $INGEST_MOUNT \
-            api micromamba run -n app python -m src.ingestion.ingest_chunks \
+            ingest micromamba run -n app python -m src.ingestion.ingest_chunks \
               $DROP_FLAG $SKIP_FLAG
 
       - name: Restart API
