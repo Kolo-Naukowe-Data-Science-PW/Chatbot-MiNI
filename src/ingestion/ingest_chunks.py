@@ -31,11 +31,11 @@ from src.utils.paths import get_data_dir
 
 logger = logging.getLogger(__name__)
 
-CHUNK_SIZE = 128
-CHUNK_OVERLAP = 16
+CHUNK_SIZE = 64
+CHUNK_OVERLAP = 8
 SCRAPED_DIR = Path(PROJECT_ROOT) / "src" / "data" / "scraped_raw"
 DATABASE_PATH = os.environ.get("QDRANT_CHUNKS_DIR", get_data_dir("qdrant_chunks_db"))
-BATCH_SIZE = 16
+BATCH_SIZE = 512
 
 
 def _split_sentences(text: str) -> list[str]:
