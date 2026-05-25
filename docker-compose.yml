@@ -3,6 +3,7 @@ version: "3.9"
 volumes:
   final_storage:
   qdrant_db:
+  qdrant_chunks_db:
   hf_cache:
   data_storage:
 
@@ -14,6 +15,7 @@ x-env: &env
   FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY}
   PIPELINE_VERSION: ${PIPELINE_VERSION:-3}
   QDRANT_DIR: /app/src/data/qdrant_db
+  QDRANT_CHUNKS_DIR: /app/src/data/qdrant_chunks_db
 
 services:
 
@@ -50,6 +52,7 @@ services:
     volumes:
       - data_storage:/app/src/data
       - qdrant_db:/app/src/data/qdrant_db
+      - qdrant_chunks_db:/app/src/data/qdrant_chunks_db
       - hf_cache:/root/.cache/huggingface
     #depends_on:
     #  scraper:
@@ -109,6 +112,7 @@ services:
     environment: *env
     volumes:
       - qdrant_db:/app/src/data/qdrant_db
+      - qdrant_chunks_db:/app/src/data/qdrant_chunks_db
     expose:
       - "8000"
     restart: always

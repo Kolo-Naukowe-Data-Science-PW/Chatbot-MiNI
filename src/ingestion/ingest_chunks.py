@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 CHUNK_SIZE = 512
 CHUNK_OVERLAP = 64
 SCRAPED_DIR = Path(PROJECT_ROOT) / "src" / "data" / "scraped_raw"
-DATABASE_PATH = os.environ.get("QDRANT_DIR", get_data_dir("qdrant_db"))
+DATABASE_PATH = os.environ.get("QDRANT_CHUNKS_DIR", get_data_dir("qdrant_chunks_db"))
 BATCH_SIZE = 64
 
 

@@ -10,8 +10,10 @@ Each returned dict has keys: text_chunk, source_url, score.
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
+from qdrant_client import QdrantClient
 from qdrant_client.models import (
     FieldCondition,
     Filter,
@@ -30,10 +32,25 @@ from src.api.retrieval import (
 )
 from src.evaluation.pipeline_config import PipelineConfig
 from src.ingestion.vector_db import COLLECTION_NAME
+from src.utils.paths import get_data_dir
 
 logger = logging.getLogger(__name__)
 
 COLLECTION_NAME_CHUNKS = "mini_chunks"
+
+_chunks_client: QdrantClient | None = None
+
+
+def _get_chunks_qdrant_client() -> QdrantClient:
+    global _chunks_client
+    if _chunks_client is None:
+        chunks_dir = os.environ.get("QDRANT_CHUNKS_DIR", get_data_dir("qdrant_chunks_db"))
+        _chunks_client = QdrantClient(path=chunks_dir)
+    return _chunks_client
+
+
+def _client_for(collection: str) -> QdrantClient:
+    return _get_chunks_qdrant_client() if collection == COLLECTION_NAME_CHUNKS else _get_qdrant_client()
 
 # Top-N URLs retrieved in stage 1 of two-stage retrieval
 _TWO_STAGE_TOP_URLS = 10
@@ -61,7 +78,7 @@ def _hybrid_query(
     url_filter: Filter | None = None,
 ) -> list[dict[str, Any]]:
     """RRF-fused hybrid retrieval from *collection*, returning up to *n* results."""
-    client = _get_qdrant_client()
+    client = _client_for(collection)
     dense_vec = _dense_vector(query)
     sparse_vec = _get_sparse_vector(query)
 
@@ -90,7 +107,7 @@ def _dense_query(
     url_filter: Filter | None = None,
 ) -> list[dict[str, Any]]:
     """Pure dense (cosine) retrieval from *collection*, returning up to *n* results."""
-    client = _get_qdrant_client()
+    client = _client_for(collection)
     dense_vec = _dense_vector(query)
 
     results = client.query_points(
@@ -134,8 +151,7 @@ def _collection_for_content(content_type: str) -> str:
 
 def _check_collection_exists(collection: str) -> bool:
     try:
-        client = _get_qdrant_client()
-        return client.collection_exists(collection)
+        return _client_for(collection).collection_exists(collection)
     except Exception as exc:
         logger.warning("Could not check collection '%s': %s", collection, exc)
         return False
