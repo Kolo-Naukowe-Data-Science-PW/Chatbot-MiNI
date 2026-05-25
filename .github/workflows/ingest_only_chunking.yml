@@ -23,7 +23,7 @@ on:
 jobs:
   ingest:
     runs-on: self-hosted
-    timeout-minutes: 1440
+    timeout-minutes: 2000
     steps:
       - uses: actions/checkout@v4
 
