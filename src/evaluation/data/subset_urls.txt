@@ -1,0 +1,40 @@
+# 37 sources covering 75% of both generated (NB) and human question datasets.
+# Scraped fresh into data_storage/scraped_raw_subset/ by scrape_subset.py.
+# file:// entries are read from src/manual_pdfs/ (baked into the Docker image).
+file://Regulamin studiów w PW (5).pdf
+https://usosweb.usos.pw.edu.pl/kontroler.php?_action=katalog2/przedmioty/pokazPrzedmiot&prz_kod=1120-MA000-LSP-0684&callback=g_1bb9ff53
+https://usosweb.usos.pw.edu.pl/kontroler.php?_action=katalog2/przedmioty/pokazPrzedmiot&prz_kod=1120-MA000-LSP-0686&callback=g_1bb9ff53
+https://usosweb.usos.pw.edu.pl/kontroler.php?_action=katalog2/przedmioty/pokazPrzedmiot&prz_kod=1170-IN000-MSP-0662&callback=g_1bb9ff53
+https://usosweb.usos.pw.edu.pl/kontroler.php?_action=katalog2/przedmioty/wybierzGrupePrzedmiotow&jed_org_kod=112000&callback=g_19c1f0c8&tab_offset=0&tab_limit=30&tab_order=2a1a
+https://ww2.mini.pw.edu.pl/kolejny-etap-rekrutacji-do-projektu-szkola-orlow-na-pw
+https://ww2.mini.pw.edu.pl/laboratorium/laboratoria
+https://ww2.mini.pw.edu.pl/laboratorium/system-druku
+https://ww2.mini.pw.edu.pl/laboratorium/uslugi
+https://ww2.mini.pw.edu.pl/laboratorium/uslugi/usluga-wirtualki
+https://ww2.mini.pw.edu.pl/studia/dziekanat/dla-dyplomantow-i-promotorow
+https://ww2.mini.pw.edu.pl/studia/dziekanat/dokumenty-i-formularze
+https://ww2.mini.pw.edu.pl/studia/dziekanat/informacje-dziekanatu
+https://ww2.mini.pw.edu.pl/studia/dziekanat/kontakt-i-dyzury
+https://ww2.mini.pw.edu.pl/studia/dziekanat/sprawy-socjalne
+https://ww2.mini.pw.edu.pl/studia/inzynierskie-i-licencjackie/praktyki
+https://ww2.mini.pw.edu.pl/studia/plany-zajec-i-procedury/plan-sesji
+https://ww2.mini.pw.edu.pl/studia/plany-zajec-i-procedury/plany-zajec
+https://ww2.mini.pw.edu.pl/wp-content/uploads/20250529-iad-plan-studiow-inz.pdf
+https://ww2.mini.pw.edu.pl/wp-content/uploads/Informacje-bhp-WMiNI.pdf
+https://ww2.mini.pw.edu.pl/wp-content/uploads/Plan-studiow-I-st-MAD.pdf
+https://ww2.mini.pw.edu.pl/wp-content/uploads/Plan-studiow-I-st-Mat-1.pdf
+https://ww2.mini.pw.edu.pl/wp-content/uploads/Poradnik-Stypendialny-SSPW-2025-2026.pdf
+https://ww2.mini.pw.edu.pl/wp-content/uploads/Procedura-przeprowadzania-sprawdzian%C3%B3w.pdf
+https://ww2.mini.pw.edu.pl/wp-content/uploads/Warunki-rejestracji-na-kolejny-semestr-rok-studiow-22.11.2023.pdf
+https://ww2.mini.pw.edu.pl/wp-content/uploads/Warunki-rejestracji-na-kolejny-semestr_rok-studi%C3%B3w.pdf
+https://ww2.mini.pw.edu.pl/wp-content/uploads/f676afa0d765aa67153d0b03ff3026d9.pdf
+https://ww2.mini.pw.edu.pl/wp-content/uploads/katalog-obieralne-2023.pdf
+https://ww2.mini.pw.edu.pl/wp-content/uploads/parking_zasady_2013_05_20.pdf
+https://ww2.mini.pw.edu.pl/wp-content/uploads/pracownicy/rada/uch_06_2017_07_zal1.pdf
+https://ww2.mini.pw.edu.pl/wp-content/uploads/praktyki_prezentacja_2025.pdf
+https://ww2.mini.pw.edu.pl/wp-content/uploads/regulamin_praktyk_14_04_2022.pdf
+https://ww2.mini.pw.edu.pl/wp-content/uploads/zasadyRekrutacjiMINI_20210217.pdf
+https://ww2.mini.pw.edu.pl/wydzial/kontakt
+https://ww2.mini.pw.edu.pl/wydzial/pracownicy/prac_kaczmarski_krzysztof/
+https://www.bss.ca.pw.edu.pl/Stypendia/Stypendia-z-Funduszu-Stypendialnego/Stypendium-Rektora
+https://www.pw.edu.pl/studia/harmonogram-roku-akademickiego

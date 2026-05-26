@@ -100,7 +100,7 @@ def extract_facts_list(text: str, filename: str) -> list[str]:
         return []
 
 
-def main() -> None:
+def main(force: bool = False) -> None:
     """
     Main function to extract facts from text files and save them as structured JSON.
 
@@ -109,11 +109,8 @@ def main() -> None:
 
     Parameters
     ----------
-    None
-
-    Returns
-    -------
-    None
+    force : bool
+        If True, skip the progress-tracker check and re-extract all files.
     """
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -174,7 +171,7 @@ def main() -> None:
             facts_filename = f"{base_name}_facts.json"
             out_path = os.path.join(OUTPUT_DIR, facts_filename)
 
-            if is_facts_extracted(facts_filename) or os.path.exists(out_path):
+            if not force and (is_facts_extracted(facts_filename) or os.path.exists(out_path)):
                 logger.info(f"SKIP (already extracted): {txt_file}")
                 if not is_facts_extracted(facts_filename):
                     mark_facts_extracted(facts_filename)
@@ -197,4 +194,9 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--force", action="store_true",
+                        help="Re-extract all files, ignoring the progress tracker.")
+    args = parser.parse_args()
+    main(force=args.force)

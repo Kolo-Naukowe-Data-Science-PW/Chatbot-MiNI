@@ -102,7 +102,7 @@ def _extract_facts_from_text(text: str, filename: str) -> list[str]:
     return all_facts
 
 
-def main() -> None:
+def main(force: bool = False) -> None:
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     curriculum_files: list[tuple[str, str, str]] = []
@@ -131,7 +131,7 @@ def main() -> None:
         out_name = f"curriculum_{base}_facts.json"
         out_path = os.path.join(OUTPUT_DIR, out_name)
 
-        if is_facts_extracted(out_name):
+        if not force and is_facts_extracted(out_name):
             logger.info(f"SKIP (already extracted): {filename}")
             continue
 
@@ -159,4 +159,9 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--force", action="store_true",
+                        help="Re-extract all files, ignoring the progress tracker.")
+    args = parser.parse_args()
+    main(force=args.force)

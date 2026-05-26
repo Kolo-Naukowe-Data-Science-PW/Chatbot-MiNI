@@ -114,6 +114,7 @@ services:
     ]
     environment: *env
     volumes:
+      - data_storage:/app/src/data
       - qdrant_db:/app/src/data/qdrant_db
       - qdrant_chunks_db:/app/src/data/qdrant_chunks_db
       - qdrant_subset_db:/app/src/data/qdrant_subset_db

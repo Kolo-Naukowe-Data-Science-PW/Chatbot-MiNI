@@ -12,18 +12,6 @@ on:
           - facts
           - chunks
           - both
-      drop_existing:
-        description: 'Drop existing subset collection(s) before ingestion'
-        required: false
-        default: 'true'
-        type: choice
-        options:
-          - 'true'
-          - 'false'
-      scraped_dir:
-        description: 'Path to scraped .txt files on runner (default: /root/scraped_raw_backup)'
-        required: false
-        default: '/root/scraped_raw_backup'
 
 jobs:
   ingest:
@@ -38,17 +26,28 @@ jobs:
       - name: Stop API to avoid Qdrant lock
         run: docker compose stop api
 
-      - name: Prepare scraped subset (copy 37 source files)
+      - name: Scrape subset URLs into scraped_raw_subset
         run: |
           EVAL_MOUNT="-v $(pwd)/src/evaluation:/app/src/evaluation"
-          DATA_MOUNT="-v ${{ inputs.scraped_dir }}:/scraped_raw_host:ro"
+          INGEST_MOUNT="-v $(pwd)/src/ingestion:/app/src/ingestion"
           docker compose run --rm \
             $EVAL_MOUNT \
-            $DATA_MOUNT \
-            ingest micromamba run -n app python -m src.evaluation.prepare_chunking_subset \
-              --scraped-dir /scraped_raw_host \
-              --output-dir /app/src/data/subset_workspace \
-              --sources-file src/evaluation/data/subset_sources.txt
+            $INGEST_MOUNT \
+            ingest micromamba run -n app python -m src.ingestion.scrape_subset \
+              --urls-file src/evaluation/data/subset_urls.txt \
+              --output-dir /app/src/data/scraped_raw_subset
+
+      - name: Extract facts from subset (LLM)
+        if: ${{ inputs.mode == 'facts' || inputs.mode == 'both' }}
+        run: |
+          INGEST_MOUNT="-v $(pwd)/src/ingestion:/app/src/ingestion"
+          docker compose run --rm \
+            $INGEST_MOUNT \
+            -e SCRAPED_RAW_DIR=/app/src/data/scraped_raw_subset \
+            -e FACTS_DIR=/app/src/data/facts_subset \
+            ingest micromamba run -n app /bin/bash -c "
+              python -m src.ingestion.extract_facts --force
+              python -m src.ingestion.extract_curriculum_facts --force"
 
       - name: Ingest facts into subset DB
         if: ${{ inputs.mode == 'facts' || inputs.mode == 'both' }}
@@ -56,34 +55,33 @@ jobs:
           INGEST_MOUNT="-v $(pwd)/src/ingestion:/app/src/ingestion"
           docker compose run --rm \
             $INGEST_MOUNT \
-            -e FACTS_DIR=/app/src/data/subset_workspace/subset_facts \
+            -e FACTS_DIR=/app/src/data/facts_subset \
             -e QDRANT_DIR=/app/src/data/qdrant_subset_db \
-            ingest micromamba run -n app /bin/bash -c "
-              mkdir -p /app/src/data/subset_workspace/subset_facts
-              while IFS= read -r key; do
-                for f in \"/app/src/data/facts/\${key}_facts.json\" \"/app/src/data/facts/curriculum_\${key}_facts.json\"; do
-                  if [ -f \"\$f\" ]; then
-                    cp \"\$f\" /app/src/data/subset_workspace/subset_facts/
-                    echo \"[copy] \$(basename \$f)\"
-                  fi
-                done
-              done < /app/src/data/subset_workspace/selected_sources.txt
-              python -m ingestion.ingest_facts --force"
+            ingest micromamba run -n app python -m ingestion.ingest_facts --force
 
       - name: Ingest chunks into subset DB
         if: ${{ inputs.mode == 'chunks' || inputs.mode == 'both' }}
         run: |
           INGEST_MOUNT="-v $(pwd)/src/ingestion:/app/src/ingestion"
-          DROP_FLAG=""
-          if [ "${{ inputs.drop_existing }}" = "true" ]; then
-            DROP_FLAG="--drop-existing"
-          fi
           docker compose run --rm \
             $INGEST_MOUNT \
             -e QDRANT_CHUNKS_DIR=/app/src/data/qdrant_subset_db \
             ingest micromamba run -n app python -m src.ingestion.ingest_chunks \
-              --scraped-dir /app/src/data/subset_workspace/scraped_subset \
-              $DROP_FLAG
+              --scraped-dir /app/src/data/scraped_raw_subset \
+              --drop-existing
+
+      - name: Prepare test set subsets (generated + human)
+        run: |
+          EVAL_MOUNT="-v $(pwd)/src/evaluation:/app/src/evaluation"
+          docker compose run --rm \
+            $EVAL_MOUNT \
+            ingest micromamba run -n app /bin/bash -c "
+              python /app/src/utils/build_file_url_mapping.py /app/src/data/scraped_raw_subset \
+                > /app/src/evaluation/data/file_url_mapping.json
+              python -m src.evaluation.prepare_chunking_subset \
+                --scraped-dir /app/src/data/scraped_raw_subset \
+                --output-dir /app/src/data/subset_workspace \
+                --sources-file src/evaluation/data/subset_sources.txt"
 
       - name: Restart API
         if: always()
