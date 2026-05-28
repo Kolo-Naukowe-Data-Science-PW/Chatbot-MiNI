@@ -21,6 +21,9 @@ jobs:
       - name: Create results directory
         run: mkdir -p src/evaluation/results
 
+      - name: Build API image (force rebuild)
+        run: docker compose build --no-cache api
+
       - name: Install metric dependencies
         run: |
           docker compose run --rm --no-deps api \
