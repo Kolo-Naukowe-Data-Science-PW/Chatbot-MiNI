@@ -82,7 +82,7 @@ For Wilcoxon test:
 
 For Gamma test:
     Input: ranks of correct answer position (1-5 or ∞)
-    
+
 For Kappa:
     Input: sets of retrieved URLs per query, optionally relevant URLs
 
@@ -126,7 +126,7 @@ With coverage:
 === THESIS ALIGNMENT ===
 
 ✓ Wilcoxon: Exact tie-averaging implementation per Section 5.1
-✓ Gamma: Concordant/discordant pair calculation per Section 5.2  
+✓ Gamma: Concordant/discordant pair calculation per Section 5.2
 ✓ Kappa: Contingency table with observed/expected agreement per Section 5.3
 ✓ Permutation: Sign-flip resampling per Section 5.4
 

@@ -39,10 +39,16 @@ from src.evaluation.benchmark import (  # noqa: E402
 )
 
 KEY_METRICS = [
-    "hit@3", "hit@5", "hit@10",
-    "mrr@3", "mrr@5", "mrr@10",
-    "mrrw@3", "mrrw@10",
-    "ndcg@10", "map@10",
+    "hit@3",
+    "hit@5",
+    "hit@10",
+    "mrr@3",
+    "mrr@5",
+    "mrr@10",
+    "mrrw@3",
+    "mrrw@10",
+    "ndcg@10",
+    "map@10",
     "recall@10",
 ]
 
@@ -54,25 +60,29 @@ def _get_db_urls(api_base: str) -> set[str]:
     return {normalize_url(u) for u in data["urls"]}
 
 
-def _call_retrieval(api_base: str, query: str, top_k: int,
-                    use_url_aggregation: bool) -> list[str]:
+def _call_retrieval(
+    api_base: str, query: str, top_k: int, use_url_aggregation: bool
+) -> list[str]:
     url = api_base.rstrip("/") + "/retrieval"
-    payload = json.dumps({
-        "query": query,
-        "top_k": top_k,
-        "use_rerank": True,
-        "use_rewrite": False,
-        "use_url_aggregation": use_url_aggregation,
-        "use_bm25_prefilter": False,
-    }).encode()
+    payload = json.dumps(
+        {
+            "query": query,
+            "top_k": top_k,
+            "use_rerank": True,
+            "use_rewrite": False,
+            "use_url_aggregation": use_url_aggregation,
+            "use_bm25_prefilter": False,
+        }
+    ).encode()
     req = Request(url, data=payload, headers={"Content-Type": "application/json"})
     with urlopen(req, timeout=120) as resp:
         data = json.loads(resp.read())
     return [normalize_url(u) for u in data["urls"] if u]
 
 
-def _evaluate(gold, ks: list[int], api_base: str,
-              use_url_aggregation: bool, label: str) -> dict[str, float]:
+def _evaluate(
+    gold, ks: list[int], api_base: str, use_url_aggregation: bool, label: str
+) -> dict[str, float]:
     max_k = max(ks)
     total_rel = 1
     accum: dict[str, list[float]] = {}
@@ -84,10 +94,16 @@ def _evaluate(gold, ks: list[int], api_base: str,
         for k in ks:
             accum.setdefault(f"hit@{k}", []).append(hit_at_k(rel_scores, k))
             accum.setdefault(f"mrr@{k}", []).append(mrr_at_k(rel_scores, k))
-            accum.setdefault(f"mrrw@{k}", []).append(mrr_weighted_single(urls[:k], row.target_url))
-            accum.setdefault(f"recall@{k}", []).append(recall_at_k(rel_scores, k, total_rel))
+            accum.setdefault(f"mrrw@{k}", []).append(
+                mrr_weighted_single(urls[:k], row.target_url)
+            )
+            accum.setdefault(f"recall@{k}", []).append(
+                recall_at_k(rel_scores, k, total_rel)
+            )
             accum.setdefault(f"ndcg@{k}", []).append(ndcg_at_k(rel_scores, k))
-            accum.setdefault(f"map@{k}", []).append(average_precision_at_k(rel_scores, k, total_rel))
+            accum.setdefault(f"map@{k}", []).append(
+                average_precision_at_k(rel_scores, k, total_rel)
+            )
 
         print(f"  [{label}] [{idx + 1}/{len(gold)}] {row.query[:70]}")
 
@@ -108,11 +124,15 @@ def _print_comparison(a: dict, b: dict, label_a: str, label_b: str) -> dict:
         sign = "+" if delta >= 0 else ""
         flag = " <" if delta < -0.005 else (" >" if delta > 0.005 else "")
         print(f"{m:<{col_w}} {va:>14.4f} {vb:>14.4f} {sign}{delta:>9.4f}{flag}")
-        comparison[m] = {label_a: round(va, 6), label_b: round(vb, 6), "delta": round(delta, 6)}
+        comparison[m] = {
+            label_a: round(va, 6),
+            label_b: round(vb, 6),
+            "delta": round(delta, 6),
+        }
 
     print(sep)
     improved = sum(1 for v in comparison.values() if v["delta"] > 0.001)
-    degraded  = sum(1 for v in comparison.values() if v["delta"] < -0.001)
+    degraded = sum(1 for v in comparison.values() if v["delta"] < -0.001)
     print(f"\nImproved (aggregation > baseline): {improved}/{len(shared)}")
     print(f"Degraded  (aggregation < baseline): {degraded}/{len(shared)}")
     return comparison
@@ -123,11 +143,18 @@ def main() -> None:
         description="Ablation: first-occurrence dedup vs URL-level max-score aggregation."
     )
     parser.add_argument("--api-base-url", default="http://api:8000")
-    parser.add_argument("--input-csv", default="src/evaluation/data/questions_with_links.csv")
-    parser.add_argument("--output-dir", default="src/evaluation/results/url_aggregation_check")
+    parser.add_argument(
+        "--input-csv", default="src/evaluation/data/questions_with_links.csv"
+    )
+    parser.add_argument(
+        "--output-dir", default="src/evaluation/results/url_aggregation_check"
+    )
     parser.add_argument("--ks", default="3,5,10")
-    parser.add_argument("--check-coverage", action="store_true",
-                        help="Also evaluate on covered-only subset (cch@k).")
+    parser.add_argument(
+        "--check-coverage",
+        action="store_true",
+        help="Also evaluate on covered-only subset (cch@k).",
+    )
     args = parser.parse_args()
 
     ks = [int(k.strip()) for k in args.ks.split(",")]
@@ -145,12 +172,16 @@ def main() -> None:
     print("=" * 60)
     print("RUN 1/2 — baseline: first-occurrence URL deduplication")
     print("=" * 60)
-    summary_a = _evaluate(gold, ks, args.api_base_url, use_url_aggregation=False, label="baseline")
+    summary_a = _evaluate(
+        gold, ks, args.api_base_url, use_url_aggregation=False, label="baseline"
+    )
 
     print("\n" + "=" * 60)
     print("RUN 2/2 — URL-level max-score aggregation")
     print("=" * 60)
-    summary_b = _evaluate(gold, ks, args.api_base_url, use_url_aggregation=True, label="url_agg")
+    summary_b = _evaluate(
+        gold, ks, args.api_base_url, use_url_aggregation=True, label="url_agg"
+    )
 
     print("\n\n========== COMPARISON: baseline vs url_aggregation ==========")
     comparison = _print_comparison(summary_a, summary_b, "baseline", "url_agg")
@@ -162,18 +193,36 @@ def main() -> None:
         print("\nFetching DB URLs for coverage-corrected metrics...")
         db_urls = _get_db_urls(args.api_base_url)
         gold_covered = [r for r in gold if normalize_url(r.target_url) in db_urls]
-        print(f"Coverage filter: {len(gold_covered)}/{len(gold)} queries have gold URL in DB\n")
+        print(
+            f"Coverage filter: {len(gold_covered)}/{len(gold)} queries have gold URL in DB\n"
+        )
         if gold_covered:
             print("=" * 60)
             print("CCH RUN 1/2 — baseline (covered only)")
             print("=" * 60)
-            cch_a = _evaluate(gold_covered, ks, args.api_base_url, use_url_aggregation=False, label="cch_baseline")
+            cch_a = _evaluate(
+                gold_covered,
+                ks,
+                args.api_base_url,
+                use_url_aggregation=False,
+                label="cch_baseline",
+            )
             print("\n" + "=" * 60)
             print("CCH RUN 2/2 — url_aggregation (covered only)")
             print("=" * 60)
-            cch_b = _evaluate(gold_covered, ks, args.api_base_url, use_url_aggregation=True, label="cch_url_agg")
-            print("\n\n===== CCH COMPARISON: baseline vs url_aggregation (covered only) =====")
-            cch_comparison = _print_comparison(cch_a, cch_b, "cch_baseline", "cch_url_agg")
+            cch_b = _evaluate(
+                gold_covered,
+                ks,
+                args.api_base_url,
+                use_url_aggregation=True,
+                label="cch_url_agg",
+            )
+            print(
+                "\n\n===== CCH COMPARISON: baseline vs url_aggregation (covered only) ====="
+            )
+            cch_comparison = _print_comparison(
+                cch_a, cch_b, "cch_baseline", "cch_url_agg"
+            )
 
     ts = datetime.now().strftime("%Y%m%dT%H%M%S")
     out_path = output_dir / f"comparison_url_aggregation_{ts}.json"

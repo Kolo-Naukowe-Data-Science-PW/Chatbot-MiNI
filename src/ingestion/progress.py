@@ -43,6 +43,7 @@ def _save(progress: dict) -> None:
 
 # ── read ────────────────────────────────────────────────────────────────────
 
+
 def is_scraped(url: str) -> bool:
     return url in _load()["scraped"]
 
@@ -65,6 +66,7 @@ def get_status() -> dict:
 
 
 # ── write ────────────────────────────────────────────────────────────────────
+
 
 def mark_scraped(url: str) -> None:
     p = _load()
@@ -90,7 +92,7 @@ def mark_ingested(facts_filename: str) -> None:
 def clear_progress_for_prefix(prefix: str, stages: list[str] | None = None) -> None:
     """Remove all entries starting with prefix from specified (or all) pipeline stages."""
     p = _load()
-    for key in (stages or list(p.keys())):
+    for key in stages or list(p.keys()):
         if key in p:
             p[key] = [x for x in p[key] if not str(x).startswith(prefix)]
     _save(p)

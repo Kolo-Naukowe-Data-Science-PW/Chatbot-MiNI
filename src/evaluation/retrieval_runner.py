@@ -44,13 +44,20 @@ _chunks_client: QdrantClient | None = None
 def _get_chunks_qdrant_client() -> QdrantClient:
     global _chunks_client
     if _chunks_client is None:
-        chunks_dir = os.environ.get("QDRANT_CHUNKS_DIR", get_data_dir("qdrant_chunks_db"))
+        chunks_dir = os.environ.get(
+            "QDRANT_CHUNKS_DIR", get_data_dir("qdrant_chunks_db")
+        )
         _chunks_client = QdrantClient(path=chunks_dir)
     return _chunks_client
 
 
 def _client_for(collection: str) -> QdrantClient:
-    return _get_chunks_qdrant_client() if collection == COLLECTION_NAME_CHUNKS else _get_qdrant_client()
+    return (
+        _get_chunks_qdrant_client()
+        if collection == COLLECTION_NAME_CHUNKS
+        else _get_qdrant_client()
+    )
+
 
 # Top-N URLs retrieved in stage 1 of two-stage retrieval
 _TWO_STAGE_TOP_URLS = 10
@@ -60,11 +67,14 @@ _TWO_STAGE_TOP_URLS = 10
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+
 def _dense_vector(query: str) -> list[float]:
     return embedder.generate_embeddings([query])[0]
 
 
-def _build_prefetch(dense_vec: list[float], sparse_vec: SparseVector, limit: int) -> list[Prefetch]:
+def _build_prefetch(
+    dense_vec: list[float], sparse_vec: SparseVector, limit: int
+) -> list[Prefetch]:
     return [
         Prefetch(query=dense_vec, using="dense", limit=limit * 3),
         Prefetch(query=sparse_vec, using="sparse", limit=limit * 3),
@@ -138,11 +148,10 @@ def _rerank_candidates(
         return []
     pairs = [(query, c["text_chunk"]) for c in candidates]
     scores = reranker.predict(pairs)
-    ranked = sorted(zip(scores, candidates), key=lambda x: x[0], reverse=True)
-    return [
-        {**c, "score": float(s)}
-        for s, c in ranked[:top_n]
-    ]
+    ranked = sorted(
+        zip(scores, candidates, strict=False), key=lambda x: x[0], reverse=True
+    )
+    return [{**c, "score": float(s)} for s, c in ranked[:top_n]]
 
 
 def _collection_for_content(content_type: str) -> str:
@@ -160,6 +169,7 @@ def _check_collection_exists(collection: str) -> bool:
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def retrieve(query: str, config: PipelineConfig) -> list[dict]:
     """
@@ -182,6 +192,7 @@ def retrieve(query: str, config: PipelineConfig) -> list[dict]:
     if config.use_query_rewrite:
         try:
             from src.api.query_rewriter import rewrite_query  # lazy import
+
             retrieval_query = rewrite_query(query)
         except Exception as exc:
             logger.warning("Query rewriting failed (%s), using original.", exc)
@@ -189,7 +200,9 @@ def retrieve(query: str, config: PipelineConfig) -> list[dict]:
     # --- Choose collection ---
     collection = _collection_for_content(config.content_type)
 
-    if collection == COLLECTION_NAME_CHUNKS and not _check_collection_exists(COLLECTION_NAME_CHUNKS):
+    if collection == COLLECTION_NAME_CHUNKS and not _check_collection_exists(
+        COLLECTION_NAME_CHUNKS
+    ):
         logger.warning(
             "Collection '%s' does not exist — returning empty list. "
             "Run src/ingestion/ingest_chunks.py first.",
@@ -208,6 +221,7 @@ def retrieve(query: str, config: PipelineConfig) -> list[dict]:
 # ---------------------------------------------------------------------------
 # Standard retrieval path
 # ---------------------------------------------------------------------------
+
 
 def _standard_retrieve(
     retrieval_query: str,
@@ -229,7 +243,9 @@ def _standard_retrieve(
         return []
 
     if not config.use_rerank:
-        logger.info("Reranking disabled — returning top %d RRF results.", config.n_final)
+        logger.info(
+            "Reranking disabled — returning top %d RRF results.", config.n_final
+        )
         return candidates[: config.n_final]
 
     if config.rerank_steps == 2:
@@ -254,6 +270,7 @@ def _two_step_rerank(
 # ---------------------------------------------------------------------------
 # Two-stage retrieval path
 # ---------------------------------------------------------------------------
+
 
 def _two_stage_retrieve(
     retrieval_query: str,
@@ -285,14 +302,14 @@ def _two_stage_retrieve(
     logger.info("Two-stage stage 1: selected %d URLs.", len(top_urls))
 
     # Build Qdrant filter for stage 2
-    url_filter = Filter(
-        must=[FieldCondition(key="url", match=MatchAny(any=top_urls))]
-    )
+    url_filter = Filter(must=[FieldCondition(key="url", match=MatchAny(any=top_urls))])
 
     # Stage 2 collection
     stage2_collection = _collection_for_content(config.two_stage_content)
 
-    if stage2_collection == COLLECTION_NAME_CHUNKS and not _check_collection_exists(COLLECTION_NAME_CHUNKS):
+    if stage2_collection == COLLECTION_NAME_CHUNKS and not _check_collection_exists(
+        COLLECTION_NAME_CHUNKS
+    ):
         logger.warning(
             "Collection '%s' does not exist — returning empty list.",
             COLLECTION_NAME_CHUNKS,

@@ -29,24 +29,24 @@ _PLAN_SESJI_URL = "https://ww2.mini.pw.edu.pl/studia/plany-zajec-i-procedury/pla
 URL_MAP: dict[str, str] = {
     # ISI (Informatyka i Systemy Informacyjne) — ang. CSIS
     "CSIS_WINTER_25Z (1).xlsx": _PLAN_SESJI_URL,
-    "CSIS_SUMMER_2025.xlsx":    _PLAN_SESJI_URL,
-    "CSIS_FALL_2025.xlsx":      _PLAN_SESJI_URL,
+    "CSIS_SUMMER_2025.xlsx": _PLAN_SESJI_URL,
+    "CSIS_FALL_2025.xlsx": _PLAN_SESJI_URL,
     # DS (Data Science)
-    "DS_WINTER_25Z.xlsx":       _PLAN_SESJI_URL,
-    "DS_SUMMER_2025.xlsx":      _PLAN_SESJI_URL,
-    "DS_FALL_2025.xlsx":        _PLAN_SESJI_URL,
+    "DS_WINTER_25Z.xlsx": _PLAN_SESJI_URL,
+    "DS_SUMMER_2025.xlsx": _PLAN_SESJI_URL,
+    "DS_FALL_2025.xlsx": _PLAN_SESJI_URL,
     # ISI (Informatyka i Systemy Informacyjne) — pol. INSI
-    "INSI_ZIMA_25Z.xlsx":       _PLAN_SESJI_URL,
-    "INSI_LATO_2025.xlsx":      _PLAN_SESJI_URL,
-    "INSI_JESIEN_2025.xlsx":    _PLAN_SESJI_URL,
+    "INSI_ZIMA_25Z.xlsx": _PLAN_SESJI_URL,
+    "INSI_LATO_2025.xlsx": _PLAN_SESJI_URL,
+    "INSI_JESIEN_2025.xlsx": _PLAN_SESJI_URL,
     # IAD (Inżynieria i Analiza Danych)
-    "IAD_ZIMA_25Z (6).xlsx":    _PLAN_SESJI_URL,
-    "IAD_LATO_2025 (7).xlsx":   _PLAN_SESJI_URL,
-    "IAD_JESIEN_2025.xlsx":     _PLAN_SESJI_URL,
+    "IAD_ZIMA_25Z (6).xlsx": _PLAN_SESJI_URL,
+    "IAD_LATO_2025 (7).xlsx": _PLAN_SESJI_URL,
+    "IAD_JESIEN_2025.xlsx": _PLAN_SESJI_URL,
     # MAT/MAD (Matematyka / Matematyka i Analiza Danych)
-    "MAT_MAD_ZIMA_25Z (2).xlsx":  _PLAN_SESJI_URL,
+    "MAT_MAD_ZIMA_25Z (2).xlsx": _PLAN_SESJI_URL,
     "MAT_MAD_LATO_2025 (2).xlsx": _PLAN_SESJI_URL,
-    "MAT_MAD_JESIEN_2025.xlsx":   _PLAN_SESJI_URL,
+    "MAT_MAD_JESIEN_2025.xlsx": _PLAN_SESJI_URL,
 }
 
 
@@ -82,7 +82,9 @@ def main() -> None:
         path = os.path.join(INPUT_DIR, filename)
         source_url = URL_MAP.get(filename, f"file://{filename}")
         if source_url.startswith("file://"):
-            logger.warning(f"{filename} has no URL mapping — using filename as fallback URL")
+            logger.warning(
+                f"{filename} has no URL mapping — using filename as fallback URL"
+            )
 
         logger.info(f"Processing: {filename} → {source_url}")
         text = extract_text(path)
@@ -91,7 +93,9 @@ def main() -> None:
             logger.warning(f"No text extracted from {filename} — skipping")
             continue
 
-        safe_name = source_url.replace("https://", "").replace("/", "_").strip("_")[:200]
+        safe_name = (
+            source_url.replace("https://", "").replace("/", "_").strip("_")[:200]
+        )
         out_path = os.path.join(OUTPUT_DIR, f"{safe_name}.txt")
 
         with open(out_path, "w", encoding="utf-8") as f:

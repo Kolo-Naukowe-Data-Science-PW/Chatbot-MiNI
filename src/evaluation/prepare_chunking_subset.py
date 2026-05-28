@@ -35,7 +35,6 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import os
 import shutil
 import sys
 from collections import Counter, defaultdict
@@ -57,6 +56,7 @@ GENERATED_PATH = DATA_DIR / "final_notebooklm_QA.jsonl"
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _normalize_url(url: str) -> str:
     cleaned = url.strip()
     if not cleaned:
@@ -69,7 +69,9 @@ def _normalize_url(url: str) -> str:
 def _load_file_url_map() -> dict[str, str]:
     if not FILE_URL_MAP_PATH.exists():
         print(f"[warn] file_url_mapping.json not found at {FILE_URL_MAP_PATH}")
-        print("       Run: python -m src.utils.build_file_url_mapping <scraped_dir> > src/evaluation/data/file_url_mapping.json")
+        print(
+            "       Run: python -m src.utils.build_file_url_mapping <scraped_dir> > src/evaluation/data/file_url_mapping.json"
+        )
         return {}
     with open(FILE_URL_MAP_PATH, encoding="utf-8") as f:
         return json.load(f)
@@ -96,6 +98,7 @@ def _fmt_bytes(n: int) -> str:
 # ---------------------------------------------------------------------------
 # Source extraction per test set
 # ---------------------------------------------------------------------------
+
 
 def _sources_generated() -> dict[int, list[str]]:
     """Return {line_index: [fname_key, ...]} for generated testset."""
@@ -126,7 +129,9 @@ def _sources_rag() -> dict[int, list[str]]:
     with open(RAG_PATH, encoding="utf-8-sig", newline="") as f:
         reader = csv.DictReader(f, delimiter="|")
         for i, r in enumerate(reader):
-            norm = {(k or "").strip().lower(): (v or "").strip() for k, v in r.items() if k}
+            norm = {
+                (k or "").strip().lower(): (v or "").strip() for k, v in r.items() if k
+            }
             pliki_str = norm.get("pliki", "")
             keys = [p.strip() for p in pliki_str.split(";") if p.strip()]
             if keys:
@@ -145,7 +150,9 @@ def _sources_human(file_url_map: dict[str, str]) -> dict[int, list[str]]:
     with open(HUMAN_PATH, encoding="utf-8-sig", newline="") as f:
         reader = csv.DictReader(f)
         for i, r in enumerate(reader):
-            norm = {(k or "").strip().lower(): (v or "").strip() for k, v in r.items() if k}
+            norm = {
+                (k or "").strip().lower(): (v or "").strip() for k, v in r.items() if k
+            }
             if norm.get("wymagany kontekst") != "0":
                 continue
             url = norm.get("strona") or norm.get("url") or norm.get("link", "")
@@ -160,6 +167,7 @@ def _sources_human(file_url_map: dict[str, str]) -> dict[int, list[str]]:
 # Analysis
 # ---------------------------------------------------------------------------
 
+
 def analyse(scraped_dir: Path) -> None:
     file_url_map = _load_file_url_map()
 
@@ -173,9 +181,15 @@ def analyse(scraped_dir: Path) -> None:
         for keys in sources_map.values():
             counts.update(keys)
 
-    all_scraped = set(
-        f.stem for f in scraped_dir.glob("*.txt") if not f.name.startswith("schedule_")
-    ) if scraped_dir.exists() else set()
+    all_scraped = (
+        set(
+            f.stem
+            for f in scraped_dir.glob("*.txt")
+            if not f.name.startswith("schedule_")
+        )
+        if scraped_dir.exists()
+        else set()
+    )
 
     print(f"\n=== Scraped directory: {scraped_dir} ===")
     if scraped_dir.exists():
@@ -188,23 +202,32 @@ def analyse(scraped_dir: Path) -> None:
     else:
         print("  [directory not found]")
 
-    print(f"\n=== Test set coverage ===")
-    print(f"  generated : {len(gen_sources)} questions, {len(set(k for ks in gen_sources.values() for k in ks))} unique sources")
-    print(f"  rag       : {len(rag_sources)} questions, {len(set(k for ks in rag_sources.values() for k in ks))} unique sources")
-    print(f"  human     : {len(human_sources)} questions mapped (needs file_url_mapping.json)")
+    print("\n=== Test set coverage ===")
+    print(
+        f"  generated : {len(gen_sources)} questions, {len(set(k for ks in gen_sources.values() for k in ks))} unique sources"
+    )
+    print(
+        f"  rag       : {len(rag_sources)} questions, {len(set(k for ks in rag_sources.values() for k in ks))} unique sources"
+    )
+    print(
+        f"  human     : {len(human_sources)} questions mapped (needs file_url_mapping.json)"
+    )
 
-    print(f"\n=== Top 30 sources by total question coverage ===")
+    print("\n=== Top 30 sources by total question coverage ===")
     print(f"  {'rank':>4}  {'questions':>9}  source_key")
     for rank, (key, cnt) in enumerate(counts.most_common(30), 1):
         in_scraped = "✓" if key in all_scraped else "✗"
         print(f"  {rank:>4}  {cnt:>9}  {in_scraped} {key}")
 
-    cumulative = 0
-    print(f"\n=== Cumulative question coverage by N top sources ===")
+    print("\n=== Cumulative question coverage by N top sources ===")
     print(f"  {'N':>4}  {'q covered':>10}  {'% of total':>10}  est. disk")
     total_q = len(gen_sources) + len(rag_sources) + len(human_sources)
     covered_per_source: dict[str, set] = defaultdict(set)
-    for sources_map, label in ((gen_sources, "g"), (rag_sources, "r"), (human_sources, "h")):
+    for sources_map, label in (
+        (gen_sources, "g"),
+        (rag_sources, "r"),
+        (human_sources, "h"),
+    ):
         for idx, keys in sources_map.items():
             for key in keys:
                 covered_per_source[key].add(f"{label}_{idx}")
@@ -222,6 +245,7 @@ def analyse(scraped_dir: Path) -> None:
 # ---------------------------------------------------------------------------
 # Subset building
 # ---------------------------------------------------------------------------
+
 
 def build_subset(
     scraped_dir: Path,
@@ -269,15 +293,18 @@ def build_subset(
     with open(RAG_PATH, encoding="utf-8-sig", newline="") as f:
         reader = csv.DictReader(f, delimiter="|")
         fieldnames = reader.fieldnames or []
-        for i, r in enumerate(reader):
+        for r in reader:
             rag_rows.append(dict(r))
     filtered_rag = [
-        rag_rows[i] for i, keys in rag_sources.items()
+        rag_rows[i]
+        for i, keys in rag_sources.items()
         if all(k in selected_keys for k in keys)
     ]
     out_rag = output_dir / "rag_subset.csv"
     with open(out_rag, "w", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames, delimiter="|", extrasaction="ignore")
+        writer = csv.DictWriter(
+            f, fieldnames=fieldnames, delimiter="|", extrasaction="ignore"
+        )
         writer.writeheader()
         writer.writerows(filtered_rag)
     print(f"RAG subset: {len(filtered_rag)} questions -> {out_rag}")
@@ -298,7 +325,11 @@ def build_subset(
         with open(HUMAN_PATH, encoding="utf-8-sig", newline="") as f:
             reader2 = csv.DictReader(f)
             for i, r in enumerate(reader2):
-                norm = {(k or "").strip().lower(): (v or "").strip() for k, v in r.items() if k}
+                norm = {
+                    (k or "").strip().lower(): (v or "").strip()
+                    for k, v in r.items()
+                    if k
+                }
                 if norm.get("wymagany kontekst") == "0":
                     kontekst_indices.append(i)
         filtered_human = []
@@ -319,13 +350,35 @@ def build_subset(
 # Entry point
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Prepare scraped-file subset for chunk KB.")
-    parser.add_argument("--scraped-dir", required=True, help="Path to scraped .txt files directory.")
-    parser.add_argument("--output-dir", default=None, help="Directory to write subset files (required unless --analyze-only).")
-    parser.add_argument("--max-sources", type=int, default=None, help="Select top N sources by question coverage.")
-    parser.add_argument("--sources-file", default=None, help="Text file with explicit source keys (one per line).")
-    parser.add_argument("--analyze-only", action="store_true", help="Print stats without creating any output files.")
+    parser = argparse.ArgumentParser(
+        description="Prepare scraped-file subset for chunk KB."
+    )
+    parser.add_argument(
+        "--scraped-dir", required=True, help="Path to scraped .txt files directory."
+    )
+    parser.add_argument(
+        "--output-dir",
+        default=None,
+        help="Directory to write subset files (required unless --analyze-only).",
+    )
+    parser.add_argument(
+        "--max-sources",
+        type=int,
+        default=None,
+        help="Select top N sources by question coverage.",
+    )
+    parser.add_argument(
+        "--sources-file",
+        default=None,
+        help="Text file with explicit source keys (one per line).",
+    )
+    parser.add_argument(
+        "--analyze-only",
+        action="store_true",
+        help="Print stats without creating any output files.",
+    )
     args = parser.parse_args()
 
     scraped_dir = Path(args.scraped_dir)
@@ -336,12 +389,16 @@ def main() -> None:
         return
 
     if not args.output_dir:
-        print("\nProvide --output-dir to build the subset (or use --analyze-only for stats only).")
+        print(
+            "\nProvide --output-dir to build the subset (or use --analyze-only for stats only)."
+        )
         sys.exit(1)
 
     # Determine selected sources
     if args.sources_file:
-        selected_keys = set(Path(args.sources_file).read_text(encoding="utf-8").splitlines())
+        selected_keys = set(
+            Path(args.sources_file).read_text(encoding="utf-8").splitlines()
+        )
         selected_keys = {k.strip() for k in selected_keys if k.strip()}
     elif args.max_sources:
         file_url_map = _load_file_url_map()
@@ -353,7 +410,9 @@ def main() -> None:
             for keys in sources_map.values():
                 counts.update(keys)
         selected_keys = {key for key, _ in counts.most_common(args.max_sources)}
-        print(f"\nSelected top {args.max_sources} sources ({len(selected_keys)} unique keys).")
+        print(
+            f"\nSelected top {args.max_sources} sources ({len(selected_keys)} unique keys)."
+        )
     else:
         print("Provide --max-sources N or --sources-file to select sources.")
         sys.exit(1)

@@ -36,7 +36,7 @@ W archiwum znajdziesz:
 
 ## Które pytania są oceniane
 
-Tylko te z `questions_with_links.csv`, dla których `wymagany kontekst = 0`.  
+Tylko te z `questions_with_links.csv`, dla których `wymagany kontekst = 0`.
 Pytania z wartościami `1`, `2`, `3`, `0*`, `0**`, `?` są pomijane — nie mają pewnego złotego URL-a.
 
 ---

@@ -6,7 +6,7 @@ import os
 from datetime import UTC, datetime
 from pathlib import Path
 from threading import Lock
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -158,30 +158,64 @@ def append_feedback_row(payload: FeedbackRequest) -> None:
             writer.writerow(row)
 
 
-_ROMAN_TO_ARABIC = {"I": "1", "II": "2", "III": "3", "IV": "4", "V": "5", "VI": "6", "VII": "7"}
+_ROMAN_TO_ARABIC = {
+    "I": "1",
+    "II": "2",
+    "III": "3",
+    "IV": "4",
+    "V": "5",
+    "VI": "6",
+    "VII": "7",
+}
 
 # Keywords that indicate a schedule-related query; only these get major/semester enrichment.
 # Enriching every query causes schedule documents to rank high for unrelated questions.
 _SCHEDULE_KEYWORDS = (
-    "plan zajęć", "harmonogram", "siatka zajęć", "wykład", "ćwiczeni",
-    "laboratorium", "godziny zajęć", "sala ", "kiedy są zajęcia",
-    "kiedy mam zajęcia", "kiedy mam wykład",
-    "jakie zajęcia mam", "jakie mam zajęcia", "zajęcia",
-    "jaki mam plan", "jaki plan jest",
-    "w jakiej sali mam", "w jakiej sali",
-    "kto prowadzi", "prowadzący",
+    "plan zajęć",
+    "harmonogram",
+    "siatka zajęć",
+    "wykład",
+    "ćwiczeni",
+    "laboratorium",
+    "godziny zajęć",
+    "sala ",
+    "kiedy są zajęcia",
+    "kiedy mam zajęcia",
+    "kiedy mam wykład",
+    "jakie zajęcia mam",
+    "jakie mam zajęcia",
+    "zajęcia",
+    "jaki mam plan",
+    "jaki plan jest",
+    "w jakiej sali mam",
+    "w jakiej sali",
+    "kto prowadzi",
+    "prowadzący",
 )
 
 _CURRICULUM_KEYWORDS = (
-    "plan studiów", "plan studiow", "program studiów", "program studiow",
-    "siatka studiów", "ile ects", "punkty ects", "ile punktów",
-    "przedmioty obowiązkowe", "przedmioty w semestrze", "przedmioty na semestrze",
+    "plan studiów",
+    "plan studiow",
+    "program studiów",
+    "program studiow",
+    "siatka studiów",
+    "ile ects",
+    "punkty ects",
+    "ile punktów",
+    "przedmioty obowiązkowe",
+    "przedmioty w semestrze",
+    "przedmioty na semestrze",
 )
 
 _NEXT_SEM_KEYWORDS = (
-    "następny semestr", "następnym semestrze", "następnego semestru",
-    "kolejny semestr", "kolejnym semestrze", "kolejnego semestru",
-    "przyszły semestr", "przyszłym semestrze",
+    "następny semestr",
+    "następnym semestrze",
+    "następnego semestru",
+    "kolejny semestr",
+    "kolejnym semestrze",
+    "kolejnego semestru",
+    "przyszły semestr",
+    "przyszłym semestrze",
 )
 
 
@@ -191,7 +225,10 @@ def _is_schedule_query(query: str) -> bool:
 
 
 def _enrich_retrieval_query(
-    query: str, major: str | None, semester: str | None, original_query: str | None = None
+    query: str,
+    major: str | None,
+    semester: str | None,
+    original_query: str | None = None,
 ) -> str:
     """Append major/semester context to schedule and curriculum queries.
 
@@ -345,7 +382,9 @@ def chat_endpoint(request: QueryRequest) -> dict[str, Any]:
         logger.info(f"Translated query to PL: '{processing_query}'")
 
     retrieval_query = _enrich_retrieval_query(
-        rewrite_query(processing_query), request.major, request.semester,
+        rewrite_query(processing_query),
+        request.major,
+        request.semester,
         original_query=processing_query,
     )
     sorted_chunks = get_top_k_chunks(retrieval_query)
@@ -376,7 +415,10 @@ def chat_endpoint(request: QueryRequest) -> dict[str, Any]:
         semester=str(request.semester) if request.semester else None,
         conversation_history=conversation_history,
         style_instruction=style_instruction,
-        attachments=[{"filename": a.filename, "data": a.data, "mime_type": a.mime_type} for a in request.attachments],
+        attachments=[
+            {"filename": a.filename, "data": a.data, "mime_type": a.mime_type}
+            for a in request.attachments
+        ],
     )
 
     polish_answer = query_llm(messages, request.modelConfig)
@@ -393,7 +435,11 @@ def chat_endpoint(request: QueryRequest) -> dict[str, Any]:
             seen.add(url)
             sources.append(url)
 
-    return {"answer": final_answer, "sources": sources, "retrieval_query": retrieval_query}
+    return {
+        "answer": final_answer,
+        "sources": sources,
+        "retrieval_query": retrieval_query,
+    }
 
 
 @app.post("/chat/stream")
@@ -425,7 +471,9 @@ def chat_stream_endpoint(request: QueryRequest):
         processing_query = translate_text(query, target_lang_code="pl")
 
     retrieval_query = _enrich_retrieval_query(
-        rewrite_query(processing_query), request.major, request.semester,
+        rewrite_query(processing_query),
+        request.major,
+        request.semester,
         original_query=processing_query,
     )
     sorted_chunks = get_top_k_chunks(retrieval_query)
@@ -457,7 +505,10 @@ def chat_stream_endpoint(request: QueryRequest):
         semester=str(request.semester) if request.semester else None,
         conversation_history=conversation_history,
         style_instruction=style_instruction,
-        attachments=[{"filename": a.filename, "data": a.data, "mime_type": a.mime_type} for a in request.attachments],
+        attachments=[
+            {"filename": a.filename, "data": a.data, "mime_type": a.mime_type}
+            for a in request.attachments
+        ],
     )
 
     def _sse(text: str) -> str:
@@ -515,7 +566,9 @@ def error_report_endpoint(payload: ErrorReportRequest) -> dict[str, str]:
 
 
 @app.post("/extract-text")
-async def extract_text_endpoint(file: UploadFile = File(...)) -> dict[str, str]:
+async def extract_text_endpoint(
+    file: Annotated[UploadFile, File()],
+) -> dict[str, str]:
     """Extract plain text from an uploaded file (.txt, .md, .pdf). Used by the frontend to attach files to chat."""
     content = await file.read()
     filename = file.filename or ""
@@ -529,15 +582,20 @@ async def extract_text_endpoint(file: UploadFile = File(...)) -> dict[str, str]:
     elif ext == "pdf":
         try:
             from pypdf import PdfReader  # noqa: PLC0415
+
             reader = PdfReader(io.BytesIO(content))
             text = "\n".join(page.extract_text() or "" for page in reader.pages)
         except Exception as exc:
-            raise HTTPException(status_code=422, detail=f"PDF extraction failed: {exc}") from exc
+            raise HTTPException(
+                status_code=422, detail=f"PDF extraction failed: {exc}"
+            ) from exc
     else:
         raise HTTPException(status_code=415, detail=f"Unsupported file type: .{ext}")
 
     if not text.strip():
-        raise HTTPException(status_code=422, detail="File appears to be empty or unreadable.")
+        raise HTTPException(
+            status_code=422, detail="File appears to be empty or unreadable."
+        )
 
     return {"text": text, "filename": filename}
 

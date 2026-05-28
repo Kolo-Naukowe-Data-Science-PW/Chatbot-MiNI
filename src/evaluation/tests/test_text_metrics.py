@@ -28,7 +28,6 @@ Usage:
 
 import sys
 from pathlib import Path
-from math import exp, log
 
 import pytest
 
@@ -36,11 +35,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.evaluation.text_metrics import (
+from src.evaluation.text_metrics import (  # noqa: E402
     _bleu_score,
-    _rouge_scores,
     _meteor_score,
-    _bertscore,
+    _rouge_scores,
 )
 
 
@@ -74,13 +72,13 @@ class TestBLEUScore:
         hypothesis = ["the cat"]
         reference = ["the cat sat"]
         result = _bleu_score(hypothesis, reference)
-        
+
         # All n-gram components should exist
         assert "bleu_1" in result  # unigram precision
         assert "bleu_2" in result  # bigram precision
         assert "bleu_3" in result  # trigram precision
         assert "bleu_4" in result  # 4-gram precision
-        
+
         # Unigrams should be higher than higher-order
         assert result["bleu_1"] >= result["bleu_2"]
 
@@ -104,7 +102,7 @@ class TestROUGEScores:
         hypotheses = ["the quick brown fox"]
         references = ["the quick brown fox"]
         result = _rouge_scores(hypotheses, references)
-        
+
         # Check key metrics exist
         assert "rouge_1_r" in result  # ROUGE-1 recall
         assert "rouge_1_p" in result  # ROUGE-1 precision
@@ -113,7 +111,7 @@ class TestROUGEScores:
         assert "rouge_l_r" in result  # ROUGE-L recall
         assert "rouge_w_r" in result  # ROUGE-W recall
         assert "rouge_s_r" in result  # ROUGE-S recall
-        
+
         # For exact match, all should be ~1.0
         assert result["rouge_1_r"] == pytest.approx(1.0, abs=0.01)
         assert result["rouge_l_r"] == pytest.approx(1.0, abs=0.01)
@@ -123,7 +121,7 @@ class TestROUGEScores:
         hypotheses = ["the quick brown"]
         references = ["the quick brown fox jumps"]
         result = _rouge_scores(hypotheses, references)
-        
+
         # Recall should be < 1.0 (not all ref n-grams captured)
         assert 0.0 < result["rouge_1_r"] < 1.0
 
@@ -132,7 +130,7 @@ class TestROUGEScores:
         hypotheses = ["xyz abc"]
         references = ["the quick brown"]
         result = _rouge_scores(hypotheses, references)
-        
+
         assert result["rouge_1_r"] == 0.0
         assert result["rouge_1_f"] == 0.0
 
@@ -143,7 +141,7 @@ class TestROUGEScores:
             ["xyz abc def", "the quick brown fox"],  # second ref matches better
         ]
         result = _rouge_scores(hypotheses, references)
-        
+
         # Should use second reference (best match)
         assert result["rouge_1_r"] > 0.5
 
@@ -152,7 +150,7 @@ class TestROUGEScores:
         hypotheses = ["pies jest szybki"]
         references = ["pies jest szybki"]
         result = _rouge_scores(hypotheses, references)
-        
+
         assert result["rouge_1_r"] == pytest.approx(1.0, abs=0.01)
 
     def test_rouge_empty_hypothesis(self):
@@ -160,7 +158,7 @@ class TestROUGEScores:
         hypotheses = [""]
         references = ["the quick brown"]
         result = _rouge_scores(hypotheses, references)
-        
+
         # Precision should be 1 (0 false positives) but recall 0 (missed everything)
         assert result["rouge_1_p"] >= 0.0
         assert result["rouge_1_r"] == 0.0
@@ -170,13 +168,23 @@ class TestROUGEScores:
         hypotheses = ["the quick brown fox jumps"]
         references = ["the quick brown fox jumps over the lazy dog"]
         result = _rouge_scores(hypotheses, references)
-        
+
         expected_keys = [
-            "rouge_1_r", "rouge_1_p", "rouge_1_f",
-            "rouge_2_r", "rouge_2_p", "rouge_2_f",
-            "rouge_l_r", "rouge_l_p", "rouge_l_f",
-            "rouge_w_r", "rouge_w_p", "rouge_w_f",
-            "rouge_s_r", "rouge_s_p", "rouge_s_f",
+            "rouge_1_r",
+            "rouge_1_p",
+            "rouge_1_f",
+            "rouge_2_r",
+            "rouge_2_p",
+            "rouge_2_f",
+            "rouge_l_r",
+            "rouge_l_p",
+            "rouge_l_f",
+            "rouge_w_r",
+            "rouge_w_p",
+            "rouge_w_f",
+            "rouge_s_r",
+            "rouge_s_p",
+            "rouge_s_f",
         ]
         for key in expected_keys:
             assert key in result, f"Missing key: {key}"
@@ -186,7 +194,7 @@ class TestROUGEScores:
         hypotheses = ["the quick brown fox"]
         references = ["the quick brown fox jumps over the lazy dog"]
         result = _rouge_scores(hypotheses, references)
-        
+
         for key, value in result.items():
             assert 0.0 <= value <= 1.0, f"{key}={value} out of range"
 
@@ -199,7 +207,7 @@ class TestMETEORScore:
         hypotheses = ["the cat sat on the mat"]
         references = ["the cat sat on the mat"]
         result = _meteor_score(hypotheses, references)
-        
+
         assert "meteor" in result
         assert result["meteor"] == pytest.approx(1.0, abs=0.01)
 
@@ -208,7 +216,7 @@ class TestMETEORScore:
         hypotheses = ["the feline sat on the rug"]
         references = ["the cat sat on the mat"]
         result = _meteor_score(hypotheses, references)
-        
+
         assert "meteor" in result
         # Should be > 0 due to stem matching and synonym recognition
         assert result["meteor"] > 0.0
@@ -218,7 +226,7 @@ class TestMETEORScore:
         hypotheses = ["the quick brown"]
         references = ["the quick brown fox jumps over the lazy dog"]
         result = _meteor_score(hypotheses, references)
-        
+
         assert "meteor" in result
         assert 0.0 < result["meteor"] < 1.0
 
@@ -227,7 +235,7 @@ class TestMETEORScore:
         hypotheses = ["xyz abc"]
         references = ["the quick brown"]
         result = _meteor_score(hypotheses, references)
-        
+
         assert "meteor" in result
         assert result["meteor"] == 0.0
 
@@ -236,7 +244,7 @@ class TestMETEORScore:
         hypotheses = [""]
         references = ["the quick brown"]
         result = _meteor_score(hypotheses, references)
-        
+
         assert "meteor" in result
         assert result["meteor"] == 0.0
 
@@ -245,7 +253,7 @@ class TestMETEORScore:
         hypotheses = ["the quick brown fox"]
         references = ["the quick brown fox jumps over the lazy dog"]
         result = _meteor_score(hypotheses, references)
-        
+
         assert 0.0 <= result["meteor"] <= 1.0
 
 
@@ -256,11 +264,11 @@ class TestTextMetricsEdgeCases:
         """Metrics should handle punctuation correctly."""
         hypotheses = ["The cat sat on the mat."]
         references = ["The cat sat on the mat."]
-        
+
         bleu = _bleu_score(hypotheses, references)
         rouge = _rouge_scores(hypotheses, references)
         meteor = _meteor_score(hypotheses, references)
-        
+
         assert bleu["bleu"] > 0.5
         assert rouge["rouge_1_f"] > 0.5
         assert meteor["meteor"] > 0.5
@@ -269,7 +277,7 @@ class TestTextMetricsEdgeCases:
         """Metrics should handle numbers."""
         hypotheses = ["Result: 42"]
         references = ["Result: 42"]
-        
+
         rouge = _rouge_scores(hypotheses, references)
         assert rouge["rouge_1_r"] > 0.8
 
@@ -277,7 +285,7 @@ class TestTextMetricsEdgeCases:
         """BLEU and ROUGE typically lowercase before comparison."""
         hypotheses = ["The Quick Brown Fox"]
         references = ["the quick brown fox"]
-        
+
         # Most metrics are case-insensitive after preprocessing
         bleu = _bleu_score(hypotheses, references)
         assert bleu["bleu"] > 0.5
@@ -286,7 +294,7 @@ class TestTextMetricsEdgeCases:
         """Metrics should handle non-ASCII characters."""
         hypotheses = ["Psi ma rasa ma ćwierćkę"]
         references = ["Psi mają rasę mającą ćwierćkę"]
-        
+
         rouge = _rouge_scores(hypotheses, references)
         assert "rouge_1_r" in rouge
         assert 0.0 <= rouge["rouge_1_r"] <= 1.0
@@ -296,7 +304,7 @@ class TestTextMetricsEdgeCases:
         long_text = " ".join(["word"] * 100)
         hypotheses = [long_text]
         references = [long_text]
-        
+
         bleu = _bleu_score(hypotheses, references)
         assert bleu["bleu"] == pytest.approx(1.0, abs=0.01)
 
@@ -304,11 +312,11 @@ class TestTextMetricsEdgeCases:
         """Metrics should handle single words."""
         hypotheses = ["cat"]
         references = ["cat"]
-        
+
         bleu = _bleu_score(hypotheses, references)
         rouge = _rouge_scores(hypotheses, references)
         meteor = _meteor_score(hypotheses, references)
-        
+
         assert bleu["bleu"] == pytest.approx(1.0, abs=0.01)
         assert rouge["rouge_1_r"] == pytest.approx(1.0, abs=0.01)
         assert meteor["meteor"] == pytest.approx(1.0, abs=0.01)

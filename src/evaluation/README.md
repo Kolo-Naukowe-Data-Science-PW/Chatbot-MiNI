@@ -380,4 +380,3 @@ Notes:
 
 - BERTScore tests may require model downloads and can be skipped if optional dependencies are unavailable.
 - `tests/evaluation_test.py` is legacy and expects `metrics.py` to implement `bert_score()`. That class is currently a placeholder, so prefer the newer tests around `text_metrics.py`.
-

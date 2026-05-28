@@ -1,5 +1,4 @@
 import csv
-import logging
 from dataclasses import dataclass
 from statistics import mean
 

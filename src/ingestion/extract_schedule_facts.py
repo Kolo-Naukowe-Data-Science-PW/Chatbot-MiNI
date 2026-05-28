@@ -89,7 +89,8 @@ def main() -> None:
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     schedule_files = sorted(
-        f for f in os.listdir(INPUT_DIR)
+        f
+        for f in os.listdir(INPUT_DIR)
         if f.startswith("schedule_") and f.endswith(".txt")
     )
 

@@ -107,7 +107,9 @@ def aggregate(rows: list[dict]) -> dict:
     def _finalise(acc) -> dict:
         return {
             "weighted_mean": acc["w_sum"] / acc["w_count"] if acc["w_count"] else None,
-            "unweighted_mean": acc["u_sum"] / acc["u_count"] if acc["u_count"] else None,
+            "unweighted_mean": (
+                acc["u_sum"] / acc["u_count"] if acc["u_count"] else None
+            ),
             "count": acc["u_count"],
             "total_weight": acc["w_count"],
         }
@@ -115,9 +117,15 @@ def aggregate(rows: list[dict]) -> dict:
     signals = ["rating"] + RATING_CRITERIA
 
     overall = {s: _accumulator() for s in signals}
-    by_user_type: dict[str, dict] = defaultdict(lambda: {s: _accumulator() for s in signals})
-    by_language: dict[str, dict] = defaultdict(lambda: {s: _accumulator() for s in signals})
-    by_model: dict[str, dict] = defaultdict(lambda: {s: _accumulator() for s in signals})
+    by_user_type: dict[str, dict] = defaultdict(
+        lambda: {s: _accumulator() for s in signals}
+    )
+    by_language: dict[str, dict] = defaultdict(
+        lambda: {s: _accumulator() for s in signals}
+    )
+    by_model: dict[str, dict] = defaultdict(
+        lambda: {s: _accumulator() for s in signals}
+    )
 
     for row in rows:
         user_type = row.get("user_type", "")
@@ -130,8 +138,12 @@ def aggregate(rows: list[dict]) -> dict:
         if raw_rating not in ("", None):
             try:
                 val = float(raw_rating)
-                for acc in [overall["rating"], by_user_type[user_type]["rating"],
-                             by_language[language]["rating"], by_model[model]["rating"]]:
+                for acc in [
+                    overall["rating"],
+                    by_user_type[user_type]["rating"],
+                    by_language[language]["rating"],
+                    by_model[model]["rating"],
+                ]:
                     _add(acc, val, w)
             except ValueError:
                 pass
@@ -141,15 +153,28 @@ def aggregate(rows: list[dict]) -> dict:
         for criterion in RATING_CRITERIA:
             if criterion in criteria_vals:
                 val = criteria_vals[criterion]
-                for acc in [overall[criterion], by_user_type[user_type][criterion],
-                             by_language[language][criterion], by_model[model][criterion]]:
+                for acc in [
+                    overall[criterion],
+                    by_user_type[user_type][criterion],
+                    by_language[language][criterion],
+                    by_model[model][criterion],
+                ]:
                     _add(acc, val, w)
 
     return {
         "overall": {s: _finalise(overall[s]) for s in signals},
-        "by_user_type": {ut: {s: _finalise(accs[s]) for s in signals} for ut, accs in by_user_type.items()},
-        "by_language": {lang: {s: _finalise(accs[s]) for s in signals} for lang, accs in by_language.items()},
-        "by_model": {model: {s: _finalise(accs[s]) for s in signals} for model, accs in by_model.items()},
+        "by_user_type": {
+            ut: {s: _finalise(accs[s]) for s in signals}
+            for ut, accs in by_user_type.items()
+        },
+        "by_language": {
+            lang: {s: _finalise(accs[s]) for s in signals}
+            for lang, accs in by_language.items()
+        },
+        "by_model": {
+            model: {s: _finalise(accs[s]) for s in signals}
+            for model, accs in by_model.items()
+        },
     }
 
 
@@ -171,7 +196,9 @@ def print_report(results: dict) -> None:
         d = results["overall"][s]
         if d["count"] == 0:
             continue
-        print(f"  {s:<16} {_fmt(d['weighted_mean']):>10} {_fmt(d['unweighted_mean']):>12} {d['count']:>6}")
+        print(
+            f"  {s:<16} {_fmt(d['weighted_mean']):>10} {_fmt(d['unweighted_mean']):>12} {d['count']:>6}"
+        )
 
     for section_key, section_label in [
         ("by_user_type", "By user type"),
@@ -183,14 +210,18 @@ def print_report(results: dict) -> None:
             continue
         print(f"\n── {section_label} {'─' * (54 - len(section_label))}")
         for group, group_data in sorted(section.items()):
-            w_label = f"(weight={_weight(group)})" if section_key == "by_user_type" else ""
+            w_label = (
+                f"(weight={_weight(group)})" if section_key == "by_user_type" else ""
+            )
             print(f"\n  {group} {w_label}")
             print(f"    {'Signal':<16} {'Weighted':>10} {'Unweighted':>12} {'N':>6}")
             for s in signals:
                 d = group_data[s]
                 if d["count"] == 0:
                     continue
-                print(f"    {s:<16} {_fmt(d['weighted_mean']):>10} {_fmt(d['unweighted_mean']):>12} {d['count']:>6}")
+                print(
+                    f"    {s:<16} {_fmt(d['weighted_mean']):>10} {_fmt(d['unweighted_mean']):>12} {d['count']:>6}"
+                )
 
     print()
 
@@ -211,21 +242,30 @@ def save_csv(results: dict, path: str) -> None:
         for group, group_data in items:
             for s in signals:
                 d = group_data[s]
-                rows.append({
-                    "section": section_key,
-                    "group": group,
-                    "signal": s,
-                    "weighted_mean": d["weighted_mean"],
-                    "unweighted_mean": d["unweighted_mean"],
-                    "count": d["count"],
-                    "total_weight": d["total_weight"],
-                })
+                rows.append(
+                    {
+                        "section": section_key,
+                        "group": group,
+                        "signal": s,
+                        "weighted_mean": d["weighted_mean"],
+                        "unweighted_mean": d["unweighted_mean"],
+                        "count": d["count"],
+                        "total_weight": d["total_weight"],
+                    }
+                )
 
     with output_path.open("w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(
             f,
-            fieldnames=["section", "group", "signal", "weighted_mean",
-                         "unweighted_mean", "count", "total_weight"],
+            fieldnames=[
+                "section",
+                "group",
+                "signal",
+                "weighted_mean",
+                "unweighted_mean",
+                "count",
+                "total_weight",
+            ],
         )
         writer.writeheader()
         writer.writerows(rows)

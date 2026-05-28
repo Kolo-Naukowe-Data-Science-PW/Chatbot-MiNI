@@ -1,5 +1,5 @@
 # Metric Implementations Summary
-**Analysis Date:** 2026-05-28  
+**Analysis Date:** 2026-05-28
 **Scope:** src/evaluation/benchmark.py, src/evaluation/text_metrics.py
 
 ---
@@ -253,7 +253,7 @@ $$F = \frac{(1 + \beta^2) \cdot R \cdot P}{\beta^2 \cdot R + P}$$
 ### Key Implementation Notes
 - **Alpha parameter:** Controls how much consecutive matches are rewarded
   - α = 2.0: Length-2 sequences weighted as 2² = 4, length-3 as 3² = 9
-- **Multi-reference handling:** 
+- **Multi-reference handling:**
   - Without jackknife: Pick best reference by recall
   - With jackknife: Leave-one-out average for robustness
 - **Empty text handling:** Returns {...: 0.0} for empty hypothesis or reference
@@ -538,4 +538,3 @@ where:
 - **Status:** Pytest suite available
 
 ---
-

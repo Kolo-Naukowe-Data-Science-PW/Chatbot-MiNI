@@ -17,6 +17,7 @@ marker = "![](https://ww2.mini.pw.edu.pl/wp-content/uploads/WMiNI-01.png)"
 
 # ============ clean_headnote ============
 
+
 @pytest.mark.parametrize(
     "input_text_headnote, expected_output_headnote",
     [
@@ -53,6 +54,7 @@ def test_clean_headnote_error():
 
 # ============ clean_footnote ============
 
+
 @pytest.mark.parametrize(
     "input_text, expected_output",
     [
@@ -86,6 +88,7 @@ def test_clean_footnote_error():
 
 # ============ scrap_data ============
 
+
 # Pomocnicza klasa udająca to, co zwraca app.scrape()
 class DummyScrapeResult:
     def __init__(self, markdown, links):
@@ -93,10 +96,16 @@ class DummyScrapeResult:
         self.links = links
 
 
-@patch("ingestion.scraper.time.sleep")       # Blokujemy time.sleep, żeby testy były błyskawiczne
-@patch("ingestion.scraper.Firecrawl")        # Mockujemy klienta API
-@patch("ingestion.scraper.clean_footnote", side_effect=lambda x: x)  # Przepuszczamy tekst bez zmian
-@patch("ingestion.scraper.clean_headnote", side_effect=lambda x: x)  # Przepuszczamy tekst bez zmian
+@patch(
+    "ingestion.scraper.time.sleep"
+)  # Blokujemy time.sleep, żeby testy były błyskawiczne
+@patch("ingestion.scraper.Firecrawl")  # Mockujemy klienta API
+@patch(
+    "ingestion.scraper.clean_footnote", side_effect=lambda x: x
+)  # Przepuszczamy tekst bez zmian
+@patch(
+    "ingestion.scraper.clean_headnote", side_effect=lambda x: x
+)  # Przepuszczamy tekst bez zmian
 class TestScrapData:
 
     @patch("ingestion.scraper.CURRENT_VERSION", 2)
@@ -185,8 +194,9 @@ class TestScrapData:
 
 # ============ main() ============
 
-@patch("ingestion.scraper.logger")      # Blokujemy loggera, żeby nie śmiecił w konsoli
-@patch("ingestion.scraper.os.makedirs") # Blokujemy tworzenie prawdziwych folderów
+
+@patch("ingestion.scraper.logger")  # Blokujemy loggera, żeby nie śmiecił w konsoli
+@patch("ingestion.scraper.os.makedirs")  # Blokujemy tworzenie prawdziwych folderów
 @patch("ingestion.scraper.scrap_data")  # Blokujemy prawdziwy scraping
 class TestMainPipeline:
 
@@ -218,10 +228,14 @@ class TestMainPipeline:
         assert m_open.call_count == 2
 
         m_open.assert_any_call(
-            os.path.join("src/data/scraped_raw", "ww2.mini.pw.edu.pl_wydzial.txt"), "w", encoding="utf-8"
+            os.path.join("src/data/scraped_raw", "ww2.mini.pw.edu.pl_wydzial.txt"),
+            "w",
+            encoding="utf-8",
         )
         m_open.assert_any_call(
-            os.path.join("src/data/scraped_raw", "example.com_test_page.txt"), "w", encoding="utf-8"
+            os.path.join("src/data/scraped_raw", "example.com_test_page.txt"),
+            "w",
+            encoding="utf-8",
         )
 
         handle = m_open()

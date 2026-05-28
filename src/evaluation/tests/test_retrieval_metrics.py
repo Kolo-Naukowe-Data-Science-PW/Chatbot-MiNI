@@ -25,7 +25,6 @@ Usage:
 """
 
 import sys
-from math import log2
 from pathlib import Path
 
 import pytest
@@ -34,17 +33,15 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.evaluation.benchmark import (
+from src.evaluation.benchmark import (  # noqa: E402
+    average_precision_at_k,
+    hierarchical_relevance,
     hit_at_k,
     mrr_at_k,
     ndcg_at_k,
-    average_precision_at_k,
+    normalize_url,
     precision_at_k,
     recall_at_k,
-    dcg_at_k,
-    ideal_dcg_at_k,
-    hierarchical_relevance,
-    normalize_url,
 )
 
 
@@ -240,7 +237,7 @@ class TestPrecisionAtK:
         """Precision@1 depends on first result only."""
         rel_scores = [1.0, 0.0, 0.0]
         assert precision_at_k(rel_scores, k=1) == 1.0
-        
+
         rel_scores = [0.0, 1.0, 1.0]
         assert precision_at_k(rel_scores, k=1) == 0.0
 
@@ -306,7 +303,9 @@ class TestHierarchicalRelevance:
         """Grandchild should get lower score (0.5^2 = 0.25)."""
         retrieved = "https://example.com/path/to/page/child/grandchild"
         target = "https://example.com/path/to/page"
-        assert hierarchical_relevance(retrieved, target) == pytest.approx(0.25, abs=0.01)
+        assert hierarchical_relevance(retrieved, target) == pytest.approx(
+            0.25, abs=0.01
+        )
 
     def test_parent_page(self):
         """Parent page is even less relevant (not penalized, but asymmetric)."""
@@ -343,15 +342,22 @@ class TestURLNormalization:
 
     def test_normalize_remove_query(self):
         """Query parameters should be removed."""
-        assert normalize_url("https://example.com/path?q=1") == "https://example.com/path"
+        assert (
+            normalize_url("https://example.com/path?q=1") == "https://example.com/path"
+        )
 
     def test_normalize_remove_fragment(self):
         """Fragments should be removed."""
-        assert normalize_url("https://example.com/path#section") == "https://example.com/path"
+        assert (
+            normalize_url("https://example.com/path#section")
+            == "https://example.com/path"
+        )
 
     def test_normalize_whitespace(self):
         """Whitespace should be trimmed."""
-        assert normalize_url("  https://example.com/path  ") == "https://example.com/path"
+        assert (
+            normalize_url("  https://example.com/path  ") == "https://example.com/path"
+        )
 
     def test_normalize_empty_string(self):
         """Empty string should return empty."""
@@ -388,7 +394,7 @@ class TestRetrievalMetricsEdgeCases:
         hit = hit_at_k(rel_scores, k=4, threshold=0.5)
         mrr = mrr_at_k(rel_scores, k=4, threshold=0.5)
         ndcg = ndcg_at_k(rel_scores, k=4)
-        
+
         assert 0.0 <= hit <= 1.0
         assert 0.0 <= mrr <= 1.0
         assert 0.0 <= ndcg <= 1.0

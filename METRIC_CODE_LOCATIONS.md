@@ -266,10 +266,10 @@ def _meteor_score(hypotheses: list[str], references: list[str]) -> dict[str, flo
         nltk.data.find("wordnet")
     except LookupError:
         nltk.download("wordnet", quiet=True)
-    
+
     from nltk.tokenize import word_tokenize  # type: ignore
     from nltk.translate.meteor_score import meteor_score  # type: ignore
-    
+
     scores = [
         meteor_score([word_tokenize(ref)], word_tokenize(hyp))
         for hyp, ref in zip(hypotheses, references)
@@ -348,26 +348,26 @@ def evaluate(
         use_rewrite: bool = False,
 ) -> tuple[MetricsAtK, list[tuple[list[float], list[float]]]]:
     """Evaluates the retriever on the gold set for a given rank cut-off k."""
-    
+
     # ... initialization ...
-    
+
     for index, row in enumerate(gold):
         retrieval_q = _rewrite_query(row.query) if use_rewrite else row.query
         retrieved_chunks = _get_top_k_chunks(retrieval_q, top_k=k)
-        
+
         # Extract and normalize URLs
         raw_urls = [normalize_url(c.get("source_url", "")) for c in retrieved_chunks]
         unique_urls = unique_preserve_order(raw_urls)
-        
+
         # ► COMPUTE RUN HERE: hierarchical_relevance()
         rel_scores = [
             hierarchical_relevance(url, row.target_url)
             for url in unique_urls
         ]
-        
+
         # ► COMPUTE MRRw SEPARATELY
         mrrws.append(mrr_weighted_single(unique_urls[:k], row.target_url))
-        
+
         # ► COMPUTE nDCG@k
         hits.append(hit_at_k(rel_scores, k))
         mrrs.append(mrr_at_k(rel_scores, k))
@@ -377,7 +377,7 @@ def evaluate(
         ndcgs.append(ndcg_at_k(rel_scores, k))  # ← nDCG CALL
         aps.append(average_precision_at_k(rel_scores, k, total_rel))
         r_precs.append(r_precision(rel_scores, total_rel))
-        
+
     # ... average across queries ...
 ```
 
@@ -393,24 +393,24 @@ def evaluate(
     bertscore_model: str,
 ) -> None:
     # ... load CSVs ...
-    
+
     hypotheses = merged["odpowiedz"].fillna("").astype(str).tolist()
     references = merged["odpowiedz_ref"].fillna("").astype(str).tolist()
-    
+
     results: dict[str, float] = {}
-    
+
     logger.info("Computing BLEU …")
     results.update(_bleu_score(hypotheses, references))
-    
+
     logger.info("Computing ROUGE …")
     results.update(_rouge_scores(hypotheses, references))
-    
+
     logger.info("Computing METEOR …")
     results.update(_meteor_score(hypotheses, references))
-    
+
     logger.info("Computing BERTScore (model=%s) …", bertscore_model)
     results.update(_bertscore(hypotheses, references, lang, bertscore_model))
-    
+
     # ... save results ...
 ```
 
@@ -519,4 +519,3 @@ print(f"BERT F1 (base): {result['bertscore_f1_base']}")
 ```
 
 ---
-

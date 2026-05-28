@@ -124,7 +124,9 @@ def build_messages(
         logger.debug("Joined %d context chunks into system message.", len(context))
 
         # "—" is the frontend sentinel for "not applicable" (admin/research/phd skips major)
-        effective_major = field_of_study if field_of_study and field_of_study != "—" else None
+        effective_major = (
+            field_of_study if field_of_study and field_of_study != "—" else None
+        )
         effective_sem = semester if semester and semester != "—" else None
 
         student_info = ""
@@ -141,14 +143,17 @@ def build_messages(
 
         role_hint = ""
         if user_type and user_type in USER_TYPE_PERSONA:
-            role_hint = f"Wskazówka dotycząca rozmówcy: {USER_TYPE_PERSONA[user_type]}\n\n"
+            role_hint = (
+                f"Wskazówka dotycząca rozmówcy: {USER_TYPE_PERSONA[user_type]}\n\n"
+            )
 
         # Build system message with instructions and FAQ only (static)
         now = datetime.now()
         today_str = now.strftime("%d.%m.%Y, godz. %H:%M")
         style_hint = (
             f"6. Styl odpowiedzi (priorytet nad regułą 3): {style_instruction}\n"
-            if style_instruction else ""
+            if style_instruction
+            else ""
         )
 
         system_message = (
@@ -186,12 +191,14 @@ def build_messages(
         if attachments:
             user_content: list[dict] = [{"type": "text", "text": user_text}]
             for att in attachments:
-                user_content.append({
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:{att['mime_type']};base64,{att['data']}"
-                    },
-                })
+                user_content.append(
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{att['mime_type']};base64,{att['data']}"
+                        },
+                    }
+                )
             last_user_msg: dict = {"role": "user", "content": user_content}
         else:
             last_user_msg = {"role": "user", "content": user_text}

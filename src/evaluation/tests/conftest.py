@@ -14,6 +14,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 # pytest fixtures for common test data
 
+
 @pytest.fixture
 def sample_text_pair():
     """Common text pair for quick tests."""

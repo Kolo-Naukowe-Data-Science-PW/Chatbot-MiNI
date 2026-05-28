@@ -1,6 +1,6 @@
 # Metric Implementation Status Report
 
-**Analysis Date:** 2026-05-28  
+**Analysis Date:** 2026-05-28
 **Focus:** nDCG, hierarchical_relevance, ROUGE-W, METEOR, BERT-Score
 
 ---
@@ -59,7 +59,7 @@ $$\text{DCG@k} = \sum_{rank=1}^{k} \frac{2^{rel_i} - 1}{\log_2(rank + 1)}$$
 ### Test Coverage ✓
 - **Test File:** `src/evaluation/tests/test_retrieval_metrics.py`
 - **Test Class:** `TestDCGAndNDCG`
-- **Tests:** 
+- **Tests:**
   - Perfect ranking (nDCG = 1.0)
   - Worst ranking (nDCG = 0.0)
   - Mixed ranking (0 < nDCG < 1)
@@ -112,7 +112,7 @@ $$rel(r, t) = \begin{cases}
 
 ### Implementation Notes
 - **Normalization:** URLs stripped of query strings & fragments
-- **Asymmetric Scoring:** 
+- **Asymmetric Scoring:**
   - Children penalized MORE than parents (0.5^(d+1) vs 0.5^d)
   - Philosophy: Parent page more reliable than child page for general query
 - **Empty URL Handling:** Empty or None URLs → 0.0
@@ -198,7 +198,7 @@ $$F = \frac{(1+\beta^2) \cdot R \cdot P}{\beta^2 \cdot R + P}$$
 
 ### Multi-Reference Handling ✓
 - **Single reference:** Direct scoring
-- **Multiple references:** 
+- **Multiple references:**
   - Without jackknife: Pick reference with highest recall
   - With jackknife: Leave-one-out averaging for robustness
 
@@ -206,7 +206,7 @@ $$F = \frac{(1+\beta^2) \cdot R \cdot P}{\beta^2 \cdot R + P}$$
 - **Tokenization:** `re.findall(r'\b\w+\b', text.lower())` — word boundaries
 - **Empty text:** Returns `{...: 0.0}` for empty hypothesis or reference
 - **Corpus aggregation:** Returns mean across all (hyp, ref) pairs
-- **Alpha parameter:** 
+- **Alpha parameter:**
   - α=2.0 (default): f(1)=1, f(2)=4, f(3)=9 — quadratic reward for consecutive matches
   - Higher α → more reward for long matches
 
@@ -359,7 +359,7 @@ where:
 ### Implementation Details
 - **Loop:** Creates 4 independent BERTScorer instances
 - **Tokenization:** BERT's wordpiece tokenizer (built-in)
-- **Aggregation:** 
+- **Aggregation:**
   - Per (hyp, ref) pair → precision/recall/F1 tensors
   - Corpus: `.mean().item()` to get scalar float
 - **IDF Mode:** Computes token frequencies from reference corpus
@@ -444,4 +444,3 @@ where:
 - MRRw integration with text metrics pipeline
 
 ---
-

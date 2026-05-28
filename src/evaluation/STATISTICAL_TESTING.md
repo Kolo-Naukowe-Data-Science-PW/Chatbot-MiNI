@@ -148,4 +148,3 @@ pytest src/evaluation/tests/statistical_comparison_test.py -v
 ```
 
 Do not treat this document as a record that all tests passed in the current environment. Run pytest locally to verify the active environment and optional dependencies.
-

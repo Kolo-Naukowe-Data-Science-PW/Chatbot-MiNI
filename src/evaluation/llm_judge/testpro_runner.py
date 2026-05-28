@@ -79,7 +79,9 @@ def _pick_variant_configs(rng: random.Random) -> tuple[dict, dict]:
     baseline_temp = float(os.getenv("EXPERIMENT_TEMP", "0.2"))
     persona_idx = int(os.getenv("EXPERIMENT_PERSONA", "0"))
     if not 0 <= persona_idx < len(PERSONAS):
-        raise ValueError(f"EXPERIMENT_PERSONA={persona_idx} out of range 0–{len(PERSONAS) - 1}")
+        raise ValueError(
+            f"EXPERIMENT_PERSONA={persona_idx} out of range 0–{len(PERSONAS) - 1}"
+        )
     baseline_persona = PERSONAS[persona_idx]
     max_tokens = 200
 

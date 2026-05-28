@@ -120,4 +120,3 @@ pytest src/evaluation/tests/test_retrieval_metrics.py -v
 ### Legacy `evaluation_test.py` fails
 
 That file expects `metrics.py::Metrics.bert_score()` to return tensors. The current `metrics.py` class is a placeholder with `pass`, so this is a known legacy mismatch. Prefer the newer `text_metrics.py` tests for active BERTScore/text-metric behavior.
-

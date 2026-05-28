@@ -11,6 +11,7 @@ Usage (local or on VM):
     python -m src.evaluation.build_file_url_mapping /root/scraped_raw_backup
     python -m src.evaluation.build_file_url_mapping /root/scraped_raw_backup > src/evaluation/data/file_url_mapping.json
 """
+
 from __future__ import annotations
 
 import json

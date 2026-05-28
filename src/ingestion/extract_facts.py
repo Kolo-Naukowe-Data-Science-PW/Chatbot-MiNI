@@ -150,12 +150,16 @@ def main(force: bool = False) -> None:
 
             # Skip USOS schedule pages regardless of filename (Firecrawl-scraped)
             if "pokazPlanGrupyPrzedmiotow" in source_url:
-                logger.info(f"SKIP (USOS schedule URL, handled by schedule pipeline): {txt_file}")
+                logger.info(
+                    f"SKIP (USOS schedule URL, handled by schedule pipeline): {txt_file}"
+                )
                 continue
 
             # Skip study programme PDFs (handled by curriculum pipeline)
             if "plan-studiow" in source_url or "Plan-studiow" in source_url:
-                logger.info(f"SKIP (plan studiów, handled by curriculum pipeline): {txt_file}")
+                logger.info(
+                    f"SKIP (plan studiów, handled by curriculum pipeline): {txt_file}"
+                )
                 continue
 
             # Check if there is a metadata file that should override the URL
@@ -171,7 +175,9 @@ def main(force: bool = False) -> None:
             facts_filename = f"{base_name}_facts.json"
             out_path = os.path.join(OUTPUT_DIR, facts_filename)
 
-            if not force and (is_facts_extracted(facts_filename) or os.path.exists(out_path)):
+            if not force and (
+                is_facts_extracted(facts_filename) or os.path.exists(out_path)
+            ):
                 logger.info(f"SKIP (already extracted): {txt_file}")
                 if not is_facts_extracted(facts_filename):
                     mark_facts_extracted(facts_filename)
@@ -195,8 +201,12 @@ def main(force: bool = False) -> None:
 
 if __name__ == "__main__":
     import argparse
+
     parser = argparse.ArgumentParser()
-    parser.add_argument("--force", action="store_true",
-                        help="Re-extract all files, ignoring the progress tracker.")
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-extract all files, ignoring the progress tracker.",
+    )
     args = parser.parse_args()
     main(force=args.force)

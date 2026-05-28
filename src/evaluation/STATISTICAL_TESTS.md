@@ -158,4 +158,3 @@ kappa = kappa_coefficient(
     [{"url1", "url4"}, {"url3"}],
 )
 ```
-

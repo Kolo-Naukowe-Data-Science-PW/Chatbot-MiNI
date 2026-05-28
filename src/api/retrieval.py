@@ -52,7 +52,9 @@ def get_top_k_chunks(
 ) -> list[dict[str, Any]]:
     logger.info(
         "Starting hybrid retrieval for top %d chunks (rerank=%s). Query: '%s'",
-        top_k, use_rerank, query,
+        top_k,
+        use_rerank,
+        query,
     )
 
     try:
@@ -102,8 +104,12 @@ def get_top_k_chunks(
         scores = reranker.predict(pairs)
 
         structured_results = [
-            chunk for _, chunk in
-            sorted(zip(scores, candidates_list), key=lambda x: x[0], reverse=True)
+            chunk
+            for _, chunk in sorted(
+                zip(scores, candidates_list, strict=False),
+                key=lambda x: x[0],
+                reverse=True,
+            )
         ][:top_k]
 
         logger.info(

@@ -21,13 +21,13 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.ingestion.embedder import Embedder
-from src.ingestion.vector_db import (
+from src.ingestion.embedder import Embedder  # noqa: E402
+from src.ingestion.vector_db import (  # noqa: E402
     COLLECTION_NAME_CHUNKS,
     ensure_chunks_collection,
     save_chunks_to_vector_db,
 )
-from src.utils.paths import get_data_dir
+from src.utils.paths import get_data_dir  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -78,13 +78,25 @@ def _chunk_text(text: str) -> list[str]:
             current_words.extend(seg_words)
         else:
             if current_words:
-                chunk_text = " ".join(prev_tail + current_words) if prev_tail else " ".join(current_words)
+                chunk_text = (
+                    " ".join(prev_tail + current_words)
+                    if prev_tail
+                    else " ".join(current_words)
+                )
                 chunks.append(chunk_text)
-                prev_tail = current_words[-CHUNK_OVERLAP:] if len(current_words) >= CHUNK_OVERLAP else current_words[:]
+                prev_tail = (
+                    current_words[-CHUNK_OVERLAP:]
+                    if len(current_words) >= CHUNK_OVERLAP
+                    else current_words[:]
+                )
             current_words = seg_words
 
     if current_words:
-        chunk_text = " ".join(prev_tail + current_words) if prev_tail else " ".join(current_words)
+        chunk_text = (
+            " ".join(prev_tail + current_words)
+            if prev_tail
+            else " ".join(current_words)
+        )
         chunks.append(chunk_text)
 
     return chunks
@@ -98,14 +110,16 @@ def _parse_file(path: Path) -> tuple[str, str]:
     for i, line in enumerate(lines):
         stripped = line.strip()
         if stripped.startswith("URL:"):
-            url = stripped[len("URL:"):].strip()
+            url = stripped[len("URL:") :].strip()
             body_start = i + 1
             break
     body = "\n".join(lines[body_start:]).strip()
     return url, body
 
 
-def _load_scraped_files(scraped_dir: Path, skip_schedules: bool = False) -> list[tuple[str, str]]:
+def _load_scraped_files(
+    scraped_dir: Path, skip_schedules: bool = False
+) -> list[tuple[str, str]]:
     records: list[tuple[str, str]] = []
     if not scraped_dir.exists():
         logger.error("Scraped directory not found: %s", scraped_dir)
@@ -150,6 +164,7 @@ def ingest_chunks(
     if drop_existing:
         try:
             from qdrant_client import QdrantClient
+
             client = QdrantClient(path=database_path)
             if client.collection_exists(COLLECTION_NAME_CHUNKS):
                 client.delete_collection(COLLECTION_NAME_CHUNKS)
@@ -159,7 +174,9 @@ def ingest_chunks(
             logger.warning("Could not drop collection: %s", exc)
 
     logger.info("Starting chunk ingestion from %s", scraped_dir)
-    logger.info("Target Qdrant collection: %s at %s", COLLECTION_NAME_CHUNKS, database_path)
+    logger.info(
+        "Target Qdrant collection: %s at %s", COLLECTION_NAME_CHUNKS, database_path
+    )
 
     ensure_chunks_collection(database_path)
 
@@ -206,7 +223,9 @@ def ingest_chunks(
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="Ingest scraped pages as text chunks into mini_chunks.")
+    parser = argparse.ArgumentParser(
+        description="Ingest scraped pages as text chunks into mini_chunks."
+    )
     parser.add_argument(
         "--scraped-dir",
         default=str(SCRAPED_DIR),
