@@ -1,4 +1,4 @@
-name: Run Benchmark
+name: Retrieval Metrics
 
 on:
   workflow_dispatch:

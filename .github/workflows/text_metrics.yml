@@ -1,4 +1,4 @@
-name: Text Metrics Evaluation
+name: Generation metrics
 
 on:
   workflow_dispatch:
