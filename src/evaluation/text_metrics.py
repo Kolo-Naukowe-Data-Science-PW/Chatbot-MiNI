@@ -433,11 +433,11 @@ def evaluate(
     ts = datetime.now().strftime("%Y%m%dT%H%M%S")
 
     logger.info("Loading generated answers from %s", generated_csv)
-    gen_df = pd.read_csv(generated_csv, sep=None, engine="python", quoting=3)
+    gen_df = pd.read_csv(generated_csv, sep='|', engine="python")
     gen_df.columns = gen_df.columns.str.strip()
 
     logger.info("Loading reference answers from %s", reference_csv)
-    ref_df = pd.read_csv(reference_csv, sep=None, engine="python", quoting=3)
+    ref_df = pd.read_csv(reference_csv, sep='|', engine="python")
     ref_df.columns = ref_df.columns.str.strip()
 
     # Normalise column names to lowercase
