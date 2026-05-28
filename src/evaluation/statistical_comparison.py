@@ -192,142 +192,444 @@ def extract_ranks_from_csv(csv_path: Path) -> np.ndarray:
     return np.array(ranks)
 
 
-def wilcoxon_test(differences: np.ndarray, alpha: float = 0.05) -> tuple[float, float, bool]:
+def _rank_with_ties(values: np.ndarray) -> np.ndarray:
     """
-    Wilcoxon Signed-Rank Test.
+    Rank array values, averaging ranks for tied values.
     
-    Tests H0: E[d_q] = 0 (no difference between models).
+    Per thesis: if |d_{k_i}| = |d_{k_j}|, then rank(d_{k_i}) = rank(d_{k_j}) = (i+j)/2
+    
+    Args:
+        values: array of values to rank (typically absolute differences)
+    
+    Returns:
+        array of ranks [1, n] with tie-averaging
+    """
+    n = len(values)
+    # Sort indices by value
+    sorted_indices = np.argsort(values)
+    # Initialize ranks array
+    ranks = np.empty(n)
+    
+    i = 0
+    while i < n:
+        # Find all tied values
+        j = i
+        while j < n and values[sorted_indices[j]] == values[sorted_indices[i]]:
+            j += 1
+        # Assign average rank to all tied values
+        avg_rank = (i + j + 1) / 2.0  # +1 because ranks are 1-indexed
+        for k in range(i, j):
+            ranks[sorted_indices[k]] = avg_rank
+        i = j
+    
+    return ranks
+
+
+def wilcoxon_signed_rank_test(
+    differences: np.ndarray, 
+    alpha: float = 0.05, 
+    alternative: str = "two-sided"
+) -> dict[str, float | bool]:
+    r"""
+    Wilcoxon Signed-Rank Test Implementation.
+    
+    Per thesis mathematical definition:
+    
+    1. d_q = score_A(q) - score_B(q)   (∀q ∈ Q)
+    
+    2. Remove zeros: n := |{q ∈ Q : d_q ≠ 0}|
+    
+    3. Rank |d_q| values with tie-averaging:
+       If |d_{k_i}| = |d_{k_j}|, then rank = (i+j)/2
+    
+    4. Calculate signed rank sums:
+       W⁺ = Σ_{q: d_q > 0} rank(|d_q|)
+       W⁻ = Σ_{q: d_q < 0} rank(|d_q|)
+    
+    5. Test statistic: W = min(W⁺, W⁻)
+    
+    6. For n ≥ 25, approximate normal distribution:
+       E[W] = n(n+1)/4
+       Var(W) = n(n+1)(2n+1)/24
+       Z = (W - E[W]) / sqrt(Var(W))  → 𝒩(0,1)
     
     Args:
         differences: per-query differences d_q = score_A(q) - score_B(q)
         alpha: significance level (default 0.05)
+        alternative: "two-sided", "greater", "less"
     
     Returns:
-        (test_statistic, p_value, is_significant)
+        {
+            'n': sample size (after removing zeros),
+            'W_plus': W⁺ (sum of positive ranks),
+            'W_minus': W⁻ (sum of negative ranks),
+            'W': test statistic = min(W⁺, W⁻),
+            'expected_W': E[W],
+            'variance_W': Var(W),
+            'z_score': Z-score (only if n ≥ 25),
+            'p_value': statistical p-value,
+            'is_significant': bool(p_value ≤ alpha),
+            'method': "Exact" if n < 25 else "Approximate (Z-score, n ≥ 25)",
+        }
     """
-    # Remove zero differences (tied pairs)
-    nonzero = differences[differences != 0]
+    # Step 1-2: Remove zero differences
+    nonzero_diffs = differences[differences != 0]
+    n = len(nonzero_diffs)
     
-    if len(nonzero) < 2:
-        return np.nan, 1.0, False
+    result = {
+        'n': n,
+        'W_plus': None,
+        'W_minus': None,
+        'W': None,
+        'expected_W': None,
+        'variance_W': None,
+        'z_score': None,
+        'p_value': None,
+        'is_significant': None,
+        'method': None,
+    }
     
-    stat, pvalue = stats.wilcoxon(nonzero, alternative="two-sided")
-    is_sig = pvalue <= alpha
+    if n < 1:
+        result['p_value'] = 1.0
+        result['is_significant'] = False
+        result['method'] = "N/A (no non-zero differences)"
+        return result
     
-    return float(stat), float(pvalue), is_sig
+    # Step 3: Rank absolute differences with tie-averaging
+    abs_diffs = np.abs(nonzero_diffs)
+    ranks = _rank_with_ties(abs_diffs)
+    
+    # Step 4: Calculate W⁺ and W⁻
+    W_plus = np.sum(ranks[nonzero_diffs > 0])
+    W_minus = np.sum(ranks[nonzero_diffs < 0])
+    
+    result['W_plus'] = float(W_plus)
+    result['W_minus'] = float(W_minus)
+    
+    # Step 5: Test statistic W = min(W⁺, W⁻)
+    W = min(W_plus, W_minus)
+    result['W'] = float(W)
+    
+    # Step 6a: For n < 25, use exact distribution (scipy)
+    if n < 25:
+        from scipy.stats import wilcoxon as scipy_wilcoxon
+        stat, p_value = scipy_wilcoxon(nonzero_diffs, alternative=alternative)
+        result['p_value'] = float(p_value)
+        result['method'] = f"Exact (n={n} < 25)"
+    
+    # Step 6b: For n ≥ 25, use normal approximation
+    else:
+        E_W = n * (n + 1) / 4.0
+        Var_W = n * (n + 1) * (2*n + 1) / 24.0
+        
+        result['expected_W'] = float(E_W)
+        result['variance_W'] = float(Var_W)
+        
+        # Z-score
+        z_score = (W - E_W) / np.sqrt(Var_W)
+        result['z_score'] = float(z_score)
+        
+        # P-value based on alternative hypothesis
+        if alternative == "two-sided":
+            # p = 2 * P(|Z| ≥ |z_obs|)
+            p_value = 2.0 * (1.0 - stats.norm.cdf(abs(z_score)))
+        elif alternative == "greater":
+            # p = P(Z ≥ z_obs)
+            p_value = 1.0 - stats.norm.cdf(z_score)
+        else:  # alternative == "less"
+            # p = P(Z ≤ z_obs)
+            p_value = stats.norm.cdf(z_score)
+        
+        result['p_value'] = float(p_value)
+        result['method'] = f"Approximate normal (Z-score, n={n} ≥ 25)"
+    
+    result['is_significant'] = result['p_value'] <= alpha
+    
+    return result
 
 
-def goodman_kruskal_gamma(ranks_A: np.ndarray, ranks_B: np.ndarray) -> tuple[float, int, int]:
-    """
-    Goodman–Kruskal γ (gamma) Coefficient.
+def goodman_kruskal_gamma_test(
+    ranks_A: np.ndarray, 
+    ranks_B: np.ndarray
+) -> dict[str, float | int]:
+    r"""
+    Goodman–Kruskal γ (gamma) Coefficient Test.
+    
+    Per thesis definition:
     
     Measures ordinal association between ranks assigned by two models.
-    γ = (C - D) / (C + D), where C = concordant pairs, D = discordant pairs.
+    Models A and B assign ranks ∈ {1,2,3,4,5,∞} to correct link position.
+    
+    For queries q_i, q_j ∈ Q, define:
+    
+      Π_c = P((a_i < a_j ∧ b_i < b_j) ∨ (a_i > a_j ∧ b_i > b_j))
+          = P((a_i - a_j)(b_i - b_j) > 0)  → concordant pairs
+    
+      Π_d = P((a_i < a_j ∧ b_i > b_j) ∨ (a_i > a_j ∧ b_i < b_j))
+          = P((a_i - a_j)(b_i - b_j) < 0)  → discordant pairs
+    
+    Sample estimators:
+      C = total number of concordant pairs
+      D = total number of discordant pairs
+    
+    Gamma coefficient:
+      γ = (C - D) / (C + D)
+    
+    Interpretation: measures agreement on query difficulty ranking
+      γ = 1: perfect agreement
+      γ = 0: no agreement
+      γ = -1: perfect disagreement
     
     Args:
-        ranks_A: per-query ranks from model A
+        ranks_A: per-query ranks from model A (int array, typically ∈ {1,2,3,4,5,999})
         ranks_B: per-query ranks from model B
     
     Returns:
-        (gamma_coeff, n_concordant, n_discordant)
+        {
+            'n_queries': number of queries,
+            'n_pairs': number of query pairs n(n-1)/2,
+            'C': concordant pairs count,
+            'D': discordant pairs count,
+            'gamma': γ = (C-D)/(C+D),
+            'interpretation': human-readable interpretation,
+        }
     """
+    ranks_A = np.asarray(ranks_A, dtype=float)
+    ranks_B = np.asarray(ranks_B, dtype=float)
     n = len(ranks_A)
+    
     concordant = 0
     discordant = 0
     
     # For each pair of queries (i, j) where i < j
-    for i, j in combinations(range(n), 2):
-        rank_diff_A = ranks_A[i] - ranks_A[j]
-        rank_diff_B = ranks_B[i] - ranks_B[j]
-        
-        # Both increase or both decrease → concordant
-        if rank_diff_A * rank_diff_B > 0:
-            concordant += 1
-        # One increases, other decreases → discordant
-        elif rank_diff_A * rank_diff_B < 0:
-            discordant += 1
+    for i in range(n):
+        for j in range(i + 1, n):
+            # Rank differences
+            rank_diff_A = ranks_A[i] - ranks_A[j]
+            rank_diff_B = ranks_B[i] - ranks_B[j]
+            
+            # Product of differences determines concordance/discordance
+            product = rank_diff_A * rank_diff_B
+            
+            if product > 0:
+                # Both rank differences have same sign → concordant
+                concordant += 1
+            elif product < 0:
+                # Rank differences have opposite signs → discordant
+                discordant += 1
+            # If product == 0, neither concordant nor discordant (tie)
     
+    n_pairs = n * (n - 1) // 2
+    
+    # Calculate gamma
     if concordant + discordant == 0:
         gamma = 0.0
+        interpretation = "No association (C=D=0)"
     else:
         gamma = (concordant - discordant) / (concordant + discordant)
+        
+        if abs(gamma) < 0.3:
+            interpretation = "Weak association"
+        elif abs(gamma) < 0.7:
+            interpretation = "Moderate association"
+        else:
+            interpretation = "Strong association"
+        
+        if gamma < 0:
+            interpretation += " (opposite direction)"
     
-    return float(gamma), int(concordant), int(discordant)
+    return {
+        'n_queries': n,
+        'n_pairs': n_pairs,
+        'C': concordant,
+        'D': discordant,
+        'gamma': float(gamma),
+        'interpretation': interpretation,
+    }
 
 
-def kappa_agreement(retrieval_sets_list: list[list[set[str]]], 
-                    queries: list[int] | None = None) -> dict[str, float]:
-    """
-    Kappa Coefficient of Agreement.
+def kappa_coefficient(
+    retrieval_sets_i: list[set[str]], 
+    retrieval_sets_j: list[set[str]],
+    relevant_sets: list[set[str]] | None = None
+) -> dict[str, float]:
+    r"""
+    Kappa Coefficient of Agreement (for single query pair).
     
-    Measures stability: whether repeated runs return the same documents.
-    Computes κ for all pairs of runs, then averages.
+    Per thesis definition with contingency table:
+    
+    For each query q, compute agreement between two generations i and j:
+    
+        U(q) = Z_rel(q) ∪ Z^(i)_top-k(q) ∪ Z^(j)_top-k(q)  (universe of documents)
+    
+    Contingency table:
+        ┌─────────────────────────────────────────┐
+        │           │ Z^(i) ∩ Z^(j) │ Others       │
+        ├─────────────────────────────────────────┤
+        │ Z^(i) ⊆    │      a        │      b       │
+        │ Z^(j) ∩    │      c        │      d       │
+        └─────────────────────────────────────────┘
+    
+    Where:
+        a = |Z^(i) ∩ Z^(j)|  (both agree - document retrieved by both)
+        b = |Z^(i) \ Z^(j)|  (disagreement - i only)
+        c = |Z^(j) \ Z^(i)|  (disagreement - j only)
+        d = |U \ (Z^(i) ∪ Z^(j))|  (both agree - document in neither)
+    
+    Agreement:
+        p_o = (a + d) / |U|  (observed agreement)
+        p_e = (a+b)/|U| * (a+c)/|U| + (c+d)/|U| * (b+d)/|U|  (expected by chance)
+    
+    Cohen's Kappa:
+        κ = (p_o - p_e) / (1 - p_e)
     
     Args:
-        retrieval_sets_list: list of [run_i, run_j, ...] where each run is
-                            list of sets; each set is top-k URLs for one query
-        queries: optional query IDs; if None, assumes sequential indexing
+        retrieval_sets_i: list of sets of documents retrieved in generation i
+        retrieval_sets_j: list of sets of documents retrieved in generation j
+        relevant_sets: optional list of relevant documents for each query
+                      (to include in universe if provided)
     
     Returns:
         {
-            'kappa_mean': average κ across all query/run pairs,
+            'n_queries': number of queries,
+            'kappa_mean': mean κ across queries,
             'kappa_min': minimum κ,
             'kappa_max': maximum κ,
-            'n_runs': number of runs,
-            'n_queries': number of unique queries,
+            'kappas': list of individual κ values per query,
         }
     """
-    if not retrieval_sets_list or len(retrieval_sets_list) < 2:
-        return {}
+    if len(retrieval_sets_i) != len(retrieval_sets_j):
+        raise ValueError("retrieval_sets_i and retrieval_sets_j must have same length")
     
-    n_runs = len(retrieval_sets_list)
-    n_queries = len(retrieval_sets_list[0])
-    
+    n_queries = len(retrieval_sets_i)
     kappas = []
     
-    # For each query
     for q_idx in range(n_queries):
-        # For each pair of runs
-        for run_i, run_j in combinations(range(n_runs), 2):
-            set_i = retrieval_sets_list[run_i][q_idx]
-            set_j = retrieval_sets_list[run_j][q_idx]
-            
-            # Universe
-            universe = set_i | set_j
-            
-            if not universe:
-                continue
-            
-            # Agreement: URLs in both or in neither
-            agreed = len((set_i & set_j) | (set_i.symmetric_difference(set_j) - set_i - set_j))
-            # Disagreement: URLs in one but not the other
-            disagreed = len(set_i.symmetric_difference(set_j))
-            
-            p_o = agreed / len(universe) if universe else 0.0
-            
-            # Expected agreement by chance
-            prob_i = len(set_i) / len(universe)
-            prob_j = len(set_j) / len(universe)
-            p_e = prob_i * prob_j + (1 - prob_i) * (1 - prob_j)
-            
-            # Cohen's kappa
-            if p_e < 1.0:
-                kappa = (p_o - p_e) / (1 - p_e)
-            else:
-                kappa = 1.0 if p_o == p_e else 0.0
-            
-            kappas.append(kappa)
-    
-    if not kappas:
-        return {}
+        Z_i = set(retrieval_sets_i[q_idx])
+        Z_j = set(retrieval_sets_j[q_idx])
+        
+        # Build universe
+        universe = Z_i | Z_j
+        if relevant_sets and q_idx < len(relevant_sets):
+            universe = universe | set(relevant_sets[q_idx])
+        
+        if not universe:
+            # Empty universe → perfect agreement (vacuously true)
+            kappas.append(1.0)
+            continue
+        
+        # Contingency table
+        a = len(Z_i & Z_j)  # both agree - in both
+        b = len(Z_i - Z_j)  # disagree - i only
+        c = len(Z_j - Z_i)  # disagree - j only
+        d = len(universe - (Z_i | Z_j))  # both agree - in neither
+        
+        # Observed agreement
+        p_o = (a + d) / len(universe)
+        
+        # Expected agreement by chance
+        p_A = (a + b) / len(universe)
+        p_B = (a + c) / len(universe)
+        p_not_A = (c + d) / len(universe)
+        p_not_B = (b + d) / len(universe)
+        
+        p_e = p_A * p_B + p_not_A * p_not_B
+        
+        # Cohen's kappa
+        if p_e < 1.0:
+            kappa = (p_o - p_e) / (1.0 - p_e)
+        else:
+            kappa = 1.0 if p_o == p_e else 0.0
+        
+        kappas.append(kappa)
     
     return {
-        'kappa_mean': float(np.mean(kappas)),
-        'kappa_min': float(np.min(kappas)),
-        'kappa_max': float(np.max(kappas)),
-        'n_runs': n_runs,
         'n_queries': n_queries,
-        'n_kappas': len(kappas),
+        'kappa_mean': float(np.mean(kappas)) if kappas else 0.0,
+        'kappa_min': float(np.min(kappas)) if kappas else 0.0,
+        'kappa_max': float(np.max(kappas)) if kappas else 0.0,
+        'kappas': kappas,
+    }
+
+
+
+
+
+def paired_permutation_test(
+    scores_A: np.ndarray,
+    scores_B: np.ndarray,
+    n_permutations: int = 10000,
+    seed: int = 67,
+    alternative: str = "two-sided"
+) -> dict[str, float | list]:
+    r"""
+    Paired Permutation Test.
+    
+    Non-parametric test for comparing paired samples.
+    
+    Method:
+    1. Compute differences: d_q = score_A(q) - score_B(q)
+    2. Observed test statistic: obs = mean(d)
+    3. For b = 1..n_perm:
+       - Randomly flip signs of d_q: d'_q = signs_b * d_q
+       - Compute permuted statistic: mean(d')
+    4. P-value = |{perm_stats ≥ |obs|} | / n_perm
+    
+    Args:
+        scores_A: scores from model A
+        scores_B: scores from model B
+        n_permutations: number of permutation iterations (default 10000)
+        seed: random seed for reproducibility (default 67)
+        alternative: "two-sided" (default), "greater", "less"
+    
+    Returns:
+        {
+            'observed_diff': mean(A - B),
+            'p_value': permutation test p-value,
+            'n_permutations': number of permutations performed,
+            'perm_stats': array of permuted test statistics,
+            'alternative': alternative hypothesis,
+            'interpretation': human-readable result,
+        }
+    """
+    rng = np.random.default_rng(seed)
+    
+    scores_A = np.asarray(scores_A, dtype=float)
+    scores_B = np.asarray(scores_B, dtype=float)
+    
+    if len(scores_A) != len(scores_B):
+        raise ValueError("scores_A and scores_B must have same length")
+    
+    # Step 1-2: Compute differences and observed statistic
+    diffs = scores_A - scores_B
+    obs = np.mean(diffs)
+    
+    # Step 3: Generate permutation distribution
+    perm_stats = np.empty(n_permutations)
+    
+    for b in range(n_permutations):
+        # Randomly flip signs of differences
+        signs = rng.choice([-1, 1], size=len(diffs))
+        perm_stats[b] = np.mean(signs * diffs)
+    
+    # Step 4: Calculate p-value
+    if alternative == "two-sided":
+        p_value = np.mean(np.abs(perm_stats) >= np.abs(obs))
+        interpretation = f"Two-tailed: mean difference = {obs:.6f}, p = {p_value:.4f}"
+    elif alternative == "greater":
+        p_value = np.mean(perm_stats >= obs)
+        interpretation = f"One-tailed (>): mean difference = {obs:.6f}, p = {p_value:.4f}"
+    else:  # alternative == "less"
+        p_value = np.mean(perm_stats <= obs)
+        interpretation = f"One-tailed (<): mean difference = {obs:.6f}, p = {p_value:.4f}"
+    
+    return {
+        'observed_diff': float(obs),
+        'p_value': float(p_value),
+        'n_permutations': n_permutations,
+        'perm_stats': perm_stats,
+        'alternative': alternative,
+        'interpretation': interpretation,
     }
 
 
@@ -399,25 +701,22 @@ def compare_models(
         
         # Perform only the selected test type
         if test_type == "wilcoxon":
-            wilcox_stat, wilcox_p, is_sig = wilcoxon_test(differences, alpha)
-            result_dict['wilcoxon_stat'] = wilcox_stat
-            result_dict['wilcoxon_pvalue'] = wilcox_p
-            result_dict['wilcoxon_sig'] = is_sig
+            wilcox_result = wilcoxon_signed_rank_test(differences, alpha)
+            result_dict['wilcoxon_stat'] = wilcox_result['W']
+            result_dict['wilcoxon_pvalue'] = wilcox_result['p_value']
+            result_dict['wilcoxon_sig'] = wilcox_result['is_significant']
         
         elif test_type == "gamma":
-            gamma, concordant, discordant = goodman_kruskal_gamma(ranks_A, ranks_B)
-            result_dict['gamma_coeff'] = gamma
-            result_dict['gamma_concordant'] = concordant
-            result_dict['gamma_discordant'] = discordant
+            gamma_result = goodman_kruskal_gamma_test(ranks_A, ranks_B)
+            result_dict['gamma_coeff'] = gamma_result['gamma']
+            result_dict['gamma_concordant'] = gamma_result['C']
+            result_dict['gamma_discordant'] = gamma_result['D']
         
         elif test_type == "kappa":
             # For kappa, we need retrieval sets from sources
-            # This requires parsing the HTML/JSON sources from both CSVs
-            kappa_result = kappa_agreement([ranks_A, ranks_B])
-            if kappa_result:
-                result_dict['kappa_avg'] = kappa_result.get('kappa_mean')
-                result_dict['kappa_min'] = kappa_result.get('kappa_min')
-                result_dict['kappa_max'] = kappa_result.get('kappa_max')
+            # This requires parsing the CSV sources for document sets
+            # For now, we'll use a placeholder or skip this test type
+            pass
         
         result = ComparisonResult(**result_dict)
         results.append(result)
@@ -442,22 +741,24 @@ def format_result(result: ComparisonResult, test_type: str = "wilcoxon") -> str:
         significance_marker = "✓ SIGNIFICANT" if result.wilcoxon_sig else "n.s."
         lines.extend([
             f"\n  Wilcoxon Signed-Rank Test (α=0.05, two-tailed):",
-            f"    Test statistic:     {result.wilcoxon_stat:.4f}",
+            f"    Method:             Per thesis: rank absolute differences with tie-averaging",
+            f"    Test statistic W:   {result.wilcoxon_stat:.4f}",
             f"    p-value:            {result.wilcoxon_pvalue:.6f} {significance_marker}",
         ])
     
     elif test_type == "gamma":
         lines.extend([
-            f"\n  Goodman–Kruskal γ Coefficient:",
+            f"\n  Goodman–Kruskal γ Coefficient (ordinal association):",
             f"    γ:                  {result.gamma_coeff:+.4f}",
-            f"    Concordant pairs:   {result.gamma_concordant}",
-            f"    Discordant pairs:   {result.gamma_discordant}",
+            f"    Concordant pairs C: {result.gamma_concordant}",
+            f"    Discordant pairs D: {result.gamma_discordant}",
+            f"    Formula: γ = (C-D)/(C+D)",
         ])
     
     elif test_type == "kappa":
         if result.kappa_avg is not None:
             lines.extend([
-                f"\n  Kappa Agreement (stability):",
+                f"\n  Kappa Agreement (stability across runs):",
                 f"    κ (mean):           {result.kappa_avg:.4f}",
                 f"    κ (min):            {result.kappa_min:.4f}",
                 f"    κ (max):            {result.kappa_max:.4f}",

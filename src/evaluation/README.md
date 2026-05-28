@@ -1,87 +1,251 @@
 # Evaluation
 
-All evaluation scripts, metrics, and benchmark data for MiNIonek.
+Evaluation scripts, metrics, test data, and benchmark helpers for MiNIonek.
+
+This folder contains two main evaluation paths:
+
+1. retrieval/source evaluation: does the RAG pipeline return the right URLs?
+2. answer-quality evaluation: does the chatbot produce useful, accurate answers?
 
 ## Contents
 
 | File / Folder | Purpose |
 |---|---|
-| `benchmark.py` | Main benchmark: runs retrieval on the gold eval set, computes Hit@k, MRR@k, nDCG@k, MAP@k, Precision-Recall curves. **Use this.** |
-| `benchmark_v1.py` | Legacy simple benchmark (basic Hit@k / MRR, no hierarchical scoring). |
-| `text_metrics.py` | **NEW** Text-generation metrics: BLEU, ROUGE-{1,2,L,W,S}, METEOR, BERTScore(P/R/F1). Compares generated answers against QA_rag.csv references. |
-| `statistical_comparison.py` | Wilcoxon + Goodman–Kruskal γ + Kappa tests for comparing two model variants statistically. Input: two `eval_per_query_<ts>.csv` files. |
-| `metrics.py` | BERTScore class for text-level answer quality evaluation. |
-| `prepare_data.py` | CSV loading utilities used by the BERTScore pipeline. |
-| `eval_with_playwright.py` | Playwright macro: automates asking questions through the live chatbot UI and collecting answers to a TSV. Requires a running deployment. |
-| `llm_judge/judge.py` | LLM-as-a-judge: rates two chatbot answers on usefulness / accuracy / conciseness (1–5 scales) and picks the better variant. |
-| `llm_judge/testpro_runner.py` | Batch runner: reads eval CSV, calls `/chat` twice per question with random model configs, runs judge, writes results to CSV. |
-| `llm_judge/golden_judge.py` | Judge logic for comparing chatbot vs golden answer. Contains two prompt variants: asymmetric (golden without RAG) and symmetric (golden with full context). |
-| `llm_judge/golden_judge_runner.py` | Batch runner: chatbot vs golden answers generated **without** context (supermodel answering from parametric knowledge only). |
-| `llm_judge/context_golden_runner.py` | Batch runner: chatbot vs golden answers generated **with** full scraped context (e.g. via LM Studio / LM Notebooks). Symmetric judge rubric. |
-| `data/` | Evaluation datasets (see below). |
+| `benchmark.py` | Main retrieval benchmark. Computes fixed-k and adaptive-k metrics such as Hit, MRR, MRRw, Recall, Precision, F1, nDCG, MAP, R-Precision, and optional plots. |
+| `run_experiment.py` | Ablation runner for named RAG pipeline variants from `pipeline_config.py`. Can evaluate `human`, `rag`, or `generated` testsets and optionally call an LLM judge. |
+| `pipeline_config.py` | Dataclass and named pipeline variants: baseline, vector-only, no-rerank, two-step rerank, chunks, no-rewrite, and two-stage variants. |
+| `retrieval_runner.py` | Retrieval implementation used by `run_experiment.py`; supports hybrid/dense retrieval, reranking, chunks vs facts, and two-stage retrieval. |
+| `benchmark_v1.py` | Legacy simpler benchmark. |
+| `benchmark_hier.py` | Older/alternate hierarchical benchmark utilities. |
+| `text_metrics.py` | Text-generation metrics: BLEU, ROUGE-{1,2,L,W,S}, METEOR, and BERTScore variants. Compares generated answers with reference answers. |
+| `statistical_comparison.py` | CLI for comparing two benchmark CSVs with one selected statistical test: Wilcoxon, Goodman-Kruskal gamma, or kappa mode. Kappa helper exists, but the CLI integration is currently incomplete. |
+| `generate_golden_answers.py` | Generates `golden_answers.csv` with OpenRouter supermodels, without RAG context. |
+| `prepare_data.py` | Legacy CSV loading helpers used by older tests/pipeline pieces. |
+| `metrics.py` | Legacy placeholder class. `bert_score()` and `perplexity()` are currently not implemented here; use `text_metrics.py` for active text metrics. |
+| `eval_with_playwright.py` | Browser macro for asking questions through the live chatbot UI and collecting answers. |
+| `weighted_feedback.py` | Utilities for weighting feedback/evaluation rows. |
+| `prepare_chunking_subset.py` | Helper for preparing subset data for chunking experiments. |
+| `METRICS_SUMMARY.py` | Reference/summary material for metrics. |
+| `STATISTICAL_QUICK_REFERENCE.py` | Quick-reference material for statistical tests. |
+| `benchmark_checks/` | Focused checks for coverage, reranker, rewriter, BM25 prefilter, and URL aggregation. |
+| `llm_judge/` | LLM-as-a-judge modules and batch runners. |
+| `tests/` | Pytest tests for retrieval metrics, text metrics, BERTScore, and statistical comparison helpers. |
+| `data/` | Evaluation datasets. |
 
 ## Evaluation Data (`data/`)
 
 | File | Description |
 |---|---|
-| `questions.csv` | Raw questions from student survey (3 columns of free-text answers) |
-| `questions_cat.csv` | Questions with topic category labels |
-| `questions_filtered.csv` | Filtered eval set: `query` + gold `strona` URL — **used by benchmark.py** |
-| `questions_with_links.csv` | Full eval set with source links — used by testpro_runner |
-| `golden_answers.csv` | Reference answers from 3 supermodels (GPT, Opus, Gemini) generated **without** RAG context — used by `golden_judge_runner.py` |
-| `context_golden_answers.csv` | Reference answers generated **with** full scraped text (e.g. LM Studio / LM Notebooks) — used by `context_golden_runner.py`. Format: `query, golden_answer[, gold_url, skip_reason]` |
-| `test.csv` | Small fixture for unit tests |
+| `questions.csv` | Raw questions from the student survey. |
+| `questions_cat.csv` | Questions with topic category labels. |
+| `questions_with_links.csv` | Full eval set with source links. `benchmark.py` automatically filters this file to `wymagany kontekst = 0`; `testpro_runner.py` can also read it. |
+| `questions_filtered.csv` | Pre-filtered eval set with question and gold URL columns. |
+| `QA_rag.csv` | RAG QA reference set used by text metrics and `run_experiment.py --testset rag`. |
+| `final_notebooklm_QA.jsonl` | Generated QA set used by `run_experiment.py --testset generated`. |
+| `golden_answers.csv` | Reference answers from GPT/Opus/Gemini generated without RAG context; used by `golden_judge_runner.py`. |
+| `context_golden_answers.csv` | Optional reference answers generated with full scraped context; used by `context_golden_runner.py` if present. Format: `query, golden_answer[, gold_url, skip_reason]`. |
+| `test.csv` | Small fixture for legacy unit tests. |
 
-## Running the main benchmark
+## Main Retrieval Benchmark
 
-The benchmark requires a running Qdrant instance with ingested data (direct retrieval mode) **or** a running `/chat` API (recommended — tests the full pipeline).
+The main benchmark is `benchmark.py`. It can run in two modes:
+
+- API mode: sends every query to a running `/chat` endpoint and evaluates the returned answer and sources.
+- Direct retrieval mode: calls the local retrieval code directly, without generating answer text.
 
 ```bash
-# From repo root — full pipeline mode (recommended)
+# From repo root
 export PYTHONPATH=src
+
+# Full chatbot pipeline through /chat
 python -m evaluation.benchmark \
   --api-url http://localhost:8000/chat \
   --output-dir src/evaluation/results \
   --no-plots
 
-# Direct retrieval mode (no LLM answer, faster)
+# Direct retrieval mode
 python -m evaluation.benchmark --no-plots
 ```
 
-**Key flags:**
+### Key Flags
 
 | Flag | Default | Description |
 |---|---|---|
-| `--api-url URL` | (none) | Chatbot `/chat` endpoint. When set, each query goes through the full pipeline (retrieval + LLM). |
-| `--input-csv PATH` | `questions_with_links.csv` | Source CSV. When using `questions_with_links.csv`, automatically filters `wymagany kontekst = 0`. |
-| `--output-dir DIR` | `src/evaluation/results` | Where to save output files. |
-| `--ks 3,5,7,10` | `3,5,7,10` | Rank cut-offs for metric computation. |
-| `--no-plots` | off | Skip plot generation (useful on servers). |
+| `--input-csv` | `src/evaluation/data/questions_with_links.csv` | Evaluation CSV. If the file name is `questions_with_links.csv`, only rows with `wymagany kontekst = 0` are used. |
+| `--api-url` | none | Chatbot `/chat` endpoint. If omitted, direct retrieval mode is used. |
+| `--output-dir` | `src/evaluation/results` | Directory for CSV, JSON, and plot outputs. |
+| `--ks` | `3,5,7,10` | Rank cut-offs for fixed-k metrics. |
+| `--timeout` | `60` | HTTP timeout for `/chat` calls. |
+| `--no-plots` | off | Skip `pr_curves.png` and `metrics_summary.png`. |
+| `--rewrite` | off | Rewrite each query before direct retrieval. Has no effect with `--api-url`, because `/chat` already handles rewriting internally. |
+| `--metric-mode` | `both` | `standard`, `adaptive`, or `both`. Controls whether fixed-k metrics, adaptive-k metrics, or both are written. |
+| `--check-coverage` | off | Adds `covered`, `coverage_rate`, and coverage-corrected `cch@k` metrics. |
+| `--no-rerank` | off | Direct retrieval only: disables cross-encoder reranking and returns raw RRF results. |
 
-**Outputs saved to `--output-dir`:**
+### Benchmark Outputs
 
 | File | Content |
 |---|---|
-| `eval_per_query_<ts>.csv` | One row per query: `query`, `chatbot_answer`, `chatbot_links` (`;`-separated), `gold_link`, all metrics at each k, plus `hit_adaptive` and `mrr_adaptive` (computed on actual # of returned links). |
-| `eval_summary_<ts>.csv` | One-row average of every metric |
-| `eval_summary_<ts>.json` | Same as summary CSV in JSON format |
-| `pr_curves.png` | Mean interpolated P-R curves (without `--no-plots`) |
-| `metrics_summary.png` | Grouped bar chart of metrics (without `--no-plots`) |
+| `eval_per_query_<ts>.csv` | One row per query with `query`, `retrieval_query`, `chatbot_answer`, `chatbot_links`, `gold_link`, and metric columns. |
+| `eval_summary_<ts>.csv` | One-row mean summary of every metric column. |
+| `eval_summary_<ts>.json` | Same summary as JSON. |
+| `pr_curves.png` | Mean interpolated precision-recall curves, unless `--no-plots` is set. |
+| `metrics_summary.png` | Grouped metric bar chart, unless `--no-plots` is set. |
 
-**Only `wymagany kontekst = 0` questions are evaluated** — these are the only ones with a reliable gold URL. See `BENCHMARK_VM.md` for step-by-step VM instructions.
+Fixed-k columns include:
 
-**Adaptive metrics in the CSV:**
-- `hit_adaptive` — whether gold link is in the actually returned links (not fixed @k)
-- `mrr_adaptive` — 1/rank of gold link in the actually returned links
+`hit@k`, `mrr@k`, `mrrw@k`, `recall@k`, `precision@k`, `f1@k`, `ndcg@k`, `map@k`, and `r_prec`.
 
-These are computed per query based on the actual number of returned links, useful for comparing when retriever returns varying numbers of results.
+Adaptive-k columns include:
 
-## Running LLM-as-a-judge batch evaluation
+`hit_adaptive`, `mrr_adaptive`, `mrrw_adaptive`, `recall_adaptive`, `precision_adaptive`, `f1_adaptive`, `ndcg_adaptive`, `map_adaptive`, and `r_prec_adaptive`.
 
-Requires the `/chat` API to be running locally.
+Adaptive metrics are computed with `k = number of unique links actually returned for that query`.
+
+## Retrieval Metrics
+
+The main definitions live in `benchmark.py`.
+
+All retrieval metrics use hierarchical URL relevance. A retrieved URL can receive partial credit if it is an ancestor or descendant of the gold URL:
+
+| Relationship | Score |
+|---|---:|
+| Exact match | 1.00 |
+| Parent URL, 1 level above | 0.50 |
+| Grandparent, 2 levels above | 0.25 |
+| Child URL, 1 level below | 0.25 |
+| Grandchild, 2 levels below | 0.125 |
+| Unrelated URL or different origin | 0.00 |
+
+`RELEVANCE_THRESHOLD = 0.5` decides what counts as relevant for binary metrics such as Hit, MRR, Precision, Recall, F1, and MAP.
+
+`MRRw` is a depth-aware weighted MRR. It uses:
+
+- `alpha = 0.8` for URLs deeper/more specific than the gold URL,
+- `beta = 0.4` for URLs shallower/more general than the gold URL.
+
+## RAG Ablation Experiments
+
+Use `run_experiment.py` when you want to compare pipeline variants defined in `pipeline_config.py`.
 
 ```bash
 export PYTHONPATH=src
+
+python -m evaluation.run_experiment \
+  --variant baseline \
+  --testset human \
+  --output-dir src/data/experiments \
+  --n-questions 50
+```
+
+Available testsets:
+
+| Testset | Source |
+|---|---|
+| `human` | `data/questions_with_links.csv`, filtered to `wymagany kontekst = 0` |
+| `rag` | `data/QA_rag.csv` |
+| `generated` | `data/final_notebooklm_QA.jsonl` |
+
+Available variants are in `pipeline_config.ALL_VARIANTS`:
+
+`baseline`, `v1_vector_only`, `v2_no_rerank`, `v3_two_step_rerank`, `v4_chunks`, `v5_no_rewrite`, `v6_two_stage_facts`, `v7_two_stage_chunks`.
+
+To run all variants:
+
+```bash
+python -m evaluation.run_experiment \
+  --variant all \
+  --testset human \
+  --output-dir src/data/experiments
+```
+
+Optional LLM judging:
+
+```bash
+python -m evaluation.run_experiment \
+  --variant baseline \
+  --testset rag \
+  --judge-model anthropic/claude-opus-4.7 \
+  --output-dir src/data/experiments
+```
+
+## Text-Generation Metrics
+
+Use `text_metrics.py` for active answer-text metrics.
+
+```bash
+export PYTHONPATH=src
+
+python -m evaluation.text_metrics \
+  --generated-csv path/to/generated_answers.csv \
+  --reference-csv src/evaluation/data/QA_rag.csv \
+  --output-dir src/evaluation/results \
+  --lang pl \
+  --bertscore-model allegro/herbert-base-cased
+```
+
+Expected columns:
+
+| CSV | Required columns |
+|---|---|
+| generated CSV | `pytanie`, `odpowiedz` |
+| reference CSV | `pytanie`, `odpowiedz` |
+
+Outputs:
+
+| File | Content |
+|---|---|
+| `text_metrics_per_query_<ts>.csv` | Per-question text metric details, currently including per-row ROUGE values. |
+| `text_metrics_summary_<ts>.json` | Aggregate BLEU, ROUGE, METEOR, and BERTScore values. |
+| `text_metrics_report_<ts>.md` | Markdown summary report. |
+
+## Statistical Comparison
+
+`statistical_comparison.py` compares two `eval_per_query_<ts>.csv` files for one selected metric at a time.
+
+```bash
+export PYTHONPATH=src
+
+python -m evaluation.statistical_comparison \
+  --model_a_csv src/evaluation/results/model_a/eval_per_query_20260515T100000.csv \
+  --model_b_csv src/evaluation/results/model_b/eval_per_query_20260515T110000.csv \
+  --metric mrr@10 \
+  --test-type wilcoxon \
+  --alpha 0.05 \
+  --output_dir src/evaluation/data
+```
+
+### Statistical CLI Flags
+
+| Flag | Default | Description |
+|---|---|---|
+| `--model_a_csv` | required | Path to model A per-query CSV. |
+| `--model_b_csv` | required | Path to model B per-query CSV. |
+| `--metric` | `mrr@10` | Single metric column to compare, e.g. `hit@10`, `mrr@10`, `ndcg@10`, `hit_adaptive`, `mrr_adaptive`. |
+| `--test-type` | `wilcoxon` | One of `wilcoxon`, `gamma`, `kappa`. |
+| `--alpha` | `0.05` | Significance level for Wilcoxon. |
+| `--use-adaptive-k` | off | Converts fixed-k metric names like `mrr@10` to `mrr_adaptive`. The adaptive column must already exist in the CSV. |
+| `--output_dir` | `src/evaluation/data` | Output directory. Note the underscore in the flag name. |
+
+Important current limitations:
+
+- The CLI accepts one metric via `--metric`, not a comma-separated `--metrics` list.
+- `--use-adaptive-k` does not recompute adaptive metrics from old CSVs; it expects adaptive columns already written by `benchmark.py`.
+- The kappa helper is implemented, but `test-type=kappa` is not fully wired into the CSV comparison flow yet.
+
+Output:
+
+`statistical_comparison_<ts>.json`, plus a human-readable terminal summary.
+
+For mathematical background, see `STATISTICAL_TESTS.md`, `STATISTICAL_TESTING.md`, and `STATISTICAL_QUICK_REFERENCE.py`. Treat command examples in the Markdown notes as background material if they differ from the CLI above.
+
+## LLM-as-a-Judge A/B Evaluation
+
+`llm_judge/testpro_runner.py` compares two chatbot answers, A and B. It calls `/chat` twice per question with different `modelConfig` values, then uses `llm_judge/judge.py` to rate both answers.
+
+```bash
+export PYTHONPATH=src
+
 python -m evaluation.llm_judge.testpro_runner \
   --judge-model openai/gpt-4o \
   --input-csv src/evaluation/data/questions_with_links.csv \
@@ -89,160 +253,60 @@ python -m evaluation.llm_judge.testpro_runner \
   --limit 50
 ```
 
-## Generating golden answers (3 supermodels)
+`EXPERIMENT_DIM` controls what differs between A and B:
 
-Requires `OPENROUTER_API_KEY` set in environment.  
-Qdrant / running API **not needed** — supermodele odpowiadają bez RAG.
+| Value | What changes | What stays fixed |
+|---|---|---|
+| `model` | two different models from `MODEL_POOL` | temperature, persona |
+| `temperature` | low temperature vs high temperature | model, persona |
+| `persona` | two different style instructions | model, temperature |
+
+Baseline environment variables:
+
+| Variable | Default | Used when |
+|---|---|---|
+| `EXPERIMENT_MODEL` | `openai/gpt-4o-mini` | `temperature`, `persona` |
+| `EXPERIMENT_TEMP` | `0.2` | `model`, `persona` |
+| `EXPERIMENT_PERSONA` | `0` | `model`, `temperature` |
+
+## Golden Answers
+
+`generate_golden_answers.py` generates reference answers with three OpenRouter models, without RAG context.
 
 ```bash
 export PYTHONPATH=src
+export OPENROUTER_API_KEY=...
 
-# Test na 10 pytaniach (tani sprawdzian)
 python -m evaluation.generate_golden_answers --limit 10
-
-# Wszystkie pytania
-python -m evaluation.generate_golden_answers
-
-# Wznów po przerwaniu (pomija już zapisane wiersze)
 python -m evaluation.generate_golden_answers --resume
-
-# Wymuś odpowiedź nawet na pytaniach sesja-specyficznych
 python -m evaluation.generate_golden_answers --no-skip-personal
 ```
 
 Output: `src/evaluation/data/golden_answers.csv`
 
-| Kolumna | Opis |
+| Column | Description |
 |---|---|
-| `query` | Pytanie ze zbioru testowego |
-| `gold_url` | Złoty URL (z `questions_filtered.csv`) |
-| `golden_answer_gpt` | Odpowiedź `openai/gpt-5.5` |
-| `golden_answer_opus` | Odpowiedź `anthropic/claude-opus-4.7` |
-| `golden_answer_gemini` | Odpowiedź `google/gemini-3.1-pro-preview-customtools` |
-| `skip_reason` | `session_context` jeśli pytanie wymaga planu osobistego, inaczej puste |
+| `query` | Evaluation question. |
+| `gold_url` | Gold URL from the input CSV. |
+| `golden_answer_gpt` | Answer from `openai/gpt-5.5`. |
+| `golden_answer_opus` | Answer from `anthropic/claude-opus-4.7`. |
+| `golden_answer_gemini` | Answer from `google/gemini-3.1-pro-preview-customtools`. |
+| `skip_reason` | `session_context` for personal/schedule-dependent questions, otherwise empty. |
 
-Pytania z `skip_reason=session_context` są zapisywane z pustymi odpowiedziami —
-nie pomijane całkowicie, żeby CSV miał kompletną listę pytań.
+Questions with `skip_reason=session_context` are written with empty answer fields instead of being dropped.
 
-## Statistical comparison of two model variants
+## LLM Judge vs Golden Answers
 
-`statistical_comparison.py` implementuje trzy testy statystyczne porównujące dwa warianty modelu na tej samej zbiorze pytań:
-
-1. **Wilcoxon Signed-Rank Test** — czy różnica w metrykach jest istotna statystycznie
-2. **Goodman–Kruskal γ** — czy oba modele zgadzają się na temat trudnych pytań
-3. **Kappa Coefficient** (opcjonalnie) — stabilność retrievera między przebiegami
+`llm_judge/golden_judge_runner.py` compares the chatbot answer against one selected column from `golden_answers.csv`.
 
 ```bash
 export PYTHONPATH=src
 
-# Pokaż wszystkie dostępne opcje
-python -m evaluation.statistical_comparison --help
-
-# Porównanie dwóch benchmarków (fixed k)
-python -m evaluation.statistical_comparison \
-  --model_a_csv src/evaluation/results/temp_0.2/eval_per_query_20260515T100000.csv \
-  --model_b_csv src/evaluation/results/temp_0.8/eval_per_query_20260515T110000.csv \
-  --metrics "mrr@5,hit@5,mrr@10,hit@10,ndcg@10" \
-  --alpha 0.05
-
-# Porównanie (adaptive k — na podstawie rzeczywistej liczby zwróconych linków)
-python -m evaluation.statistical_comparison \
-  --model_a_csv src/evaluation/results/model_a/eval_per_query_*.csv \
-  --model_b_csv src/evaluation/results/model_b/eval_per_query_*.csv \
-  --use-adaptive-k
-```
-
-**Key flags:**
-- `--model_a_csv`, `--model_b_csv` (required) — ścieżki do CSV'ów z benchmarków
-- `--metrics` — lista metryk (default: `mrr@10,hit@10,ndcg@10`)
-- `--alpha` — poziom istotności (default 0.05)
-- `--use-adaptive-k` — użyj adaptacyjnego k zamiast fixed (każdy query ma proprie k = liczba zwróconych linków)
-- `--output-dir` — katalog na wyniki
-
-**Output:** 
-- JSON z wynikami testów (`statistical_comparison_<ts>.json`)
-- Wyniki w standardowym wyjściu (stdout)
-
-Szczegóły: patrz [STATISTICAL_TESTS.md](STATISTICAL_TESTS.md).
-
----
-
-
-## Kontrola eksperymentu A/B (EXPERIMENT_DIM)
-
-`testpro_runner.py` porównuje dwa warianty odpowiedzi (A vs B).  
-Zmienna `EXPERIMENT_DIM` decyduje, co różni A od B — **tylko jedna rzecz na raz**.
-
-| Wartość | Co się losuje | Co jest stałe |
-|---|---|---|
-| `model` **(domyślne)** | Dwa różne modele z `MODEL_POOL` | temperatura, persona |
-| `temperature` | Niska temp (0.0–0.3) vs wysoka (0.6–0.9) | model, persona |
-| `persona` | Dwa różne style odpowiedzi | model, temperatura |
-
-```bash
-# Eksperyment: który model odpowiada lepiej?
-EXPERIMENT_DIM=model python -m evaluation.llm_judge.testpro_runner \
-  --judge-model anthropic/claude-opus-4.7 --limit 50
-
-# Eksperyment: czy temperatura ma znaczenie?
-EXPERIMENT_DIM=temperature \
-EXPERIMENT_MODEL=openai/gpt-4o-mini \
-python -m evaluation.llm_judge.testpro_runner \
-  --judge-model anthropic/claude-opus-4.7 --limit 50
-
-# Eksperyment: która persona (styl) działa lepiej?
-EXPERIMENT_DIM=persona \
-EXPERIMENT_MODEL=openai/gpt-4o-mini \
-EXPERIMENT_TEMP=0.2 \
-python -m evaluation.llm_judge.testpro_runner \
-  --judge-model anthropic/claude-opus-4.7 --limit 50
-
-# Eksperyment: który model działa lepiej, przy formalnej personie (indeks 2)?
-EXPERIMENT_DIM=model \
-EXPERIMENT_TEMP=0.2 \
-EXPERIMENT_PERSONA=2 \
-python -m evaluation.llm_judge.testpro_runner \
-  --judge-model anthropic/claude-opus-4.7 --limit 50
-```
-
-Dodatkowe zmienne baseline (używane gdy dany wymiar jest stały):
-
-| Zmienna | Domyślna wartość | Kiedy używana |
-|---|---|---|
-| `EXPERIMENT_MODEL` | `openai/gpt-4o-mini` | przy `temperature` i `persona` |
-| `EXPERIMENT_TEMP` | `0.2` | przy `model` i `persona` |
-| `EXPERIMENT_PERSONA` | `0` (indeks w liście `PERSONAS`) | przy `model` i `temperature` |
-
-Dostępne persony (indeksy 0–3):
-
-| Indeks | Styl |
-|---|---|
-| `0` | Krótko i konkretnie |
-| `1` | Luzno i przyjaźnie |
-| `2` | Formalnie i akademicko |
-| `3` | Wyczerpująco z detalami |
-
----
-
-## LLM-as-a-judge vs golden answers
-
-Porównuje odpowiedź chatbota z odpowiedzią supermodelu (`golden_answers.csv`).
-Wymaga uruchomionego API (`/chat`) oraz wygenerowanych golden answers.
-
-```bash
-export PYTHONPATH=src
-
-# Chatbot vs odpowiedzi Opus (domyślne), pierwsze 20 pytań
 python -m evaluation.llm_judge.golden_judge_runner \
   --judge-model anthropic/claude-opus-4.7 \
+  --golden-model opus \
   --limit 20
 
-# Chatbot vs odpowiedzi GPT, pełny przebieg
-python -m evaluation.llm_judge.golden_judge_runner \
-  --judge-model openai/gpt-5.5 \
-  --golden-model gpt
-
-# Wznów po przerwaniu
 python -m evaluation.llm_judge.golden_judge_runner \
   --judge-model anthropic/claude-opus-4.7 \
   --resume
@@ -250,81 +314,70 @@ python -m evaluation.llm_judge.golden_judge_runner \
 
 Output: `src/data/feedback/golden_judge_results.csv`
 
-| Kolumna | Opis |
-|---|---|
-| `chatbot_answer` | Odpowiedź naszego chatbota (z RAG) |
-| `golden_answer` | Odpowiedź supermodelu (bez RAG) |
-| `chatbot_*/golden_*` | Oceny 1–5: usefulness, accuracy, completeness |
-| `better` | `chatbot` lub `golden` — która odpowiedź lepsza |
-| `chatbot_weaknesses` | Jedno zdanie o słabościach odpowiedzi chatbota |
-| `golden_weaknesses` | Jedno zdanie o słabościach odpowiedzi supermodelu |
+The judge prompt is intentionally asymmetric: the golden answer was generated without RAG, so honest uncertainty is not penalized. The chatbot answer is judged on whether it used its retrieved RAG context well.
 
-**Ważna asymetria w promptcie sędziego**: golden answer może mówić *„nie mam dostępu do aktualnego planu, ale generalnie..."* — to jest poprawne zachowanie modelu bez RAG i NIE jest karane. Sędzia ocenia chatbota za to, czy dobrze wykorzystał swój kontekst RAG.
+## LLM Judge vs Context-Aware Golden Answers
 
----
+`llm_judge/context_golden_runner.py` compares the chatbot against a reference answer generated with full scraped context.
 
-## LLM-as-a-judge vs context-aware golden answers
-
-Porównuje odpowiedź chatbota z odpowiedzią supermodelu, który **miał dostęp do zescrapowanego tekstu**
-(np. wygenerowaną przez LM Studio / LM Notebooks z załączonymi dokumentami).
-Sędzia używa symetrycznego rubryku — obie odpowiedzi były w równych warunkach informacyjnych.
-
-Przygotuj CSV z kolumnami `query, golden_answer` (opcjonalnie: `gold_url, skip_reason`):
-zapisz go jako `src/evaluation/data/context_golden_answers.csv`.
+Prepare a CSV with `query, golden_answer` and optionally `gold_url, skip_reason`, then run:
 
 ```bash
 export PYTHONPATH=src
 
-# Pełny przebieg
 python -m evaluation.llm_judge.context_golden_runner \
   --judge-model anthropic/claude-opus-4.7
 
-# Limit do 30 pytań, wznów po przerwaniu
 python -m evaluation.llm_judge.context_golden_runner \
+  --golden-csv src/evaluation/data/my_context_golden.csv \
   --judge-model openai/gpt-5.5 \
-  --limit 30 --resume
-
-# Inny plik z golden answers
-python -m evaluation.llm_judge.context_golden_runner \
-  --golden-csv src/evaluation/data/moje_golden.csv \
-  --judge-model anthropic/claude-opus-4.7
+  --limit 30 \
+  --resume
 ```
 
 Output: `src/data/feedback/context_golden_results.csv`
 
-| Kolumna | Opis |
+This judge prompt is symmetric because both answers are assumed to have access to the knowledge base.
+
+## Benchmark Checks
+
+Focused checks in `benchmark_checks/` use a running API.
+
+```bash
+export PYTHONPATH=src
+
+# Check how many gold URLs exist in Qdrant
+python -m evaluation.benchmark_checks.check_coverage \
+  --api-base-url http://localhost:8000 \
+  --show-missing
+
+# Compare reranker on vs off
+python -m evaluation.benchmark_checks.check_reranker \
+  --api-base-url http://localhost:8000 \
+  --rewrite
+```
+
+Other checks:
+
+| File | Purpose |
 |---|---|
-| `chatbot_answer` | Odpowiedź naszego chatbota (z RAG) |
-| `golden_answer` | Odpowiedź supermodelu (z pełnym kontekstem) |
-| `chatbot_*/golden_*` | Oceny 1–5: usefulness, accuracy, completeness |
-| `better` | `chatbot` lub `golden` — która odpowiedź lepsza |
+| `check_rewriter.py` | Query rewriter ablation/check. |
+| `check_bm25_prefilter.py` | BM25/sparse prefilter check. |
+| `check_url_aggregation.py` | URL aggregation behavior check. |
 
-**Różnica względem `golden_judge_runner.py`**: tamten runner stosuje asymetryczny rubryczny (golden model mógł otwarcie przyznać brak dostępu do danych) — ten używa symetrycznej oceny, bo obie strony miały ten sam kontekst wiedzy.
+## Tests
 
----
+```bash
+export PYTHONPATH=src
 
-## Retrieval pipeline: re-ranking
+pytest src/evaluation/tests/ -v
+pytest src/evaluation/tests/test_retrieval_metrics.py -v
+pytest src/evaluation/tests/test_text_metrics.py -v
+pytest src/evaluation/tests/test_statistical_comparison.py -v
+```
 
-Od wersji `chatbot_v3` retrieval używa dwuetapowego podejścia:
+Notes:
 
-1. **Hybrid search (RRF)** — Qdrant pobiera `top_k * 2` kandydatów łącząc dense (sentence-transformers) i sparse (BM25) za pomocą Reciprocal Rank Fusion.
-2. **Cross-encoder re-ranking** — `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1` (multilingual) punktuje każdą parę `(query, chunk)` i zwraca `top_k` najlepszych wyników.
+- BERTScore tests may require model downloads and can be skipped if optional dependencies are unavailable.
+- `tests/evaluation_test.py` is legacy and expects `metrics.py` to implement `bert_score()`. That class is currently a placeholder, so prefer the newer tests around `text_metrics.py`.
 
-Domyślnie: `top_k = 30` (60 kandydatów do re-rankingu).
-
----
-
-## Retrieval metrics explained
-
-All metrics use **hierarchical URL relevance** — a retrieved URL that is a parent or child of the gold URL gets partial credit (not just exact match):
-
-| Relationship | Score |
-|---|---|
-| Exact match | 1.00 |
-| Parent URL (1 level up) | 0.50 |
-| Grandparent (2 levels up) | 0.25 |
-| Child URL (1 level down) | 0.25 |
-| Grandchild (2 levels down) | 0.125 |
-| Unrelated | 0.00 |
-
-`RELEVANCE_THRESHOLD = 0.5` (configurable) determines what counts as a "hit" in binary metrics.

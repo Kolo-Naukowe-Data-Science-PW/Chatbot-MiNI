@@ -28,7 +28,7 @@ W archiwum znajdziesz:
 
 | Plik | Zawartość |
 |---|---|
-| `eval_per_query_<ts>.csv` | Jeden wiersz na pytanie: `query`, `chatbot_answer`, `chatbot_links` (`;`-separated), `gold_link`, `hit@k`, `mrr@k`, `mrrw@k`, `recall@k`, `precision@k`, `f1@k`, `ndcg@k`, `map@k` (dla każdego k), `r_prec` |
+| `eval_per_query_<ts>.csv` | Jeden wiersz na pytanie: `query`, `retrieval_query`, `chatbot_answer`, `chatbot_links` (`;`-separated), `gold_link`, metryki fixed-k (`hit@k`, `mrr@k`, `mrrw@k`, `recall@k`, `precision@k`, `f1@k`, `ndcg@k`, `map@k`), `r_prec`, oraz domyślnie metryki adaptive (`hit_adaptive`, `mrr_adaptive`, `mrrw_adaptive`, `recall_adaptive`, `precision_adaptive`, `f1_adaptive`, `ndcg_adaptive`, `map_adaptive`, `r_prec_adaptive`) |
 | `eval_summary_<ts>.csv` | Jeden wiersz — średnia każdej metryki |
 | `eval_summary_<ts>.json` | To samo w JSON |
 
@@ -72,3 +72,7 @@ Kontener `benchmark` i `api` są w tej samej sieci Docker Compose, więc hostnam
 - Każde pytanie to oddzielne zapytanie HTTP do chatbota (~3–10 s/pytanie)
 - Przy ~200 pytaniach typowy czas to 10–30 minut
 - Możesz skrócić przez zmniejszenie `--timeout` lub przetestować na `questions_filtered.csv` (dodaj `--input-csv src/evaluation/data/questions_filtered.csv` w komendzie w `docker-compose.yml`)
+
+**Nie widzę metryk adaptive w CSV:**
+- Sprawdź, czy benchmark nie był uruchomiony z `--metric-mode standard`
+- Domyślny tryb w `benchmark.py` to `--metric-mode both`, więc aktualne uruchomienia powinny zapisywać zarówno fixed-k, jak i adaptive-k
