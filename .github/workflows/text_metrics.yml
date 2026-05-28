@@ -15,19 +15,20 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install metric dependencies
-        run: |
-          pip install --quiet sacrebleu rouge bert-score nltk pandas
-
       - name: Create results directory
         run: mkdir -p src/evaluation/results
 
-      - name: Run text metrics
+      - name: Run text metrics (Docker)
         run: |
-          export PYTHONPATH=src
-          python src/evaluation/text_metrics.py \
-            --generated-csv "${{ inputs.generated_csv }}" \
-            --output-dir src/evaluation/results
+          docker run --rm \
+            -v $PWD:/app \
+            -w /app \
+            python:3.11-slim \
+            bash -c 'pip install --quiet sacrebleu rouge bert-score nltk pandas && \
+                     export PYTHONPATH=/app/src && \
+                     python /app/src/evaluation/text_metrics.py \
+                       --generated-csv "${{ inputs.generated_csv }}" \
+                       --output-dir /app/src/evaluation/results'
 
       - name: Upload results
         uses: actions/upload-artifact@v4
