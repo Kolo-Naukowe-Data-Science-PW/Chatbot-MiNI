@@ -15,28 +15,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Copy .env file
-        run: cp ~/.env.backup .env
+      - name: Install metric dependencies
+        run: |
+          pip install --quiet sacrebleu rouge bert-score nltk pandas
 
       - name: Create results directory
         run: mkdir -p src/evaluation/results
 
-      - name: Build API image (force rebuild)
-        run: docker compose build --no-cache api
-
-      - name: Install metric dependencies
-        run: |
-          docker compose run --rm --no-deps api \
-            micromamba run -n app \
-            pip install --quiet sacrebleu rouge bert-score nltk
-
       - name: Run text metrics
         run: |
-          docker compose run --rm --no-deps api \
-            micromamba run -n app \
-            python -m evaluation.text_metrics \
-              --generated-csv "${{ inputs.generated_csv }}" \
-              --output-dir src/evaluation/results
+          export PYTHONPATH=src
+          python src/evaluation/text_metrics.py \
+            --generated-csv "${{ inputs.generated_csv }}" \
+            --output-dir src/evaluation/results
 
       - name: Upload results
         uses: actions/upload-artifact@v4
