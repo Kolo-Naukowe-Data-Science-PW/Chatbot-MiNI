@@ -6,7 +6,7 @@ on:
       metric_mode:
         description: 'Metric calculation mode'
         required: false
-        default: 'both'
+        default: 'adaptive'
         type: choice
         options:
           - 'standard'

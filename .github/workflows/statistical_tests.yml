@@ -46,9 +46,9 @@ on:
         type: string
 
       metric:
-        description: "Metric to compare (e.g. hit@3, mrr@10, hit_adaptive, recall_adaptive)"
+        description: "Metric to compare (e.g. hit_adaptive, mrr_adaptive, recall_adaptive)"
         required: false
-        default: "hit@10"
+        default: "hit_adaptive"
         type: string
       test_type:
         description: "Statistical test to perform"
@@ -62,7 +62,7 @@ on:
       use_adaptive_k:
         description: "Use adaptive k (actual retrieved count per query)"
         required: false
-        default: "false"
+        default: "true"
         type: choice
         options:
           - "true"

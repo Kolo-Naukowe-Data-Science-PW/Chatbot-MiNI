@@ -5,16 +5,8 @@ on:
     inputs:
       generated_csv:
         description: 'Path to CSV with generated answers (columns: pytanie, odpowiedz)'
-        required: true
-        default: 'src/evaluation/data/generated_answers.csv'
-      lang:
-        description: 'Language code for BERTScore'
         required: false
-        default: 'pl'
-      bertscore_model:
-        description: 'HuggingFace model for BERTScore'
-        required: false
-        default: 'allegro/herbert-base-cased'
+        default: 'src/evaluation/data/QA_rag.csv'
 
 jobs:
   text-metrics:
@@ -41,9 +33,7 @@ jobs:
             micromamba run -n app \
             python -m evaluation.text_metrics \
               --generated-csv "${{ inputs.generated_csv }}" \
-              --output-dir src/evaluation/results \
-              --lang "${{ inputs.lang }}" \
-              --bertscore-model "${{ inputs.bertscore_model }}"
+              --output-dir src/evaluation/results
 
       - name: Upload results
         uses: actions/upload-artifact@v4
