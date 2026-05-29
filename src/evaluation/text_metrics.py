@@ -476,8 +476,11 @@ def evaluate(
     logger.info("Computing METEOR …")
     results.update(_meteor_score(hypotheses, references))
 
-    logger.info("Computing BERTScore (model=%s) …", bertscore_model)
-    results.update(_bertscore(hypotheses, references, lang, bertscore_model))
+    try:
+        logger.info("Computing BERTScore (model=%s) …", bertscore_model)
+        results.update(_bertscore(hypotheses, references, lang, bertscore_model))
+    except ModuleNotFoundError:
+        logger.warning("BERTScore skipped (bert_score not installed)")
 
     # ------------------------------------------------------------------
     # Per-question CSV
