@@ -1,0 +1,68 @@
+name: Ingest Schedule Eval (facts + chunks)
+
+# Build two isolated Qdrant collections that contain ONLY the schedule pages
+# referenced by pytania_finall.jsonl (37 groups, ~63 files after deduplication).
+# Uses EXISTING schedule_*_facts.json and schedule_*.txt from the Docker volume
+# — no LLM re-extraction needed.
+#
+# Both collections live in /app/src/data/qdrant_schedule_eval_db:
+#   mini_docs   — facts from schedule_*_facts.json (scrape_schedule.py output)
+#   mini_chunks — text chunks from schedule_*.txt  (same source)
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'What to ingest'
+        required: true
+        default: 'both'
+        type: choice
+        options:
+          - facts
+          - chunks
+          - both
+
+jobs:
+  ingest:
+    runs-on: self-hosted
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Copy .env
+        run: cp ~/.env.backup .env
+
+      - name: Stop API to avoid Qdrant lock
+        run: docker compose stop api
+
+      - name: Prepare subset files + workspace
+        run: |
+          EVAL_MOUNT="-v $(pwd)/src/evaluation:/app/src/evaluation"
+          docker compose run --rm \
+            $EVAL_MOUNT \
+            ingest micromamba run -n app python -m src.evaluation.prepare_schedule_eval
+
+      - name: Ingest facts into schedule eval DB
+        if: ${{ inputs.mode == 'facts' || inputs.mode == 'both' }}
+        run: |
+          INGEST_MOUNT="-v $(pwd)/src/ingestion:/app/src/ingestion"
+          docker compose run --rm \
+            $INGEST_MOUNT \
+            -e FACTS_DIR=/app/src/data/facts_schedule_eval_subset \
+            -e QDRANT_DIR=/app/src/data/qdrant_schedule_eval_db \
+            ingest micromamba run -n app python -m ingestion.ingest_facts --force
+
+      - name: Ingest chunks into schedule eval DB
+        if: ${{ inputs.mode == 'chunks' || inputs.mode == 'both' }}
+        run: |
+          INGEST_MOUNT="-v $(pwd)/src/ingestion:/app/src/ingestion"
+          docker compose run --rm \
+            $INGEST_MOUNT \
+            -e QDRANT_CHUNKS_DIR=/app/src/data/qdrant_schedule_eval_db \
+            ingest micromamba run -n app python -m src.ingestion.ingest_chunks \
+              --scraped-dir /app/src/data/scraped_schedule_eval_subset \
+              --drop-existing
+
+      - name: Restart API
+        if: always()
+        run: docker compose start api

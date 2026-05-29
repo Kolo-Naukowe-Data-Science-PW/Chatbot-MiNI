@@ -30,13 +30,14 @@ on:
           - both
           - all
       subset:
-        description: 'Use subset DB + subset test sets (37 sources, 75% coverage each)'
+        description: 'Subset DB: true=general subset (testset=human/rag/generated), schedule-eval=plany zajęć only (testset=generated)'
         required: false
         default: 'false'
         type: choice
         options:
           - 'false'
           - 'true'
+          - 'schedule-eval'
       judge_model:
         description: 'LLM judge model'
         required: false
@@ -69,6 +70,9 @@ jobs:
           if [ "${{ inputs.subset }}" = "true" ]; then
             SUBSET_ENV="-e QDRANT_DIR=/app/src/data/qdrant_subset_db -e QDRANT_CHUNKS_DIR=/app/src/data/qdrant_subset_db"
             SUBSET_FLAG="--subset-dir /app/src/data/subset_workspace"
+          elif [ "${{ inputs.subset }}" = "schedule-eval" ]; then
+            SUBSET_ENV="-e QDRANT_DIR=/app/src/data/qdrant_schedule_eval_db -e QDRANT_CHUNKS_DIR=/app/src/data/qdrant_schedule_eval_db"
+            SUBSET_FLAG="--subset-dir /app/src/data/schedule_eval_workspace"
           fi
 
           if [ "${{ inputs.testset }}" = "both" ]; then
