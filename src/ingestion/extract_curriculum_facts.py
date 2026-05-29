@@ -75,7 +75,7 @@ def _is_curriculum_url(url: str) -> bool:
 def _extract_facts_from_text(text: str, filename: str) -> list[str]:
     client = get_llm_client()
     chunk_size = 8000
-    chunks = [text[i: i + chunk_size] for i in range(0, len(text), chunk_size)]
+    chunks = [text[i : i + chunk_size] for i in range(0, len(text), chunk_size)]
     all_facts: list[str] = []
 
     for chunk_idx, chunk in enumerate(chunks):
@@ -160,8 +160,12 @@ def main(force: bool = False) -> None:
 
 if __name__ == "__main__":
     import argparse
+
     parser = argparse.ArgumentParser()
-    parser.add_argument("--force", action="store_true",
-                        help="Re-extract all files, ignoring the progress tracker.")
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-extract all files, ignoring the progress tracker.",
+    )
     args = parser.parse_args()
     main(force=args.force)

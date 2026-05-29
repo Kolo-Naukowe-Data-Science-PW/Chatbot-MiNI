@@ -1,313 +1,160 @@
-# Testy Statystyczne — Porównanie Modeli A vs B
+# Statistical Tests
 
-Moduł `statistical_comparison.py` implementuje trzy statystyczne testy porównujące dwa warianty modelu RAG na tej samej zbiorze pytań.
+`statistical_comparison.py` contains statistical helpers for comparing two RAG/evaluation variants on the same question set.
 
-## Testy
+There are two layers:
 
-### 1. **Wilcoxon Signed-Rank Test**
+1. Python functions for Wilcoxon, Goodman-Kruskal gamma, Kappa, and paired permutation tests.
+2. A CLI that currently compares two `eval_per_query_<ts>.csv` files for one metric at a time.
 
-Test nieparametryczny badający hipotezę $H_0: \mathbb{E}[d_q] = 0$, gdzie $d_q = \text{score}_A(q) - \text{score}_B(q)$.
+## Implemented Functions
 
-**Kiedy użyć:**
-- Gdy metryki retrieval są ograniczone (0–1) i mogą mieć asymetryczny rozkład
-- Nie spełniono założenia normalności wymaganego przez $t$-test
-- Chcemy porównać dwa warianty na **tych samych** pytan'ach (paired test)
+| Function | Status | Purpose |
+|---|---|---|
+| `wilcoxon_signed_rank_test(...)` | implemented | Paired non-parametric test over per-query score differences. |
+| `goodman_kruskal_gamma_test(...)` | implemented | Ordinal association between two rank arrays. |
+| `kappa_coefficient(...)` | implemented | Agreement between two lists of retrieved document sets. |
+| `paired_permutation_test(...)` | implemented | Sign-flip paired permutation test over two score arrays. |
+| `compare_models(...)` | partially integrated | Loads metric columns from two CSVs and runs the selected CLI test type. |
 
-**Wynik:**
-- `p-value ≤ 0.05` → **statystycznie istotna różnica** (zaznaczamy `***`)
-- `p-value > 0.05` → brak istotnej różnicy (`n.s.`)
+Important limitation: `kappa_coefficient(...)` exists, but `compare_models(..., test_type="kappa")` is not fully wired into CSV parsing yet.
 
-### 2. **Goodman–Kruskal γ (Gamma) Coefficient**
-
-Miara asocjacji ordinalnej między rankingami przydzielonymi przez dwa modele.
-
-$$\hat{\gamma} = \frac{C - D}{C + D} \in [-1, 1]$$
-
-Gdzie:
-- $C$ = liczba par konkordantnych (oba rankingi rosną lub oba maleją)
-- $D$ = liczba par dyskordantnych (jedno rośnie, drugie maleje)
-
-**Interpretacja:**
-- $\gamma \approx +1$ → modele się mocno zgadzają na temat trudnych pytań
-- $\gamma \approx 0$ → brak korelacji ordinalnej
-- $\gamma \approx -1$ → modele mają przeciwne opinie na temat trudności
-
-### 3. **Kappa Coefficient**
-
-Mierzy **stabilność** retrievera: czy powtórzone uruchomienia zwracają te same dokumenty.
-
-$$\bar{\kappa} = \frac{1}{|Q|\binom{n}{2}}\sum_{q \in Q}\sum_{1 \le i < j \le n}\kappa_{i,j}(q)$$
-
-**Interpretacja:**
-- $\bar{\kappa} \approx 1$ → retriever jest deterministyczny (zawsze te same wyniki)
-- $\bar{\kappa} \approx 0$ → wyniki są losowe między uruchomieniami
-
----
-
-## Użycie
-
-### Krok 1: Wygeneruj dwa benchmarki (dla obu modeli)
+## CLI Usage
 
 ```bash
-# Model A
 export PYTHONPATH=src
-python -m evaluation.benchmark \
-  --api-url http://localhost:8000/chat \
-  --output-dir src/evaluation/data/model_a
 
-# Model B (mogą się różnić: init. parametry, inne modele LLM, itp.)
-python -m evaluation.benchmark \
-  --api-url http://localhost:8000/chat \
-  --output-dir src/evaluation/data/model_b
-```
-
-Z każdego benchmarku otrzymasz pliki:
-- `eval_per_query_<timestamp>.csv` — metryki dla każdego pytania
-- `eval_summary_<timestamp>.csv` — średnie
-
-### Krok 2a: Uruchom testy (Fixed k)
-
-```bash
 python -m evaluation.statistical_comparison \
-  --model_a_csv src/evaluation/data/model_a/eval_per_query_20260515T100000.csv \
-  --model_b_csv src/evaluation/data/model_b/eval_per_query_20260515T110000.csv \
-  --metrics "mrr@10,hit@10,ndcg@10,map@10" \
+  --model_a_csv src/evaluation/results/model_a/eval_per_query_20260515T100000.csv \
+  --model_b_csv src/evaluation/results/model_b/eval_per_query_20260515T110000.csv \
+  --metric mrr@10 \
+  --test-type wilcoxon \
   --alpha 0.05 \
-  --output-dir src/evaluation/data
+  --output_dir src/evaluation/data
 ```
 
-**Dostępne opcje:**
-- `--model_a_csv` (required) — ścieżka do eval_per_query CSV dla Model A
-- `--model_b_csv` (required) — ścieżka do eval_per_query CSV dla Model B
-- `--metrics` — lista metryk oddzielonych przecinkami (default: `mrr@10,hit@10,ndcg@10`)
-  - Dostępne: `hit@k`, `mrr@k`, `mrrw@k`, `recall@k`, `precision@k`, `f1@k`, `ndcg@k`, `map@k`, `r_prec`
-  - Dla każdego $k$: `@1`, `@3`, `@5`, `@10`, `@20`, `@30`
-- `--alpha` — poziom istotności (default 0.05)
-- `--output-dir` — katalog na wyniki (default `src/evaluation/data`)
+## CLI Flags
 
-### Krok 2b: Uruchom testy (Adaptive k) ⭐
+| Flag | Default | Description |
+|---|---|---|
+| `--model_a_csv` | required | Path to the first `eval_per_query_<ts>.csv`. |
+| `--model_b_csv` | required | Path to the second `eval_per_query_<ts>.csv`. |
+| `--metric` | `mrr@10` | One metric column to compare. The CLI does not currently accept a comma-separated list. |
+| `--test-type` | `wilcoxon` | One of `wilcoxon`, `gamma`, `kappa`. |
+| `--alpha` | `0.05` | Significance threshold for Wilcoxon. |
+| `--use-adaptive-k` | off | Converts a fixed-k metric name such as `mrr@10` to `mrr_adaptive`. The adaptive column must already exist in both CSVs. |
+| `--output_dir` | `src/evaluation/data` | Output directory. The actual flag uses an underscore, not `--output-dir`. |
 
-Adaptive metryki są **automatycznie generowane przez benchmark.py** i zapisywane do CSV jako kolumny `hit_adaptive` i `mrr_adaptive`.
+Output:
 
-**Opcja 1: Jeśli CSV z nowego benchmark.py** (ma już `hit_adaptive`, `mrr_adaptive`)
+- terminal summary,
+- `statistical_comparison_<ts>.json`.
+
+## Fixed-k Example
 
 ```bash
 python -m evaluation.statistical_comparison \
   --model_a_csv src/evaluation/data/model_a/eval_per_query_20260515T100000.csv \
   --model_b_csv src/evaluation/data/model_b/eval_per_query_20260515T110000.csv \
-  --metrics "hit_adaptive,mrr_adaptive" \
-  --output-dir src/evaluation/data
+  --metric mrr@10 \
+  --test-type wilcoxon \
+  --alpha 0.05 \
+  --output_dir src/evaluation/data
 ```
 
-**Opcja 2: Jeśli CSV ze starego benchmark.py** (bez adaptive k) — oblicz je na bieżąco
+To compare another metric, run the command again with a different `--metric`, for example `hit@10`, `ndcg@10`, `map@10`, or `mrrw@10`.
+
+## Adaptive-k Example
+
+`benchmark.py` can write adaptive metric columns when `--metric-mode adaptive` or `--metric-mode both` is used. The default is `both`, so current benchmark CSVs normally include adaptive columns.
 
 ```bash
 python -m evaluation.statistical_comparison \
   --model_a_csv src/evaluation/data/model_a/eval_per_query_20260515T100000.csv \
   --model_b_csv src/evaluation/data/model_b/eval_per_query_20260515T110000.csv \
+  --metric mrr@10 \
   --use-adaptive-k \
-  --output-dir src/evaluation/data
+  --output_dir src/evaluation/data
 ```
 
-**Co robi adaptive k?**
+With `--use-adaptive-k`, the CLI changes `mrr@10` to `mrr_adaptive`. It does not recompute adaptive metrics from `chatbot_links`.
 
-Zamiast obliczać `hit@10`, `mrr@10` dla wszystkich queryów (nawet jeśli retriever zwrócił tylko 5 linków), adaptacyjne k oblicza metryki **dla rzeczywistej liczby zwróconych linków**:
-
-Każdy query ma własne k = liczba faktycznie zwróconych linków dla tego pytania.
-
-**Przykład:**
-```
-Query A: zwrócono 3 linki  → hit_adaptive = czy gold jest w 3 linkach?
-Query B: zwrócono 5 linków → hit_adaptive = czy gold jest w 5 linkach?
-Query C: zwrócono 2 linki  → hit_adaptive = czy gold jest w 2 linkach?
-```
-
-**Korzyści adaptive k:**
-- ✅ Unikasz artefaktów (jak `hit@10 = hit@5 = hit@3` gdy max jest 5)
-- ✅ Każdy query ma uczciwą ocenę na podstawie tego co zwrócił retriever
-- ✅ Godniej porównywać warianty modelu na tych samych danych
-
-
-
-### Krok 3: Interpretuj wyniki
-
-Wynik w terminalu:
-```
-======================================================================
-Metric: mrr@10
-======================================================================
-  Queries:              50
-  Model A (mean):       0.823400
-  Model B (mean):       0.795600
-  Difference (A - B):   +0.027800
-  Difference (std):     0.087123
-
-  Wilcoxon Signed-Rank Test (α=0.05, two-tailed):
-    Test statistic:     312.0000
-    p-value:            0.0312 ***
-
-  Goodman–Kruskal γ Coefficient:
-    γ:                  +0.642
-    Concordant pairs:   987
-    Discordant pairs:   543
-```
-
-**Interpretacja:**
-- Model A ma średnio o ~2.78 wysokszy MRR@10
-- Verschiedenheit jest **istotna statystycznie** ($p = 0.0312 < 0.05$)
-- $\gamma = 0.642$ → modele dość dobrze się zgadzają na temat których pytań są trudne
-
-Dla adaptive k:
-```
-======================================================================
-Metric: mrr_adaptive
-======================================================================
-  Queries:              50
-  Model A (mean):       0.712400
-  Model B (mean):       0.658900
-  Difference (A - B):   +0.053500   ← Większa różnica niż przy fixed k
-  Difference (std):     0.142100
-
-  Wilcoxon Signed-Rank Test (α=0.05, two-tailed):
-    Test statistic:     267.0000
-    p-value:            0.0087 ***   ← Bardziej istotna różnica
-
-  Goodman–Kruskal γ Coefficient:
-    γ:                  +0.558
-    Concordant pairs:   812
-    Discordant pairs:   638
-```
-
-**Wynikowy JSON** (`statistical_comparison_<timestamp>.json`):
-```json
-{
-  "timestamp": "20260515T120000",
-  "model_a_csv": "src/evaluation/data/model_a/eval_per_query_...csv",
-  "model_b_csv": "src/evaluation/data/model_b/eval_per_query_...csv",
-  "alpha": 0.05,
-  "use_adaptive_k": false,
-  "results": [
-    {
-      "metric": "mrr@10",
-      "n_queries": 50,
-      "mean_A": 0.8234,
-      "mean_B": 0.7956,
-      "mean_diff": 0.0278,
-      "std_diff": 0.0871,
-      "wilcoxon_statistic": 312.0,
-      "wilcoxon_pvalue": 0.0312,
-      "wilcoxon_significant": true,
-      "gamma_coeff": 0.642,
-      "gamma_concordant": 987,
-      "gamma_discordant": 543
-    }
-  ]
-}
-```
-
----
-
-## Krok 4: Analiza wyników
-
-### Adaptive k — kiedy użyć?
-
-Jeśli w CSV widzisz:
-```
-Query A: 3 linki
-Query B: 5 linków
-Query C: 2 linki
-```
-
-Nie mają sensu fixed metryki jak `hit@10` (bo max jest 5 linków).
-Użyj `--use-adaptive-k`, otrzymasz metryki dla rzeczywistych $k$.
-
----
-
-## Przykład praktyczny
-
-### Scenariusz 1: Porównanie Fixed k (zwykłe benchmarki)
+You can also pass the adaptive column directly:
 
 ```bash
-# Terminal 1: Model A (temperatura 0.2)
-export PYTHONPATH=src
-export EXPERIMENT_DIM=temperature
-export EXPERIMENT_TEMP=0.2
-uvicorn api.api:app --port 8000
-
-# Terminal 2: Model B (temperatura 0.8)
-export PYTHONPATH=src
-export EXPERIMENT_DIM=temperature
-export EXPERIMENT_TEMP=0.8
-uvicorn api.api:app --port 8001
-
-# Terminal 3: Benchmark dla A
-python -m evaluation.benchmark \
-  --api-url http://localhost:8000/chat \
-  --input-csv src/evaluation/data/questions_filtered.csv \
-  --output-dir src/evaluation/data/temp_0.2
-
-# Terminal 4: Benchmark dla B
-python -m evaluation.benchmark \
-  --api-url http://localhost:8001/chat \
-  --input-csv src/evaluation/data/questions_filtered.csv \
-  --output-dir src/evaluation/data/temp_0.8
-
-# Porównanie
 python -m evaluation.statistical_comparison \
-  --model_a_csv src/evaluation/data/temp_0.2/eval_per_query_*.csv \
-  --model_b_csv src/evaluation/data/temp_0.8/eval_per_query_*.csv \
-  --metrics "mrr@5,hit@5,ndcg@5"
+  --model_a_csv src/evaluation/data/model_a/eval_per_query_20260515T100000.csv \
+  --model_b_csv src/evaluation/data/model_b/eval_per_query_20260515T110000.csv \
+  --metric hit_adaptive \
+  --output_dir src/evaluation/data
 ```
 
-### Scenariusz 2: Porównanie Adaptive k (liczba linków się różni)
+## Test Types
 
-```bash
-# Gdy wiemy, że liczba zwróconych linków różni się między queryami
-python -m evaluation.statistical_comparison \
-  --model_a_csv src/evaluation/data/temp_0.2/eval_per_query_*.csv \
-  --model_b_csv src/evaluation/data/temp_0.8/eval_per_query_*.csv \
-  --use-adaptive-k
-```
+### Wilcoxon Signed-Rank Test
 
-Wynik pokażeotechnique hit po każdego pytania na podstawie rzeczywistej liczby linków:
-- Query 1: zwrócono 3 linki → hit_adaptive obliczone dla k=3
-- Query 2: zwrócono 5 linków → hit_adaptive obliczone dla k=5
-- itp.
+Used for paired metric differences:
 
----
+`d_q = score_A(q) - score_B(q)`
 
-## Kod wewnętrzny
+The implementation removes zero differences, ranks absolute differences with tie averaging, computes `W+`, `W-`, and `W = min(W+, W-)`, then returns a p-value.
 
-### Obliczanie rangów
+### Goodman-Kruskal Gamma
 
-Dla każdego pytania, ranga to **pozycja złotego URL'a** w liście `chatbot_links`:
+Measures ordinal agreement between two rank arrays. In the CLI, ranks are extracted from CSV link columns, currently using `chatbot_links`.
+
+Formula:
+
+`gamma = (C - D) / (C + D)`
+
+where `C` is the number of concordant query pairs and `D` is the number of discordant pairs.
+
+**Note:** Metric-independent; operates on ranks only.
+
+### Kappa
+
+The standalone `kappa_coefficient(...)` function is fully implemented for Python usage, but the CLI path is incomplete: CSV retrieval-set parsing is not fully connected in `compare_models`. To use kappa from Python:
 
 ```python
-def extract_rank_from_sources(sources_str: str) -> int:
-    """Zwraca 1-indexed pozycję; 999 jeśli nie znaleziono."""
-    urls = [u.strip() for u in sources_str.split(";")]
-    return len(urls) if urls else 999
+kappa = kappa_coefficient(
+    [set(["url1", "url2"]), set(["url3"])],
+    [set(["url1", "url4"]), set(["url3"])],
+)
 ```
 
-### Concordant vs Discordant
+**Note:** Metric-independent; operates on document sets only.
 
-Dla każdej pary pytań $(q_i, q_j)$:
+### Paired Permutation
 
-```
-Concordant: 
-  (rank_A[i] < rank_A[j] AND rank_B[i] < rank_B[j])  OR
-  (rank_A[i] > rank_A[j] AND rank_B[i] > rank_B[j])
+`paired_permutation_test(...)` exists as a full Python implementation but is **not exposed by the CLI**. Use directly in Python:
 
-Discordant:
-  (rank_A[i] < rank_A[j] AND rank_B[i] > rank_B[j])  OR
-  (rank_A[i] > rank_A[j] AND rank_B[i] < rank_B[j])
+```python
+result = paired_permutation_test(scores_a, scores_b, n_permutations=10000, seed=67)
 ```
 
----
+## Python Usage
 
-## Referencje
+```python
+import numpy as np
+from src.evaluation.statistical_comparison import (
+    wilcoxon_signed_rank_test,
+    goodman_kruskal_gamma_test,
+    kappa_coefficient,
+    paired_permutation_test,
+)
 
-- Wilcoxon test: `scipy.stats.wilcoxon` (docs: https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.wilcoxon.html)
-- Goodman-Kruskal gamma: Goodman & Kruskal (1954), "Measures of association for cross classifications"
-- Cohen's kappa: Cohen (1960), "A coefficient of agreement for nominal scales"
+scores_a = np.array([0.8, 0.7, 0.9])
+scores_b = np.array([0.7, 0.8, 0.85])
 
+wilcoxon = wilcoxon_signed_rank_test(scores_a - scores_b)
+permutation = paired_permutation_test(scores_a, scores_b, n_permutations=1000)
+
+ranks_a = np.array([1, 2, 3])
+ranks_b = np.array([1, 3, 2])
+gamma = goodman_kruskal_gamma_test(ranks_a, ranks_b)
+
+kappa = kappa_coefficient(
+    [{"url1", "url2"}, {"url3"}],
+    [{"url1", "url4"}, {"url3"}],
+)
+```

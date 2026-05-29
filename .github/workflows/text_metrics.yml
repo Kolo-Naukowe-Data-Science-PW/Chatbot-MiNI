@@ -1,20 +1,16 @@
-name: Text Metrics Evaluation
+name: Generation metrics
 
 on:
   workflow_dispatch:
     inputs:
-      generated_csv:
-        description: 'Path to CSV with generated answers (columns: pytanie, odpowiedz)'
+      api_url:
+        description: 'Chatbot /chat endpoint URL'
         required: true
-        default: 'src/evaluation/data/generated_answers.csv'
-      lang:
-        description: 'Language code for BERTScore'
+        default: 'http://api:8000/chat'
+      input_csv:
+        description: 'Path to CSV with questions (columns: pytanie, odpowiedz)'
         required: false
-        default: 'pl'
-      bertscore_model:
-        description: 'HuggingFace model for BERTScore'
-        required: false
-        default: 'allegro/herbert-base-cased'
+        default: 'src/evaluation/data/QA_rag.csv'
 
 jobs:
   text-metrics:
@@ -23,32 +19,28 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Copy .env file
-        run: cp ~/.env.backup .env
-
       - name: Create results directory
         run: mkdir -p src/evaluation/results
 
-      - name: Install metric dependencies
+      - name: Run generation metrics
         run: |
-          docker compose run --rm --no-deps api \
-            micromamba run -n app \
-            pip install --quiet sacrebleu rouge bert-score nltk
-
-      - name: Run text metrics
-        run: |
-          docker compose run --rm --no-deps api \
-            micromamba run -n app \
-            python -m evaluation.text_metrics \
-              --generated-csv "${{ inputs.generated_csv }}" \
-              --output-dir src/evaluation/results \
-              --lang "${{ inputs.lang }}" \
-              --bertscore-model "${{ inputs.bertscore_model }}"
+          docker run --rm \
+            -v $PWD:/app \
+            -w /app \
+            python:3.11-slim \
+            bash -c 'pip install --no-cache-dir --quiet "numpy<2" && \
+                     pip install --no-cache-dir --quiet sacrebleu rouge nltk pandas requests && \
+                     export PYTHONPATH=/app/src && \
+                     python /app/src/evaluation/quick_generation_metrics.py \
+                       --api-url "${{ inputs.api_url }}" \
+                       --input-csv "${{ inputs.input_csv }}" \
+                       --output-dir /app/src/evaluation/results && \
+                     pip cache purge'
 
       - name: Upload results
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: text-metrics-${{ github.run_id }}
-          path: src/evaluation/results/text_metrics_*
+          name: generation-metrics-${{ github.run_id }}
+          path: src/evaluation/results/generation_metrics_*
           if-no-files-found: warn

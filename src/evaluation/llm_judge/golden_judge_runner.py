@@ -44,7 +44,10 @@ from urllib.request import Request, urlopen
 
 from dotenv import load_dotenv
 
-from src.evaluation.llm_judge.golden_judge import GoldenJudgeResult, judge_against_golden
+from src.evaluation.llm_judge.golden_judge import (
+    GoldenJudgeResult,
+    judge_against_golden,
+)
 
 load_dotenv()
 
@@ -92,11 +95,13 @@ def _load_golden_rows(path: str, golden_col: str, limit: int | None) -> list[dic
             golden = (r.get(golden_col) or "").strip()
             if not query or not golden:
                 continue
-            rows.append({
-                "query": query,
-                "gold_url": r.get("gold_url", ""),
-                "golden_answer": golden,
-            })
+            rows.append(
+                {
+                    "query": query,
+                    "gold_url": r.get("gold_url", ""),
+                    "golden_answer": golden,
+                }
+            )
             if limit and len(rows) >= limit:
                 break
     return rows
@@ -117,13 +122,19 @@ def _load_already_judged(path: str) -> set[str]:
 
 def _call_chatbot(api_url: str, query: str, timeout: int) -> str:
     payload = json.dumps({"query": query, "language": "pl"}).encode()
-    req = Request(api_url, data=payload, method="POST",
-                  headers={"Content-Type": "application/json"})
+    req = Request(
+        api_url,
+        data=payload,
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
     try:
         with urlopen(req, timeout=timeout) as resp:
             return json.loads(resp.read().decode()).get("answer", "").strip()
     except HTTPError as exc:
-        raise RuntimeError(f"Chat API HTTP {exc.code}: {exc.read().decode(errors='replace')}") from exc
+        raise RuntimeError(
+            f"Chat API HTTP {exc.code}: {exc.read().decode(errors='replace')}"
+        ) from exc
     except URLError as exc:
         raise RuntimeError(f"Chat API unreachable: {exc}") from exc
 
@@ -170,9 +181,13 @@ def main() -> int:
         choices=list(GOLDEN_MODEL_COLUMN.keys()),
         help="Which supermodel's golden answer to use as reference (default: opus).",
     )
-    parser.add_argument("--judge-model", required=True, help="OpenRouter model ID for the judge.")
+    parser.add_argument(
+        "--judge-model", required=True, help="OpenRouter model ID for the judge."
+    )
     parser.add_argument("--limit", type=int, default=None)
-    parser.add_argument("--resume", action="store_true", help="Skip already-judged queries.")
+    parser.add_argument(
+        "--resume", action="store_true", help="Skip already-judged queries."
+    )
     parser.add_argument("--language", default="pl")
     parser.add_argument("--timeout", type=int, default=60)
     parser.add_argument("--delay", type=float, default=1.0)
@@ -229,15 +244,17 @@ def main() -> int:
                 logger.error("Judge failed: %s — skipping.", exc)
                 continue
 
-            writer.writerow(_result_row(
-                query=query,
-                gold_url=row["gold_url"],
-                golden_model_used=args.golden_model,
-                chatbot_answer=chatbot_answer,
-                golden_answer=row["golden_answer"],
-                result=result,
-                judge_model=args.judge_model,
-            ))
+            writer.writerow(
+                _result_row(
+                    query=query,
+                    gold_url=row["gold_url"],
+                    golden_model_used=args.golden_model,
+                    chatbot_answer=chatbot_answer,
+                    golden_answer=row["golden_answer"],
+                    result=result,
+                    judge_model=args.judge_model,
+                )
+            )
             f.flush()
 
             if args.delay > 0 and i < len(rows):

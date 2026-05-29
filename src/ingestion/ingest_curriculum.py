@@ -17,7 +17,8 @@ import logging
 import os
 
 from src.ingestion.embedder import Embedder
-from src.ingestion.extract_curriculum_facts import _is_curriculum_url, main as run_extraction
+from src.ingestion.extract_curriculum_facts import _is_curriculum_url
+from src.ingestion.extract_curriculum_facts import main as run_extraction
 from src.ingestion.links_extended import links
 from src.ingestion.progress import clear_progress_for_prefix, mark_ingested
 from src.ingestion.vector_db import delete_by_url_list, save_to_vector_db_uuid
@@ -36,7 +37,8 @@ def _get_curriculum_urls() -> list[str]:
 
 def _ingest_curriculum_facts() -> int:
     fact_files = sorted(
-        f for f in os.listdir(FACTS_DIR)
+        f
+        for f in os.listdir(FACTS_DIR)
         if f.startswith("curriculum_") and f.endswith("_facts.json")
     )
 

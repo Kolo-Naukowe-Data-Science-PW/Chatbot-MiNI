@@ -2,21 +2,21 @@
 Pipeline configuration dataclass and all ablation variants for the MiNIonek RAG study.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass
 class PipelineConfig:
     name: str
     use_query_rewrite: bool = True
-    retrieval_mode: str = "hybrid"       # "hybrid" | "dense_only"
+    retrieval_mode: str = "hybrid"  # "hybrid" | "dense_only"
     use_rerank: bool = True
-    rerank_steps: int = 1                # 1=single, 2=two-step (60->30->15)
-    content_type: str = "facts"          # "facts" | "chunks"
-    n_retrieve: int = 30                 # candidates after retrieval
-    n_final: int = 15                    # after reranking
-    two_stage: bool = False              # doc-level first, then fact/chunk level
-    two_stage_content: str = "facts"     # "facts" | "chunks" for stage 2
+    rerank_steps: int = 1  # 1=single, 2=two-step (60->30->15)
+    content_type: str = "facts"  # "facts" | "chunks"
+    n_retrieve: int = 30  # candidates after retrieval
+    n_final: int = 15  # after reranking
+    two_stage: bool = False  # doc-level first, then fact/chunk level
+    two_stage_content: str = "facts"  # "facts" | "chunks" for stage 2
     description: str = ""
 
 

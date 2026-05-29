@@ -40,8 +40,10 @@ logger = logging.getLogger(__name__)
 # Lazy imports — these heavy packages are only needed at runtime
 # ---------------------------------------------------------------------------
 
+
 def _bleu_score(hypotheses: list[str], references: list[str]) -> dict[str, float]:
     import sacrebleu  # type: ignore
+
     result = sacrebleu.corpus_bleu(hypotheses, [references])
     return {
         "bleu": result.score / 100,
@@ -52,25 +54,304 @@ def _bleu_score(hypotheses: list[str], references: list[str]) -> dict[str, float
     }
 
 
-def _rouge_scores(hypotheses: list[str], references: list[str]) -> dict[str, float]:
-    from rouge import Rouge  # type: ignore
-    rouge = Rouge()
-    # rouge expects non-empty strings
-    pairs = [(h, r) for h, r in zip(hypotheses, references) if h.strip() and r.strip()]
-    if not pairs:
+def _rouge_scores(
+    hypotheses: list[str],
+    references: list[str | list[str]],
+    *,
+    beta: float = 1.0,
+    rouge_w_alpha: float = 2.0,
+    rouge_s_d: int | None = None,
+    use_jackknife: bool = False,
+) -> dict[str, float]:
+    """
+    Computes ROUGE-N (n=1,2), ROUGE-L, ROUGE-W and ROUGE-S scores,
+    consistent with the LaTeX definitions.
+
+    Args:
+        hypotheses:  list of candidate strings.
+        references:  list of reference strings **or** list of lists of
+                     reference strings (multiple references per candidate).
+        beta:        F-measure parameter (β=1 → equal weight; β→∞ → recall).
+        rouge_w_alpha: exponent α for ROUGE-W weighting f(k)=k^α (α>1).
+        rouge_s_d:   maximum skip distance for ROUGE-S (None = unlimited).
+        use_jackknife: if True and multiple references are given, apply the
+                       jackknifing procedure from the original paper.
+    Returns:
+        Flat dict with keys like  rouge_1_r, rouge_l_f, rouge_w_f, …
+    """
+    import re
+    from collections import Counter
+
+    # ------------------------------------------------------------------ #
+    # helpers                                                              #
+    # ------------------------------------------------------------------ #
+
+    def _tokenize(text: str) -> list[str]:
+        return re.findall(r"\b\w+\b", text.lower())
+
+    def _ngrams(tokens: list[str], n: int) -> Counter:
+        return Counter(tuple(tokens[i : i + n]) for i in range(len(tokens) - n + 1))
+
+    # ---------- ROUGE-N ------------------------------------------------ #
+
+    def _rouge_n_single(
+        hyp_tok: list[str], ref_tok: list[str], n: int
+    ) -> dict[str, float]:
+        ref_ng = _ngrams(ref_tok, n)
+        hyp_ng = _ngrams(hyp_tok, n)
+        match = sum((hyp_ng & ref_ng).values())  # count_match
+        denom_r = sum(ref_ng.values())
+        denom_p = sum(hyp_ng.values())
+        r = match / denom_r if denom_r else 0.0
+        p = match / denom_p if denom_p else 0.0
+        f = _f(r, p)
+        return {"r": r, "p": p, "f": f}
+
+    def _rouge_n_best(
+        hyp_tok: list[str], refs_tok: list[list[str]], n: int
+    ) -> dict[str, float]:
+        """Pick r* = argmax ROUGE-N(c, r)  (multi-reference, eq. in paper)."""
+        return max(
+            (_rouge_n_single(hyp_tok, r, n) for r in refs_tok),
+            key=lambda d: d["r"],
+        )
+
+    def _rouge_n_jackknife(
+        hyp_tok: list[str], refs_tok: list[list[str]], n: int
+    ) -> dict[str, float]:
+        """Jackknife estimate (eq. in paper): average over leave-one-out best scores."""
+        M = len(refs_tok)
+        if M == 1:
+            return _rouge_n_single(hyp_tok, refs_tok[0], n)
+        scores = []
+        for i in range(M):
+            remaining = refs_tok[:i] + refs_tok[i + 1 :]
+            scores.append(_rouge_n_best(hyp_tok, remaining, n))
+        return {k: sum(s[k] for s in scores) / M for k in ("r", "p", "f")}
+
+    # ---------- LCS helpers -------------------------------------------- #
+
+    def _lcs_len(a: list[str], b: list[str]) -> int:
+        """Standard DP LCS length."""
+        m, n = len(a), len(b)
+        prev = [0] * (n + 1)
+        for i in range(1, m + 1):
+            curr = [0] * (n + 1)
+            for j in range(1, n + 1):
+                if a[i - 1] == b[j - 1]:
+                    curr[j] = prev[j - 1] + 1
+                else:
+                    curr[j] = max(prev[j], curr[j - 1])
+            prev = curr
+        return prev[n]
+
+    def _lcs_indices(a: list[str], b: list[str]) -> set[int]:
+        """
+        Returns the set of indices in *a* that belong to LCS(a, b).
+        Used for LCS_∪ in ROUGE-L_sum.
+        """
+        m, n = len(a), len(b)
+        dp = [[0] * (n + 1) for _ in range(m + 1)]
+        for i in range(1, m + 1):
+            for j in range(1, n + 1):
+                if a[i - 1] == b[j - 1]:
+                    dp[i][j] = dp[i - 1][j - 1] + 1
+                else:
+                    dp[i][j] = max(dp[i - 1][j], dp[i][j - 1])
+        # backtrack
+        idx: set[int] = set()
+        i, j = m, n
+        while i > 0 and j > 0:
+            if a[i - 1] == b[j - 1]:
+                idx.add(i - 1)  # 0-based index in a
+                i -= 1
+                j -= 1
+            elif dp[i - 1][j] >= dp[i][j - 1]:
+                i -= 1
+            else:
+                j -= 1
+        return idx
+
+    # ---------- ROUGE-L ------------------------------------------------ #
+
+    def _rouge_l_single(hyp_tok: list[str], ref_tok: list[str]) -> dict[str, float]:
+        lcs = _lcs_len(ref_tok, hyp_tok)
+        r = lcs / len(ref_tok) if ref_tok else 0.0
+        p = lcs / len(hyp_tok) if hyp_tok else 0.0
+        return {"r": r, "p": p, "f": _f(r, p)}
+
+    # ---------- ROUGE-W ------------------------------------------------ #
+
+    def _wlcs(ref: list[str], hyp: list[str], alpha: float) -> float:
+        """
+        WLCS with f(k)=k^alpha.
+        Returns c(m,n) as defined in the LaTeX.
+        """
+        m, n = len(ref), len(hyp)
+        # w[i][j] = length of consecutive match ending at (i,j)
+        w = [[0] * (n + 1) for _ in range(m + 1)]
+        c = [[0.0] * (n + 1) for _ in range(m + 1)]
+        for i in range(1, m + 1):
+            for j in range(1, n + 1):
+                if ref[i - 1] == hyp[j - 1]:
+                    w[i][j] = w[i - 1][j - 1] + 1
+                    wk = w[i][j]
+                    wk1 = w[i - 1][j - 1]
+                    c[i][j] = c[i - 1][j - 1] + wk**alpha - wk1**alpha
+                else:
+                    w[i][j] = 0
+                    c[i][j] = max(c[i - 1][j], c[i][j - 1])
+        return c[m][n]
+
+    def _rouge_w_single(
+        hyp_tok: list[str], ref_tok: list[str], alpha: float
+    ) -> dict[str, float]:
+        m, n = len(ref_tok), len(hyp_tok)
+        if m == 0 or n == 0:
+            return {"r": 0.0, "p": 0.0, "f": 0.0}
+        score = _wlcs(ref_tok, hyp_tok, alpha)
+        fm = m**alpha
+        fn = n**alpha
+        r = (score / fm) ** (1.0 / alpha)
+        p = (score / fn) ** (1.0 / alpha)
+        return {"r": r, "p": p, "f": _f(r, p)}
+
+    # ---------- ROUGE-S ------------------------------------------------ #
+
+    def _skip2_set(tokens: list[str], d: int | None) -> Counter:
+        """
+        Returns Counter of skip-bigram pairs (w_i, w_j), i<j,
+        optionally constrained to j-i <= d.
+        """
+        pairs: Counter = Counter()
+        n = len(tokens)
+        for i in range(n):
+            j_max = (i + d) if d is not None else (n - 1)
+            j_max = min(j_max, n - 1)
+            for j in range(i + 1, j_max + 1):
+                pairs[(tokens[i], tokens[j])] += 1
+        return pairs
+
+    def _rouge_s_single(
+        hyp_tok: list[str], ref_tok: list[str], d: int | None
+    ) -> dict[str, float]:
+        """
+        ROUGE-S: skip-bigram matching.
+
+        For sequences with <2 tokens, skip-bigrams cannot be formed,
+        so return zero scores explicitly.
+        """
+        if len(ref_tok) < 2 or len(hyp_tok) < 2:
+            return {"r": 0.0, "p": 0.0, "f": 0.0}
+        ref_s = _skip2_set(ref_tok, d)
+        hyp_s = _skip2_set(hyp_tok, d)
+        match = sum((ref_s & hyp_s).values())
+        denom_r = sum(ref_s.values())
+        denom_p = sum(hyp_s.values())
+        r = match / denom_r if denom_r else 0.0
+        p = match / denom_p if denom_p else 0.0
+        return {"r": r, "p": p, "f": _f(r, p)}
+
+    # ---------- F-measure ---------------------------------------------- #
+
+    def _f(r: float, p: float) -> float:
+        denom = r + beta**2 * p
+        return (1 + beta**2) * r * p / denom if denom else 0.0
+
+    # ------------------------------------------------------------------ #
+    # normalise references to list[list[str]]                             #
+    # ------------------------------------------------------------------ #
+
+    refs_list: list[list[list[str]]] = (
+        []
+    )  # refs_list[i] = list of tokenised refs for hyp i
+    hyps_tok: list[list[str]] = []
+
+    for h, r in zip(hypotheses, references, strict=False):
+        h_tok = _tokenize(h)
+        if not h_tok:
+            continue
+        if isinstance(r, str):
+            r_toks = [_tokenize(r)]
+        else:
+            r_toks = [_tokenize(ri) for ri in r]
+        r_toks = [t for t in r_toks if t]  # drop empty references
+        if not r_toks:
+            continue
+        hyps_tok.append(h_tok)
+        refs_list.append(r_toks)
+
+    if not hyps_tok:
         return {}
-    hyps, refs = zip(*pairs)
-    scores = rouge.get_scores(list(hyps), list(refs), avg=True)
-    flat: dict[str, float] = {}
-    for key, sub in scores.items():
-        clean = key.replace("-", "_")
-        for metric, val in sub.items():
-            flat[f"{clean}_{metric}"] = val
-    return flat
+
+    # ------------------------------------------------------------------ #
+    # accumulate per-sentence scores                                      #
+    # ------------------------------------------------------------------ #
+
+    choose_fn = _rouge_n_jackknife if use_jackknife else _rouge_n_best
+
+    agg: dict[str, list[float]] = {
+        k: []
+        for k in (
+            "rouge_1_r",
+            "rouge_1_p",
+            "rouge_1_f",
+            "rouge_2_r",
+            "rouge_2_p",
+            "rouge_2_f",
+            "rouge_l_r",
+            "rouge_l_p",
+            "rouge_l_f",
+            "rouge_w_r",
+            "rouge_w_p",
+            "rouge_w_f",
+            "rouge_s_r",
+            "rouge_s_p",
+            "rouge_s_f",
+        )
+    }
+
+    for hyp_tok, refs_tok in zip(hyps_tok, refs_list, strict=False):
+
+        for n, prefix in ((1, "rouge_1"), (2, "rouge_2")):
+            s = choose_fn(hyp_tok, refs_tok, n)
+            for k in ("r", "p", "f"):
+                agg[f"{prefix}_{k}"].append(s[k])
+
+        # ROUGE-L: best reference (same selection rule as ROUGE-N multi)
+        sl = max(
+            (_rouge_l_single(hyp_tok, r) for r in refs_tok),
+            key=lambda d: d["r"],
+        )
+        for k in ("r", "p", "f"):
+            agg[f"rouge_l_{k}"].append(sl[k])
+
+        # ROUGE-W: best reference
+        sw = max(
+            (_rouge_w_single(hyp_tok, r, rouge_w_alpha) for r in refs_tok),
+            key=lambda d: d["r"],
+        )
+        for k in ("r", "p", "f"):
+            agg[f"rouge_w_{k}"].append(sw[k])
+
+        # ROUGE-S: best reference
+        ss = max(
+            (_rouge_s_single(hyp_tok, r, rouge_s_d) for r in refs_tok),
+            key=lambda d: d["r"],
+        )
+        for k in ("r", "p", "f"):
+            agg[f"rouge_s_{k}"].append(ss[k])
+
+    # ------------------------------------------------------------------ #
+    # average over corpus                                                  #
+    # ------------------------------------------------------------------ #
+
+    return {key: sum(vals) / len(vals) for key, vals in agg.items() if vals}
 
 
 def _meteor_score(hypotheses: list[str], references: list[str]) -> dict[str, float]:
     import nltk  # type: ignore
+
     try:
         nltk.data.find("tokenizers/punkt_tab")
     except LookupError:
@@ -79,10 +360,12 @@ def _meteor_score(hypotheses: list[str], references: list[str]) -> dict[str, flo
         nltk.data.find("wordnet")
     except LookupError:
         nltk.download("wordnet", quiet=True)
+    from nltk.tokenize import word_tokenize  # type: ignore
     from nltk.translate.meteor_score import meteor_score  # type: ignore
+
     scores = [
-        meteor_score([ref.split()], hyp.split())
-        for hyp, ref in zip(hypotheses, references)
+        meteor_score([word_tokenize(ref)], word_tokenize(hyp))
+        for hyp, ref in zip(hypotheses, references, strict=False)
         if hyp.strip() and ref.strip()
     ]
     return {"meteor": sum(scores) / len(scores) if scores else 0.0}
@@ -94,34 +377,42 @@ def _bertscore(
     lang: str,
     model_type: str,
 ) -> dict[str, float]:
-    from bert_score import score as bs_score  # type: ignore
-    P, R, F1 = bs_score(
-        hypotheses, references, lang=lang, model_type=model_type, verbose=False
-    )
-    return {
-        "bertscore_precision": P.mean().item(),
-        "bertscore_recall": R.mean().item(),
-        "bertscore_f1": F1.mean().item(),
-    }
+    from bert_score import BERTScorer  # type: ignore
+
+    results: dict[str, float] = {}
+
+    variants = [
+        ("base", False, False),
+        ("idf", True, False),
+        ("rescaled", False, True),
+        ("full", True, True),
+    ]
+
+    for suffix, idf, rescale in variants:
+        scorer = BERTScorer(
+            lang=lang,
+            model_type=model_type,
+            idf=idf,
+            rescale_with_baseline=rescale,
+        )
+        P, R, F1 = scorer.score(hypotheses, references, verbose=False)
+        results[f"bertscore_precision_{suffix}"] = P.mean().item()
+        results[f"bertscore_recall_{suffix}"] = R.mean().item()
+        results[f"bertscore_f1_{suffix}"] = F1.mean().item()
+
+    return results
 
 
 # ---------------------------------------------------------------------------
 # Per-row ROUGE helper (for the per-question CSV)
 # ---------------------------------------------------------------------------
 
+
 def _rouge_per_row(hyp: str, ref: str) -> dict[str, float]:
     if not hyp.strip() or not ref.strip():
         return {}
     try:
-        from rouge import Rouge  # type: ignore
-        rouge = Rouge()
-        scores = rouge.get_scores(hyp, ref, avg=True)
-        flat: dict[str, float] = {}
-        for key, sub in scores.items():
-            clean = key.replace("-", "_")
-            for metric, val in sub.items():
-                flat[f"{clean}_{metric}"] = val
-        return flat
+        return _rouge_scores([hyp], [ref])
     except Exception:
         return {}
 
@@ -129,6 +420,7 @@ def _rouge_per_row(hyp: str, ref: str) -> dict[str, float]:
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def evaluate(
     generated_csv: Path,
@@ -141,11 +433,11 @@ def evaluate(
     ts = datetime.now().strftime("%Y%m%dT%H%M%S")
 
     logger.info("Loading generated answers from %s", generated_csv)
-    gen_df = pd.read_csv(generated_csv, sep=None, engine="python")
+    gen_df = pd.read_csv(generated_csv, sep='|', engine="python")
     gen_df.columns = gen_df.columns.str.strip()
 
     logger.info("Loading reference answers from %s", reference_csv)
-    ref_df = pd.read_csv(reference_csv, sep=None, engine="python")
+    ref_df = pd.read_csv(reference_csv, sep='|', engine="python")
     ref_df.columns = ref_df.columns.str.strip()
 
     # Normalise column names to lowercase
@@ -164,7 +456,9 @@ def evaluate(
     )
 
     if merged.empty:
-        raise ValueError("No matching questions found between generated and reference CSVs")
+        raise ValueError(
+            "No matching questions found between generated and reference CSVs"
+        )
 
     logger.info("Matched %d questions", len(merged))
 
@@ -182,15 +476,22 @@ def evaluate(
     logger.info("Computing METEOR …")
     results.update(_meteor_score(hypotheses, references))
 
-    logger.info("Computing BERTScore (model=%s) …", bertscore_model)
-    results.update(_bertscore(hypotheses, references, lang, bertscore_model))
+    try:
+        logger.info("Computing BERTScore (model=%s) …", bertscore_model)
+        results.update(_bertscore(hypotheses, references, lang, bertscore_model))
+    except ModuleNotFoundError:
+        logger.warning("BERTScore skipped (bert_score not installed)")
 
     # ------------------------------------------------------------------
     # Per-question CSV
     # ------------------------------------------------------------------
     per_q_rows = []
     for _, row in merged.iterrows():
-        entry: dict = {"pytanie": row["pytanie"], "odpowiedz": row["odpowiedz"], "odpowiedz_ref": row["odpowiedz_ref"]}
+        entry: dict = {
+            "pytanie": row["pytanie"],
+            "odpowiedz": row["odpowiedz"],
+            "odpowiedz_ref": row["odpowiedz_ref"],
+        }
         entry.update(_rouge_per_row(str(row["odpowiedz"]), str(row["odpowiedz_ref"])))
         per_q_rows.append(entry)
 
@@ -204,7 +505,9 @@ def evaluate(
     # ------------------------------------------------------------------
     summary_path = output_dir / f"text_metrics_summary_{ts}.json"
     with summary_path.open("w", encoding="utf-8") as f:
-        json.dump({"n_questions": len(merged), **results}, f, ensure_ascii=False, indent=2)
+        json.dump(
+            {"n_questions": len(merged), **results}, f, ensure_ascii=False, indent=2
+        )
     logger.info("Summary → %s", summary_path)
 
     # ------------------------------------------------------------------
@@ -240,18 +543,42 @@ def evaluate(
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def _default_reference() -> Path:
     here = Path(__file__).parent
     return here / "data" / "QA_rag.csv"
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Evaluate generated answers with NLP metrics")
-    parser.add_argument("--generated-csv", required=True, type=Path, help="CSV with generated answers (pytanie, odpowiedz)")
-    parser.add_argument("--reference-csv", type=Path, default=_default_reference(), help="Reference CSV (default: QA_rag.csv)")
-    parser.add_argument("--output-dir", type=Path, default=Path("src/evaluation/results"), help="Where to save results")
-    parser.add_argument("--lang", default="pl", help="Language code for BERTScore (default: pl)")
-    parser.add_argument("--bertscore-model", default="allegro/herbert-base-cased", help="HuggingFace model for BERTScore")
+    parser = argparse.ArgumentParser(
+        description="Evaluate generated answers with NLP metrics"
+    )
+    parser.add_argument(
+        "--generated-csv",
+        required=True,
+        type=Path,
+        help="CSV with generated answers (pytanie, odpowiedz)",
+    )
+    parser.add_argument(
+        "--reference-csv",
+        type=Path,
+        default=_default_reference(),
+        help="Reference CSV (default: QA_rag.csv)",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path("src/evaluation/results"),
+        help="Where to save results",
+    )
+    parser.add_argument(
+        "--lang", default="pl", help="Language code for BERTScore (default: pl)"
+    )
+    parser.add_argument(
+        "--bertscore-model",
+        default="allegro/herbert-base-cased",
+        help="HuggingFace model for BERTScore",
+    )
     args = parser.parse_args()
 
     evaluate(

@@ -81,13 +81,16 @@ def scrape_subset(urls_file: str, output_dir: str) -> None:
             logger.info("[%d/%d] Local PDF: %s", i, total, pdf_path)
             try:
                 from pypdf import PdfReader
+
                 reader = PdfReader(str(pdf_path))
                 pages = [page.extract_text() or "" for page in reader.pages]
                 text = "\n\n".join(p.strip() for p in pages if p.strip())
                 if text:
                     _save(url, text, output_dir)
                     saved += 1
-                    logger.info("[%d/%d] OK (local PDF) — %d chars", i, total, len(text))
+                    logger.info(
+                        "[%d/%d] OK (local PDF) — %d chars", i, total, len(text)
+                    )
                 else:
                     logger.warning("[%d/%d] Empty PDF: %s", i, total, pdf_name)
             except Exception as exc:
@@ -115,7 +118,11 @@ def scrape_subset(urls_file: str, output_dir: str) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Scrape a URL list into a directory.")
-    parser.add_argument("--urls-file", required=True, help="Text file with URLs (one per line).")
-    parser.add_argument("--output-dir", required=True, help="Directory to write .txt files.")
+    parser.add_argument(
+        "--urls-file", required=True, help="Text file with URLs (one per line)."
+    )
+    parser.add_argument(
+        "--output-dir", required=True, help="Directory to write .txt files."
+    )
     args = parser.parse_args()
     scrape_subset(args.urls_file, args.output_dir)

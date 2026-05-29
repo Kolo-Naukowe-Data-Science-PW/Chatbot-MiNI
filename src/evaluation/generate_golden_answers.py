@@ -167,7 +167,9 @@ def main() -> None:
     )
     parser.add_argument("--input-csv", default=INPUT_CSV)
     parser.add_argument("--output-csv", default=OUTPUT_CSV)
-    parser.add_argument("--limit", type=int, default=None, help="Max questions to process.")
+    parser.add_argument(
+        "--limit", type=int, default=None, help="Max questions to process."
+    )
     parser.add_argument(
         "--resume",
         action="store_true",
@@ -193,7 +195,8 @@ def main() -> None:
     if args.resume:
         already_processed = _load_already_processed(args.output_csv)
         logger.info(
-            "Resuming — %d questions already processed, skipping them.", len(already_processed)
+            "Resuming — %d questions already processed, skipping them.",
+            len(already_processed),
         )
 
     rows_to_process = [r for r in rows if r["query"] not in already_processed]
@@ -238,7 +241,9 @@ def main() -> None:
                 )
                 f.flush()
                 skipped += 1
-                logger.info("[%d/%d] SKIP (%s): %s", i, len(rows_to_process), reason, query[:70])
+                logger.info(
+                    "[%d/%d] SKIP (%s): %s", i, len(rows_to_process), reason, query[:70]
+                )
                 continue
 
             answers: dict[str, str] = {}
@@ -263,7 +268,10 @@ def main() -> None:
                 time.sleep(args.delay)
 
     logger.info(
-        "Done. Answered: %d, Skipped: %d. Saved to %s", answered, skipped, args.output_csv
+        "Done. Answered: %d, Skipped: %d. Saved to %s",
+        answered,
+        skipped,
+        args.output_csv,
     )
 
 

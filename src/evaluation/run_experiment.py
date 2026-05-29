@@ -27,7 +27,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from dotenv import load_dotenv
+from dotenv import load_dotenv  # noqa: E402
 
 load_dotenv()
 
@@ -41,14 +41,21 @@ logger = logging.getLogger(__name__)
 # Paths
 # ---------------------------------------------------------------------------
 
-HUMAN_TESTSET_PATH     = Path(PROJECT_ROOT) / "src" / "evaluation" / "data" / "questions_with_links.csv"
-RAG_TESTSET_PATH       = Path(PROJECT_ROOT) / "src" / "evaluation" / "data" / "QA_rag.csv"
-GENERATED_TESTSET_PATH = Path(PROJECT_ROOT) / "src" / "evaluation" / "data" / "final_notebooklm_QA.jsonl"
-GOLDEN_ANSWERS_PATH    = Path(PROJECT_ROOT) / "src" / "evaluation" / "data" / "golden_answers.csv"
+HUMAN_TESTSET_PATH = (
+    Path(PROJECT_ROOT) / "src" / "evaluation" / "data" / "questions_with_links.csv"
+)
+RAG_TESTSET_PATH = Path(PROJECT_ROOT) / "src" / "evaluation" / "data" / "QA_rag.csv"
+GENERATED_TESTSET_PATH = (
+    Path(PROJECT_ROOT) / "src" / "evaluation" / "data" / "final_notebooklm_QA.jsonl"
+)
+GOLDEN_ANSWERS_PATH = (
+    Path(PROJECT_ROOT) / "src" / "evaluation" / "data" / "golden_answers.csv"
+)
 
 # ---------------------------------------------------------------------------
 # Test-set loading
 # ---------------------------------------------------------------------------
+
 
 def _load_human_testset(path: Path, n: int | None) -> list[dict]:
     """Load questions_with_links.csv, filtering wymagany kontekst == 0."""
@@ -56,7 +63,9 @@ def _load_human_testset(path: Path, n: int | None) -> list[dict]:
     with open(path, encoding="utf-8-sig", newline="") as f:
         reader = csv.DictReader(f)
         for r in reader:
-            norm = {(k or "").strip().lower(): (v or "").strip() for k, v in r.items() if k}
+            norm = {
+                (k or "").strip().lower(): (v or "").strip() for k, v in r.items() if k
+            }
             if norm.get("wymagany kontekst") != "0":
                 continue
             query = norm.get("pytanie") or norm.get("query") or norm.get("question", "")
@@ -78,9 +87,12 @@ def _load_rag_testset(path: Path, n: int | None) -> list[dict]:
     # Also load the generated file→URL mapping (built by build_file_url_mapping workflow),
     # used for scraped-page TXT references in future QA_rag_extended datasets.
     _file_url_map: dict[str, str] = {}
-    _fum_path = Path(PROJECT_ROOT) / "src" / "evaluation" / "data" / "file_url_mapping.json"
+    _fum_path = (
+        Path(PROJECT_ROOT) / "src" / "evaluation" / "data" / "file_url_mapping.json"
+    )
     if _fum_path.exists():
         import json as _json
+
         try:
             with open(_fum_path, encoding="utf-8") as _f:
                 _file_url_map = _json.load(_f)
@@ -94,7 +106,9 @@ def _load_rag_testset(path: Path, n: int | None) -> list[dict]:
     with open(path, encoding="utf-8-sig", newline="") as f:
         reader = csv.DictReader(f, delimiter="|")
         for r in reader:
-            norm = {(k or "").strip().lower(): (v or "").strip() for k, v in r.items() if k}
+            norm = {
+                (k or "").strip().lower(): (v or "").strip() for k, v in r.items() if k
+            }
             query = norm.get("pytanie") or norm.get("query", "")
             golden = norm.get("odpowiedz", "")
             if not query:
@@ -107,7 +121,9 @@ def _load_rag_testset(path: Path, n: int | None) -> list[dict]:
                     url = _PDF_URL_MAP.get(fname) or _file_url_map.get(fname, "")
                     if url:
                         gold_urls.append(url)
-            rows.append({"query": query, "golden_answer": golden, "gold_urls": gold_urls})
+            rows.append(
+                {"query": query, "golden_answer": golden, "gold_urls": gold_urls}
+            )
             if n and len(rows) >= n:
                 break
     with_gold = sum(1 for r in rows if r["gold_urls"])
@@ -118,7 +134,9 @@ def _load_rag_testset(path: Path, n: int | None) -> list[dict]:
 def _load_generated_testset(path: Path, n: int | None) -> list[dict]:
     """Load final_notebooklm_QA.jsonl.  Fields: Pytanie, Odpowiedź, Źródła."""
     _file_url_map: dict[str, str] = {}
-    _fum_path = Path(PROJECT_ROOT) / "src" / "evaluation" / "data" / "file_url_mapping.json"
+    _fum_path = (
+        Path(PROJECT_ROOT) / "src" / "evaluation" / "data" / "file_url_mapping.json"
+    )
     if _fum_path.exists():
         try:
             with open(_fum_path, encoding="utf-8") as _f:
@@ -146,11 +164,19 @@ def _load_generated_testset(path: Path, n: int | None) -> list[dict]:
             fname = (rec.get("Źródła") or "").strip()
             fname_key = fname[:-4] if fname.endswith(".txt") else fname
             gold_url = _file_url_map.get(fname_key, "")
-            rows.append({"query": query, "golden_answer": golden, "gold_urls": [gold_url] if gold_url else []})
+            rows.append(
+                {
+                    "query": query,
+                    "golden_answer": golden,
+                    "gold_urls": [gold_url] if gold_url else [],
+                }
+            )
             if n and len(rows) >= n:
                 break
     with_gold = sum(1 for r in rows if r["gold_urls"])
-    logger.info("Loaded %d generated testset rows (%d with gold URLs).", len(rows), with_gold)
+    logger.info(
+        "Loaded %d generated testset rows (%d with gold URLs).", len(rows), with_gold
+    )
     return rows
 
 
@@ -173,8 +199,10 @@ def _load_golden_map(path: Path) -> dict[str, str]:
 # Metric helpers
 # ---------------------------------------------------------------------------
 
+
 def _normalize_url(url: str) -> str:
     from urllib.parse import urlsplit, urlunsplit
+
     cleaned = url.strip()
     if not cleaned:
         return ""
@@ -185,6 +213,7 @@ def _normalize_url(url: str) -> str:
 
 def _hierarchical_relevance(retrieved: str, target: str) -> float:
     from urllib.parse import urlsplit
+
     if not retrieved or not target:
         return 0.0
     t = urlsplit(target)
@@ -197,7 +226,7 @@ def _hierarchical_relevance(retrieved: str, target: str) -> float:
         return 1.0
     if tp.startswith(rp + "/"):
         depth = tp.count("/") - rp.count("/")
-        return 0.5 ** depth
+        return 0.5**depth
     if rp.startswith(tp + "/"):
         depth = rp.count("/") - tp.count("/")
         return 0.5 ** (depth + 1)
@@ -218,6 +247,7 @@ def _unique_preserve_order(items: list[str]) -> list[str]:
 def _depth_diff_url(r_url: str, t_url: str) -> int | None:
     """Signed depth difference between retrieved URL and target URL on the same domain."""
     from urllib.parse import urlsplit
+
     t = urlsplit(_normalize_url(t_url))
     rv = urlsplit(_normalize_url(r_url))
     if t.scheme != rv.scheme or t.netloc != rv.netloc:
@@ -227,16 +257,18 @@ def _depth_diff_url(r_url: str, t_url: str) -> int | None:
     if tp == rp:
         return 0
     if tp.startswith(rp + "/"):
-        return -(tp.count("/") - rp.count("/"))   # retrieved shallower than target
+        return -(tp.count("/") - rp.count("/"))  # retrieved shallower than target
     if rp.startswith(tp + "/"):
-        return rp.count("/") - tp.count("/")       # retrieved deeper than target
+        return rp.count("/") - tp.count("/")  # retrieved deeper than target
     return None
 
 
 _EVAL_KS = [1, 3, 5, 10]
 
 
-def _compute_retrieval_metrics(retrieved_urls: list[str], gold_urls: list[str]) -> dict[str, float]:
+def _compute_retrieval_metrics(
+    retrieved_urls: list[str], gold_urls: list[str]
+) -> dict[str, float]:
     """Compute Hit@k, MRR@k, nDCG@k, MRRw@k, MAP@k for k in _EVAL_KS.
 
     A retrieved document counts as relevant if it matches ANY of the gold URLs
@@ -244,7 +276,9 @@ def _compute_retrieval_metrics(retrieved_urls: list[str], gold_urls: list[str]) 
     """
     from math import log2
 
-    unique_urls = _unique_preserve_order([_normalize_url(u) for u in retrieved_urls if u])
+    unique_urls = _unique_preserve_order(
+        [_normalize_url(u) for u in retrieved_urls if u]
+    )
     norm_golds = [_normalize_url(g) for g in gold_urls if g]
     rel_scores = [
         max((_hierarchical_relevance(u, g) for g in norm_golds), default=0.0)
@@ -268,13 +302,14 @@ def _compute_retrieval_metrics(retrieved_urls: list[str], gold_urls: list[str]) 
         results[f"mrr@{k}"] = mrr
 
         # nDCG@k
-        dcg = sum((2 ** rel - 1) / log2(r + 1) for r, rel in enumerate(topk, start=1))
+        dcg = sum((2**rel - 1) / log2(r + 1) for r, rel in enumerate(topk, start=1))
         ideal = sorted(topk, reverse=True)
-        idcg = sum((2 ** rel - 1) / log2(r + 1) for r, rel in enumerate(ideal, start=1))
+        idcg = sum((2**rel - 1) / log2(r + 1) for r, rel in enumerate(ideal, start=1))
         results[f"ndcg@{k}"] = dcg / idcg if idcg > 0 else 0.0
 
         # MRRw@k (simplified with alpha=0.8, beta=0.4)
         from urllib.parse import urlsplit
+
         def _depth_diff(r_url: str, t_url: str) -> int | None:
             t = urlsplit(_normalize_url(t_url))
             rv = urlsplit(_normalize_url(r_url))
@@ -297,7 +332,7 @@ def _compute_retrieval_metrics(retrieved_urls: list[str], gold_urls: list[str]) 
                 d = _depth_diff(url, g)
                 if d is None:
                     continue
-                w = 1.0 if d == 0 else (0.8 ** d if d > 0 else 0.4 ** abs(d))
+                w = 1.0 if d == 0 else (0.8**d if d > 0 else 0.4 ** abs(d))
                 best_s = max(best_s, w / rank)
             if best_s > mrrw:
                 mrrw = best_s
@@ -314,7 +349,9 @@ def _compute_retrieval_metrics(retrieved_urls: list[str], gold_urls: list[str]) 
     return results
 
 
-def _compute_adaptive_metrics(retrieved_urls: list[str], gold_urls: list[str]) -> dict[str, float]:
+def _compute_adaptive_metrics(
+    retrieved_urls: list[str], gold_urls: list[str]
+) -> dict[str, float]:
     """Same metrics as above but evaluated at k = actual number of retrieved docs.
 
     A retrieved document counts as relevant if it matches ANY of the gold URLs
@@ -322,12 +359,19 @@ def _compute_adaptive_metrics(retrieved_urls: list[str], gold_urls: list[str]) -
     """
     from math import log2
 
-    unique_urls = _unique_preserve_order([_normalize_url(u) for u in retrieved_urls if u])
+    unique_urls = _unique_preserve_order(
+        [_normalize_url(u) for u in retrieved_urls if u]
+    )
     k = len(unique_urls)
     _zero: dict[str, float] = {
-        "adaptive_hit": 0.0, "adaptive_mrr": 0.0, "adaptive_ndcg": 0.0,
-        "adaptive_mrrw": 0.0, "adaptive_map": 0.0,
-        "adaptive_precision": 0.0, "adaptive_recall": 0.0, "adaptive_k": 0.0,
+        "adaptive_hit": 0.0,
+        "adaptive_mrr": 0.0,
+        "adaptive_ndcg": 0.0,
+        "adaptive_mrrw": 0.0,
+        "adaptive_map": 0.0,
+        "adaptive_precision": 0.0,
+        "adaptive_recall": 0.0,
+        "adaptive_k": 0.0,
     }
     if k == 0:
         return _zero
@@ -347,9 +391,9 @@ def _compute_adaptive_metrics(retrieved_urls: list[str], gold_urls: list[str]) -
             mrr = 1.0 / rank
             break
 
-    dcg = sum((2 ** r - 1) / log2(i + 1) for i, r in enumerate(rel_scores, start=1))
+    dcg = sum((2**r - 1) / log2(i + 1) for i, r in enumerate(rel_scores, start=1))
     ideal = sorted(rel_scores, reverse=True)
-    idcg = sum((2 ** r - 1) / log2(i + 1) for i, r in enumerate(ideal, start=1))
+    idcg = sum((2**r - 1) / log2(i + 1) for i, r in enumerate(ideal, start=1))
     ndcg = dcg / idcg if idcg > 0 else 0.0
 
     mrrw = 0.0
@@ -377,21 +421,28 @@ def _compute_adaptive_metrics(retrieved_urls: list[str], gold_urls: list[str]) -
         "adaptive_mrrw": mrrw,
         "adaptive_map": ap,
         "adaptive_precision": n_rel / k,
-        "adaptive_recall": hit,   # single-relevant-doc setup: recall == hit
+        "adaptive_recall": hit,  # single-relevant-doc setup: recall == hit
         "adaptive_k": float(k),
     }
 
 
-def _get_pr_points(retrieved_urls: list[str], gold_urls: list[str]) -> list[tuple[float, float]]:
+def _get_pr_points(
+    retrieved_urls: list[str], gold_urls: list[str]
+) -> list[tuple[float, float]]:
     """Return (precision@i, recall@i) for i=1..n_retrieved (single-relevant-doc)."""
-    unique_urls = _unique_preserve_order([_normalize_url(u) for u in retrieved_urls if u])
+    unique_urls = _unique_preserve_order(
+        [_normalize_url(u) for u in retrieved_urls if u]
+    )
     norm_golds = [_normalize_url(g) for g in gold_urls if g]
     THRESHOLD = 0.5
 
     points: list[tuple[float, float]] = []
     n_rel = 0
     for i, url in enumerate(unique_urls, start=1):
-        if max((_hierarchical_relevance(url, g) for g in norm_golds), default=0.0) >= THRESHOLD:
+        if (
+            max((_hierarchical_relevance(url, g) for g in norm_golds), default=0.0)
+            >= THRESHOLD
+        ):
             n_rel += 1
         points.append((n_rel / i, float(n_rel > 0)))
     return points
@@ -405,6 +456,7 @@ def _plot_pr_curve(
     """Save an interpolated mean precision-recall curve as PNG."""
     try:
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
         import numpy as np
@@ -419,13 +471,17 @@ def _plot_pr_curve(
     recall_levels = np.linspace(0.0, 1.0, 11)
     interpolated: list[list[float]] = []
     for pts in non_empty:
-        row = [max((p for p, r in pts if r >= thr), default=0.0) for thr in recall_levels]
+        row = [
+            max((p for p, r in pts if r >= thr), default=0.0) for thr in recall_levels
+        ]
         interpolated.append(row)
 
     mean_p = np.mean(interpolated, axis=0)
 
     fig, ax = plt.subplots(figsize=(7, 5))
-    ax.plot(recall_levels, mean_p, marker="o", linewidth=2, color="#1f77b4", label=title)
+    ax.plot(
+        recall_levels, mean_p, marker="o", linewidth=2, color="#1f77b4", label=title
+    )
     ax.fill_between(recall_levels, mean_p, alpha=0.15, color="#1f77b4")
     ax.set_xlabel("Recall")
     ax.set_ylabel("Interpolated Precision")
@@ -443,11 +499,13 @@ def _plot_pr_curve(
 # LLM answer generation
 # ---------------------------------------------------------------------------
 
+
 def _generate_answer(query: str, chunks: list[dict]) -> str:
     """Call the LLM with retrieved context and return the generated answer."""
     try:
         from src.api.main import query_llm
         from src.api.prompt_builder import build_messages
+
         text_chunks = [c.get("text_chunk", "") for c in chunks if c.get("text_chunk")]
         if not text_chunks:
             text_chunks = ["(brak kontekstu)"]
@@ -461,6 +519,7 @@ def _generate_answer(query: str, chunks: list[dict]) -> str:
 # ---------------------------------------------------------------------------
 # Main experiment loop
 # ---------------------------------------------------------------------------
+
 
 def run_experiment(
     variant: str,
@@ -479,18 +538,29 @@ def run_experiment(
     from src.evaluation.retrieval_runner import retrieve
 
     if variant not in ALL_VARIANTS:
-        raise ValueError(f"Unknown variant '{variant}'. Available: {list(ALL_VARIANTS)}")
+        raise ValueError(
+            f"Unknown variant '{variant}'. Available: {list(ALL_VARIANTS)}"
+        )
 
     config = ALL_VARIANTS[variant]
     output_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%dT%H%M%S")
 
-    logger.info("=== Experiment: variant=%s  testset=%s  judge=%s ===", variant, testset, judge_model)
+    logger.info(
+        "=== Experiment: variant=%s  testset=%s  judge=%s ===",
+        variant,
+        testset,
+        judge_model,
+    )
 
     # Resolve test-set paths (subset_dir overrides defaults)
-    human_path     = (subset_dir / "human_subset.csv")     if subset_dir else HUMAN_TESTSET_PATH
-    rag_path       = (subset_dir / "rag_subset.csv")       if subset_dir else RAG_TESTSET_PATH
-    generated_path = (subset_dir / "generated_subset.jsonl") if subset_dir else GENERATED_TESTSET_PATH
+    human_path = (subset_dir / "human_subset.csv") if subset_dir else HUMAN_TESTSET_PATH
+    rag_path = (subset_dir / "rag_subset.csv") if subset_dir else RAG_TESTSET_PATH
+    generated_path = (
+        (subset_dir / "generated_subset.jsonl")
+        if subset_dir
+        else GENERATED_TESTSET_PATH
+    )
     if subset_dir:
         logger.info("Subset mode: loading test sets from %s", subset_dir)
 
@@ -505,7 +575,9 @@ def run_experiment(
         questions = _load_generated_testset(generated_path, n_questions)
         has_gold_urls = True
     else:
-        raise ValueError(f"Unknown testset '{testset}'. Use 'human', 'rag', or 'generated'.")
+        raise ValueError(
+            f"Unknown testset '{testset}'. Use 'human', 'rag', or 'generated'."
+        )
 
     if not questions:
         raise RuntimeError(f"No questions loaded from testset '{testset}'.")
@@ -580,7 +652,10 @@ def run_experiment(
             golden_answer = golden_map.get(query, "")
             if golden_answer and generated_answer:
                 try:
-                    from src.evaluation.llm_judge.golden_judge import judge_against_golden
+                    from src.evaluation.llm_judge.golden_judge import (
+                        judge_against_golden,
+                    )
+
                     result = judge_against_golden(
                         query,
                         generated_answer,
@@ -600,8 +675,11 @@ def run_experiment(
                         "judge_golden_weaknesses": result.golden_weaknesses,
                     }
                     csv_row.update(judge_row)
-                    for k in ["judge_chatbot_usefulness", "judge_chatbot_accuracy",
-                              "judge_chatbot_completeness"]:
+                    for k in [
+                        "judge_chatbot_usefulness",
+                        "judge_chatbot_accuracy",
+                        "judge_chatbot_completeness",
+                    ]:
                         judge_scores_accum.setdefault(k, []).append(csv_row[k])
                 except Exception as exc:
                     logger.warning("Judge failed for query '%s': %s", query[:50], exc)
@@ -625,7 +703,6 @@ def run_experiment(
     # --- Save per-query CSV ---
     per_query_path = output_dir / f"{variant}_{testset}_{ts}_per_query.csv"
     if per_query_rows:
-        fieldnames = list(per_query_rows[0].keys())
         # Union of all keys (some rows may have fewer columns if judge was skipped)
         all_keys: list[str] = []
         seen_keys: set[str] = set()
@@ -641,7 +718,8 @@ def run_experiment(
         logger.info("Saved per-query results -> %s", per_query_path)
 
     # --- Build summary ---
-    avg = lambda lst: round(mean(lst), 6) if lst else None
+    def avg(lst: list[float]) -> float | None:
+        return round(mean(lst), 6) if lst else None
 
     n_with_gold = sum(1 for r in per_query_rows if r.get("gold_urls_count", 0) > 0)
     max_gold = max((r.get("gold_urls_count", 0) for r in per_query_rows), default=0)
@@ -704,6 +782,7 @@ def run_experiment(
 # Entry point
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Run RAG ablation experiment for a single pipeline variant."
@@ -723,7 +802,7 @@ def main() -> None:
         "--judge-model",
         default=None,
         help="OpenRouter model ID for LLM judge (e.g. openai/gpt-4o-mini). "
-             "If omitted, LLM judging is skipped.",
+        "If omitted, LLM judging is skipped.",
     )
     parser.add_argument(
         "--output-dir",
@@ -740,7 +819,7 @@ def main() -> None:
         "--subset-dir",
         default=None,
         help="Path to subset_workspace directory (contains *_subset.csv/.jsonl). "
-             "When set, test sets are loaded from there instead of the default data dir.",
+        "When set, test sets are loaded from there instead of the default data dir.",
     )
     args = parser.parse_args()
 
@@ -750,10 +829,13 @@ def main() -> None:
 
     if args.variant == "all":
         from src.evaluation.pipeline_config import ALL_VARIANTS
+
         for v in ALL_VARIANTS:
             run_experiment(v, args.testset, args.judge_model, output_dir, n, subset_dir)
     else:
-        run_experiment(args.variant, args.testset, args.judge_model, output_dir, n, subset_dir)
+        run_experiment(
+            args.variant, args.testset, args.judge_model, output_dir, n, subset_dir
+        )
 
 
 if __name__ == "__main__":

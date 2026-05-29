@@ -46,9 +46,9 @@ on:
         type: string
 
       metric:
-        description: "Metric to compare (e.g. hit@3, mrr@10, hit_adaptive, recall_adaptive)"
+        description: "Metric to compare (e.g. hit_adaptive, mrr_adaptive, recall_adaptive)"
         required: false
-        default: "hit@10"
+        default: "hit_adaptive"
         type: string
       test_type:
         description: "Statistical test to perform"
@@ -62,7 +62,7 @@ on:
       use_adaptive_k:
         description: "Use adaptive k (actual retrieved count per query)"
         required: false
-        default: "false"
+        default: "true"
         type: choice
         options:
           - "true"
@@ -149,7 +149,7 @@ jobs:
             exit 1
           fi
           echo "model_a_csv=${MODEL_A_CSV}" >> "$GITHUB_OUTPUT"
-          
+
           # Find latest per-query CSV for Model B
           MODEL_B_CSV=$(ls -t src/evaluation/results/model_b/eval_per_query_*.csv 2>/dev/null | head -1)
           if [ -z "$MODEL_B_CSV" ]; then
@@ -157,7 +157,7 @@ jobs:
             exit 1
           fi
           echo "model_b_csv=${MODEL_B_CSV}" >> "$GITHUB_OUTPUT"
-          
+
           echo "Model A CSV: $MODEL_A_CSV"
           echo "Model B CSV: $MODEL_B_CSV"
 
@@ -180,42 +180,42 @@ jobs:
         run: |
           cat > src/evaluation/results/stats/COMPARISON_REPORT.md << 'EOF'
           # Statistical Comparison Report
-          
+
           ## Configuration
-          
+
           ### Model A: ${{ inputs.model_a_name }}
           - experiment_dim: `${{ inputs.model_a_experiment_dim }}`
           - experiment_temp: `${{ inputs.model_a_experiment_temp }}`
           - experiment_model: `${{ inputs.model_a_experiment_model }}`
-          
+
           ### Model B: ${{ inputs.model_b_name }}
           - experiment_dim: `${{ inputs.model_b_experiment_dim }}`
           - experiment_temp: `${{ inputs.model_b_experiment_temp }}`
           - experiment_model: `${{ inputs.model_b_experiment_model }}`
-          
+
           ## Statistical Tests Configuration
-          
+
           - **Metric tested**: `${{ inputs.metric }}`
           - **Test type**: `${{ inputs.test_type }}`
           - **Use adaptive k**: `${{ inputs.use_adaptive_k }}`
           - **Significance level (α)**: `${{ inputs.alpha }}`
           - **Rank cut-offs (k)**: `${{ inputs.ks }}`
           - **HTTP timeout**: `${{ inputs.timeout }}s`
-          
+
           ## Results
-          
+
           ### Model A Data
           - CSV: `${{ steps.csv-files.outputs.model_a_csv }}`
-          
+
           ### Model B Data
           - CSV: `${{ steps.csv-files.outputs.model_b_csv }}`
-          
+
           ### Statistical Tests Output
-          
+
           See the workflow logs and the JSON/CSV files in this artifact for detailed results.
-          
+
           ---
-          
+
           Generated: `$(date -u +%Y-%m-%dT%H:%M:%SZ)`
           Workflow run: [${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
           EOF
@@ -240,11 +240,11 @@ jobs:
         if: always()
         run: |
           if [ -f stats_output.log ]; then
-            echo "=== Statistical Tests Output ===" 
+            echo "=== Statistical Tests Output ==="
             tail -100 stats_output.log
           fi
           if [ -f src/evaluation/results/stats/COMPARISON_REPORT.md ]; then
             echo ""
-            echo "=== Comparison Report ===" 
+            echo "=== Comparison Report ==="
             cat src/evaluation/results/stats/COMPARISON_REPORT.md
           fi

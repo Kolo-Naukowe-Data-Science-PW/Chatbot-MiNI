@@ -33,9 +33,7 @@ AVAILABLE_MODELS = [
 ]
 
 
-def query_llm_stream(
-    messages: list[dict[str, str]], model_config: dict | None = None
-):
+def query_llm_stream(messages: list[dict[str, str]], model_config: dict | None = None):
     """
     Generator version of query_llm — yields text chunks as they arrive from OpenRouter.
 

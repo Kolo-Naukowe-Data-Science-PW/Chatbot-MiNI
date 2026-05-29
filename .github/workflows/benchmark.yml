@@ -1,4 +1,4 @@
-name: Run Benchmark
+name: Retrieval Metrics
 
 on:
   workflow_dispatch:
@@ -6,7 +6,7 @@ on:
       metric_mode:
         description: 'Metric calculation mode'
         required: false
-        default: 'both'
+        default: 'adaptive'
         type: choice
         options:
           - 'standard'
@@ -34,12 +34,9 @@ jobs:
       - name: Create results directory
         run: mkdir -p src/evaluation/results
 
-      - name: Build benchmark image
-        run: docker compose build benchmark
-
       - name: Run benchmark
         run: |
-          docker compose --profile benchmark run --rm benchmark \
+          docker compose --profile benchmark run --rm --build=never benchmark \
             micromamba run -n app \
             python -m evaluation.benchmark \
               --api-url http://api:8000/chat \
