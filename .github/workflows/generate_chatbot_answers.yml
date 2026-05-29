@@ -1,0 +1,173 @@
+name: Generate Chatbot Answers
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: "Generator model"
+        required: true
+        default: "anthropic/claude-opus-4.8"
+        type: choice
+        options:
+          - "anthropic/claude-opus-4.8"
+          - "openai/gpt-4o"
+          - "google/gemini-3.5-flash"
+          - "deepseek/deepseek-v4-flash"
+          - "custom"
+      custom_model:
+        description: "Custom model id, used only when model=custom"
+        required: false
+        default: ""
+      temperature:
+        description: "Generation temperature"
+        required: true
+        default: "0.2"
+      persona:
+        description: "Persona index"
+        required: true
+        default: "2"
+        type: choice
+        options:
+          - "0"
+          - "1"
+          - "2"
+          - "3"
+      limit:
+        description: "Optional question limit; leave empty for all"
+        required: false
+        default: ""
+      timeout:
+        description: "Per-call /chat timeout in seconds"
+        required: false
+        default: "180"
+      sleep:
+        description: "Seconds to sleep between API calls"
+        required: false
+        default: "0.5"
+      output_name:
+        description: "Output CSV filename; leave empty for automatic name"
+        required: false
+        default: ""
+      input_file:
+        description: "Path to input questions file (JSONL or CSV)"
+        required: false
+        default: "src/evaluation/data/final_notebooklm_QA.jsonl"
+
+jobs:
+  generate:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Copy .env file
+        run: cp ~/.env.backup .env
+
+      - name: Resolve inputs
+        id: vars
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          MODEL="${{ inputs.model }}"
+          if [ "$MODEL" = "custom" ]; then
+            MODEL="${{ inputs.custom_model }}"
+          fi
+          if [ -z "$MODEL" ]; then
+            echo "custom_model must be provided when model=custom" >&2
+            exit 1
+          fi
+
+          SAFE_MODEL="$(printf '%s' "$MODEL" | tr '/:' '__' | tr -cd 'A-Za-z0-9_.-')"
+          OUTPUT_NAME="${{ inputs.output_name }}"
+          if [ -z "$OUTPUT_NAME" ]; then
+            OUTPUT_NAME="answers_${SAFE_MODEL}_t${{ inputs.temperature }}_p${{ inputs.persona }}.csv"
+          fi
+
+          INPUT_FILE="${{ inputs.input_file }}"
+          if [ ! -f "$INPUT_FILE" ]; then
+            echo "Input file not found: $INPUT_FILE" >&2
+            exit 1
+          fi
+
+          {
+            echo "model=$MODEL"
+            echo "safe_model=$SAFE_MODEL"
+            echo "output_name=$OUTPUT_NAME"
+            echo "input_file=$INPUT_FILE"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Ensure API container is running
+        run: docker compose up -d api
+
+      - name: Wait for API
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in {1..60}; do
+            if docker compose exec -T api micromamba run -n app python -c \
+              "from urllib.request import urlopen; urlopen('http://localhost:8000/docs', timeout=2)" >/dev/null 2>&1; then
+              echo "API is ready"
+              exit 0
+            fi
+            echo "Waiting for API... ($i/60)"
+            sleep 2
+          done
+          echo "API did not become ready in time" >&2
+          docker compose ps
+          exit 1
+
+      - name: Copy generator and NotebookLM questions into API container
+        run: |
+          docker compose exec -T api mkdir -p \
+            /app/src/evaluation/llm_judge \
+            /app/src/evaluation/data \
+            /app/src/data/feedback
+
+          docker compose cp \
+            src/evaluation/llm_judge/generate_chatbot_answers.py \
+            api:/app/src/evaluation/llm_judge/generate_chatbot_answers.py
+
+          docker compose cp \
+            "${{ steps.vars.outputs.input_file }}" \
+            api:/app/src/evaluation/data/$(basename "${{ steps.vars.outputs.input_file }}")
+
+      - name: Generate answers
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          LIMIT_ARG=()
+          if [ -n "${{ inputs.limit }}" ]; then
+            LIMIT_ARG=(--limit "${{ inputs.limit }}")
+          fi
+
+          docker compose exec -T api micromamba run -n app python \
+            -m evaluation.llm_judge.generate_chatbot_answers \
+            --input-csv "/app/src/evaluation/data/$(basename "${{ steps.vars.outputs.input_file }}")" \
+            --output-csv "/app/src/data/feedback/${{ steps.vars.outputs.output_name }}" \
+            --api-url http://localhost:8000/chat \
+            --models "${{ steps.vars.outputs.model }}" \
+            --temperatures "${{ inputs.temperature }}" \
+            --personas "${{ inputs.persona }}" \
+            --timeout "${{ inputs.timeout }}" \
+            --sleep "${{ inputs.sleep }}" \
+            --output-format simple \
+            "${LIMIT_ARG[@]}"
+
+      - name: Copy CSV from API container
+        run: |
+          mkdir -p feedback-output
+          docker compose cp \
+            "api:/app/src/data/feedback/${{ steps.vars.outputs.output_name }}" \
+            "./feedback-output/${{ steps.vars.outputs.output_name }}"
+          ls -la feedback-output
+          wc -l "feedback-output/${{ steps.vars.outputs.output_name }}"
+
+      - name: Upload CSV
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: chatbot-answers-${{ steps.vars.outputs.safe_model }}-${{ github.run_id }}
+          path: feedback-output/*.csv
+          if-no-files-found: error
