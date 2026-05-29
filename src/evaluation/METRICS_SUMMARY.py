@@ -65,9 +65,10 @@ RETRIEVAL_METRICS = {
         "definition": "URL-based relevance scoring (decays with path depth)",
         "formula": """
             Exact match: 1.0
-            Child (1 level deeper): 0.5
-            Grandchild: 0.25
-            Parent (less relevant): < 0.5
+            Parent (1 level above): 0.75
+            Grandparent (2 levels above): 0.5625
+            Child (1 level deeper): 0.5625
+            Grandchild: 0.4219
         """,
         "range": "[0, 1]",
         "implementation": "src/evaluation/benchmark.py:hierarchical_relevance()",
@@ -241,7 +242,7 @@ COVERAGE = {
 
 PARAMETERS = {
     "RELEVANCE_THRESHOLD": {
-        "default": 0.5,
+        "default": 0.25,
         "description": "Minimum relevance score to count as 'relevant'",
         "used_by": [
             "hit_at_k",

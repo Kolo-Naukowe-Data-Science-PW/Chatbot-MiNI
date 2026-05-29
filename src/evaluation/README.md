@@ -111,13 +111,20 @@ All retrieval metrics use hierarchical URL relevance. A retrieved URL can receiv
 | Relationship | Score |
 |---|---:|
 | Exact match | 1.00 |
-| Parent URL, 1 level above | 0.50 |
-| Grandparent, 2 levels above | 0.25 |
-| Child URL, 1 level below | 0.25 |
-| Grandchild, 2 levels below | 0.125 |
+| Parent URL, 1 level above | 0.75 |
+| Grandparent, 2 levels above | 0.5625 |
+| Child URL, 1 level below | 0.5625 |
+| Grandchild, 2 levels below | 0.4219 |
 | Unrelated URL or different origin | 0.00 |
 
-`RELEVANCE_THRESHOLD = 0.5` decides what counts as relevant for binary metrics such as Hit, MRR, Precision, Recall, F1, and MAP.
+`RELEVANCE_THRESHOLD = 0.25` decides what counts as relevant for binary metrics such as Hit, MRR, Precision, Recall, F1, and MAP.
+At this threshold:
+- Exact match (1.0) ✓
+- Direct parent ancestor (0.75) ✓
+- Grandparent ancestor (0.5625) ✓
+- Direct child descendant (0.5625) ✓
+- Grandchild descendant (0.4219) ✓
+- Great-grandchild (0.316) ✗
 
 `MRRw` is a depth-aware weighted MRR. It uses:
 

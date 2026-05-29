@@ -48,10 +48,10 @@ def _rewrite_query(query: str) -> str:
 
 # Minimum relevance score to treat a retrieved URL as "relevant" in binary
 # metrics (Hit, Precision, Recall, F1, MAP, MRR).
-# At the default value of 0.5, exact matches (1.0) and direct parents (0.5)
-# are counted as hits; children (0.25) and more distant relatives are not.
-# Lower this to 0.25 to also credit child pages.
-RELEVANCE_THRESHOLD: float = 0.5
+# At the default value of 0.25, exact matches (1.0) and direct parents (0.75)
+# are counted as hits; children (0.5625) and more distant relatives are not.
+# Raise this to 0.5 to exclude child pages.
+RELEVANCE_THRESHOLD: float = 0.25
 
 # MRRw parameters (Metryka_chatbot.pdf)
 # α: weight for a URL that is deeper (more specific) than the gold by 1 level.
@@ -160,17 +160,17 @@ def hierarchical_relevance(retrieved_url: str, target_url: str) -> float:
     single ground-truth target URL, based on the URL path hierarchy:
 
         Exact match                          -> 1.00
-        Direct parent (1 level above)        -> 0.50
-        Grandparent (2 levels above)         -> 0.25
-        Great-grandparent (3 levels above)   -> 0.125  etc.
-        Direct child (1 level below)         -> 0.25
-        Grandchild (2 levels below)          -> 0.125  etc.
+        Direct parent (1 level above)        -> 0.75
+        Grandparent (2 levels above)         -> 0.5625
+        Great-grandparent (3 levels above)   -> 0.4219  etc.
+        Direct child (1 level below)         -> 0.5625
+        Grandchild (2 levels below)          -> 0.4219  etc.
         Unrelated path or different origin   -> 0.00
 
     Algorithm:
     1. Compare scheme and netloc -- different origins always yield 0.
     2. Determine ancestor / descendant relationship from the URL path.
-    3. Score = 0.5^depth, where depth is the difference in path depth.
+    3. Score = 0.75^depth, where depth is the difference in path depth.
        For descendants, depth is incremented by 1 (one step stricter than
        ancestors, reflecting that a child page is a less reliable source
        than a parent page for a query about the parent).
@@ -194,12 +194,12 @@ def hierarchical_relevance(retrieved_url: str, target_url: str) -> float:
     # retrieved URL is an ancestor (parent, grandparent, ...) of the target
     if t_path.startswith(r_path + "/"):
         depth = t_path.count("/") - r_path.count("/")
-        return 0.5**depth
+        return 0.75**depth
 
     # retrieved URL is a descendant (child, grandchild, ...) of the target
     if r_path.startswith(t_path + "/"):
         depth = r_path.count("/") - t_path.count("/")
-        return 0.5 ** (depth + 1)
+        return 0.75 ** (depth + 1)
 
     return 0.0
 
