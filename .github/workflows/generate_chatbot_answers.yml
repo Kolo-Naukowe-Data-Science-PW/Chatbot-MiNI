@@ -170,4 +170,3 @@ jobs:
         with:
           name: chatbot-answers-${{ steps.vars.outputs.safe_model }}-${{ github.run_id }}
           path: feedback-output/*.csv
-          if-no-files-found: error
