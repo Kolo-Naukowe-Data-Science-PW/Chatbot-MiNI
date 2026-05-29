@@ -24,7 +24,7 @@ jobs:
             -v $PWD:/app \
             -w /app \
             python:3.11-alpine \
-            sh -c 'pip install --no-cache-dir --quiet sacrebleu rouge bert-score nltk pandas && \
+            sh -c 'pip install --no-cache-dir --quiet sacrebleu rouge nltk pandas && \
                    export PYTHONPATH=/app/src && \
                    python /app/src/evaluation/text_metrics.py \
                      --generated-csv "${{ inputs.generated_csv }}" \
