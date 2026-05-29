@@ -34,12 +34,9 @@ jobs:
       - name: Create results directory
         run: mkdir -p src/evaluation/results
 
-      - name: Build benchmark image
-        run: docker compose build benchmark
-
       - name: Run benchmark
         run: |
-          docker compose --profile benchmark run --rm benchmark \
+          docker compose --profile benchmark run --rm --no-build benchmark \
             micromamba run -n app \
             python -m evaluation.benchmark \
               --api-url http://api:8000/chat \

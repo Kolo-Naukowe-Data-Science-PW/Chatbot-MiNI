@@ -20,7 +20,7 @@ jobs:
 
       - name: Run text metrics (Docker)
         run: |
-          docker run --rm \
+          docker run --rm --pull=never \
             -v $PWD:/app \
             -w /app \
             python:3.11-slim \
