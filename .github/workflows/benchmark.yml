@@ -36,7 +36,7 @@ jobs:
 
       - name: Run benchmark
         run: |
-          docker compose --profile benchmark run --rm --no-build benchmark \
+          docker compose --profile benchmark run --rm --build=never benchmark \
             micromamba run -n app \
             python -m evaluation.benchmark \
               --api-url http://api:8000/chat \

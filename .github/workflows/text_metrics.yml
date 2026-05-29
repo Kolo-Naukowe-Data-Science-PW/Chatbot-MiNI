@@ -3,8 +3,12 @@ name: Generation metrics
 on:
   workflow_dispatch:
     inputs:
-      generated_csv:
-        description: 'Path to CSV with generated answers (columns: pytanie, odpowiedz)'
+      api_url:
+        description: 'Chatbot /chat endpoint URL'
+        required: true
+        default: 'http://api:8000/chat'
+      input_csv:
+        description: 'Path to CSV with questions (columns: pytanie, odpowiedz)'
         required: false
         default: 'src/evaluation/data/QA_rag.csv'
 
@@ -18,17 +22,18 @@ jobs:
       - name: Create results directory
         run: mkdir -p src/evaluation/results
 
-      - name: Run text metrics (Docker)
+      - name: Run generation metrics
         run: |
           docker run --rm \
             -v $PWD:/app \
             -w /app \
             python:3.11-slim \
             bash -c 'pip install --no-cache-dir --quiet "numpy<2" && \
-                     pip install --no-cache-dir --quiet sacrebleu rouge nltk pandas && \
+                     pip install --no-cache-dir --quiet sacrebleu rouge nltk pandas requests && \
                      export PYTHONPATH=/app/src && \
-                     python /app/src/evaluation/text_metrics.py \
-                       --generated-csv "${{ inputs.generated_csv }}" \
+                     python /app/src/evaluation/quick_generation_metrics.py \
+                       --api-url "${{ inputs.api_url }}" \
+                       --input-csv "${{ inputs.input_csv }}" \
                        --output-dir /app/src/evaluation/results && \
                      pip cache purge'
 
@@ -36,6 +41,6 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: text-metrics-${{ github.run_id }}
-          path: src/evaluation/results/text_metrics_*
+          name: generation-metrics-${{ github.run_id }}
+          path: src/evaluation/results/generation_metrics_*
           if-no-files-found: warn
