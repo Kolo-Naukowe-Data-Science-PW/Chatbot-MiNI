@@ -48,10 +48,10 @@ def _rewrite_query(query: str) -> str:
 
 # Minimum relevance score to treat a retrieved URL as "relevant" in binary
 # metrics (Hit, Precision, Recall, F1, MAP, MRR).
-# At the default value of 0.5, exact matches (1.0) and direct parents (0.5)
-# are counted as hits; children (0.25) and more distant relatives are not.
-# Lower this to 0.25 to also credit child pages.
-RELEVANCE_THRESHOLD: float = 0.5
+# At the default value of 0.25, exact matches (1.0) and direct parents (0.75)
+# are counted as hits; children (0.5625) and more distant relatives are not.
+# Raise this to 0.5 to exclude child pages.
+RELEVANCE_THRESHOLD: float = 0.25
 
 # MRRw parameters (Metryka_chatbot.pdf)
 # α: weight for a URL that is deeper (more specific) than the gold by 1 level.
@@ -160,17 +160,17 @@ def hierarchical_relevance(retrieved_url: str, target_url: str) -> float:
     single ground-truth target URL, based on the URL path hierarchy:
 
         Exact match                          -> 1.00
-        Direct parent (1 level above)        -> 0.50
-        Grandparent (2 levels above)         -> 0.25
-        Great-grandparent (3 levels above)   -> 0.125  etc.
-        Direct child (1 level below)         -> 0.25
-        Grandchild (2 levels below)          -> 0.125  etc.
+        Direct parent (1 level above)        -> 0.75
+        Grandparent (2 levels above)         -> 0.5625
+        Great-grandparent (3 levels above)   -> 0.4219  etc.
+        Direct child (1 level below)         -> 0.5625
+        Grandchild (2 levels below)          -> 0.4219  etc.
         Unrelated path or different origin   -> 0.00
 
     Algorithm:
     1. Compare scheme and netloc -- different origins always yield 0.
     2. Determine ancestor / descendant relationship from the URL path.
-    3. Score = 0.5^depth, where depth is the difference in path depth.
+    3. Score = 0.75^depth, where depth is the difference in path depth.
        For descendants, depth is incremented by 1 (one step stricter than
        ancestors, reflecting that a child page is a less reliable source
        than a parent page for a query about the parent).
@@ -194,12 +194,12 @@ def hierarchical_relevance(retrieved_url: str, target_url: str) -> float:
     # retrieved URL is an ancestor (parent, grandparent, ...) of the target
     if t_path.startswith(r_path + "/"):
         depth = t_path.count("/") - r_path.count("/")
-        return 0.5**depth
+        return 0.75**depth
 
     # retrieved URL is a descendant (child, grandchild, ...) of the target
     if r_path.startswith(t_path + "/"):
         depth = r_path.count("/") - t_path.count("/")
-        return 0.5 ** (depth + 1)
+        return 0.75 ** (depth + 1)
 
     return 0.0
 
@@ -856,6 +856,7 @@ def evaluate_to_csv(
     ks: list[int],
     output_dir: Path,
     api_url: str | None = None,
+    answers_csv: str | None = None,
     timeout: int = 60,
     use_rewrite: bool = False,
     metric_mode: str = "both",
@@ -901,8 +902,38 @@ def evaluate_to_csv(
         db_urls = _get_db_urls()
         print(f"  Found {len(db_urls)} unique URLs in DB.\n")
 
+    # Load pre-generated answers and sources if provided
+    answers_map: dict[str, tuple[str, list[str]]] = {}
+    if answers_csv:
+        print(f"Loading pre-generated answers from {answers_csv}...")
+        with open(answers_csv, encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row_dict in reader:
+                q = row_dict.get("pytanie", "").strip()
+                ans = row_dict.get("odpowiedz_wygenerowana", "").strip()
+                links_json = row_dict.get("zwrocone_linki", "[]")
+                try:
+                    links_data = json.loads(links_json)
+                    # Extract URLs from ranked list format: [{"rank": 1, "url": "..."}, ...]
+                    if isinstance(links_data, list):
+                        if links_data and isinstance(links_data[0], dict):
+                            links = [item.get("url", "") for item in links_data]
+                        else:
+                            links = links_data
+                    else:
+                        links = []
+                except json.JSONDecodeError:
+                    links = []
+                if q:
+                    answers_map[q] = (ans, links)
+        print(f"  Loaded answers for {len(answers_map)} questions.\n")
+
     for idx, row in enumerate(gold):
-        if api_url:
+        if answers_csv and row.query in answers_map:
+            # Use pre-generated answers and sources
+            answer, raw_sources = answers_map[row.query]
+            retrieval_q = row.query
+        elif api_url:
             try:
                 answer, raw_sources = _call_chat_api(api_url, row.query, timeout)
             except RuntimeError as exc:
@@ -1066,6 +1097,16 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--answers-csv",
+        default=None,
+        metavar="PATH",
+        help=(
+            "Path to CSV with pre-generated answers from generate_chatbot_answers.py. "
+            "Expected columns: pytanie, odpowiedz_wygenerowana, zwrocone_linki. "
+            "When provided, uses stored sources instead of calling API or retrieval."
+        ),
+    )
+    parser.add_argument(
         "--output-dir",
         default="src/evaluation/results",
         help="Directory where CSV / JSON / plot files are saved.",
@@ -1149,6 +1190,7 @@ def main() -> None:
         ks,
         output_dir,
         api_url=args.api_url,
+        answers_csv=args.answers_csv,
         timeout=args.timeout,
         use_rewrite=args.rewrite,
         metric_mode=args.metric_mode,

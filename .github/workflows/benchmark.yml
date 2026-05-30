@@ -3,6 +3,10 @@ name: Retrieval Metrics
 on:
   workflow_dispatch:
     inputs:
+      answers_csv:
+        description: 'Path to answers CSV from generate_chatbot_answers (optional; if provided, uses those sources instead of calling API)'
+        required: false
+        default: ''
       metric_mode:
         description: 'Metric calculation mode'
         required: false
@@ -36,15 +40,21 @@ jobs:
 
       - name: Run benchmark
         run: |
+          BENCHMARK_CMD="python -m evaluation.benchmark \
+            --output-dir /app/src/evaluation/results \
+            --ks \"${{ inputs.ks }}\" \
+            --metric-mode \"${{ inputs.metric_mode }}\" \
+            --timeout \"${{ inputs.timeout }}\" \
+            --no-plots"
+          
+          if [ -n "${{ inputs.answers_csv }}" ]; then
+            BENCHMARK_CMD="$BENCHMARK_CMD --answers-csv \"${{ inputs.answers_csv }}\""
+          else
+            BENCHMARK_CMD="$BENCHMARK_CMD --api-url http://api:8000/chat"
+          fi
+          
           docker compose --profile benchmark run --rm --build=never benchmark \
-            micromamba run -n app \
-            python -m evaluation.benchmark \
-              --api-url http://api:8000/chat \
-              --output-dir /app/src/evaluation/results \
-              --ks "${{ inputs.ks }}" \
-              --metric-mode "${{ inputs.metric_mode }}" \
-              --timeout "${{ inputs.timeout }}" \
-              --no-plots
+            micromamba run -n app $BENCHMARK_CMD
 
       - name: Upload results
         uses: actions/upload-artifact@v4
