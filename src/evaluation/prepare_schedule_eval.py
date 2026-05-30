@@ -219,10 +219,13 @@ def main(
     with open(out_path, "w", encoding="utf-8") as out_f:
         for rec, grp, cdyd in question_groups:
             stems = group_to_txt_stems.get((grp, cdyd), [])
-            # Use first matching stem as the gold source key
-            zrodla = stems[0] if stems else ""
-            if not zrodla:
+            stem = stems[0] if stems else ""
+            # Resolve stem → URL using the mapping built above
+            zrodla = file_url_map.get(stem, stem)
+            if not stem:
                 logger.warning("No matching .txt for (%s, %s) — gold URL will be empty.", grp, cdyd)
+            elif zrodla == stem:
+                logger.warning("No URL found in mapping for stem %s — using stem as fallback.", stem)
             norm = {
                 "Pytanie":    rec.get("Pytanie",  "").strip(),
                 "Odpowiedź":  rec.get("Odpowiedź","").strip(),
