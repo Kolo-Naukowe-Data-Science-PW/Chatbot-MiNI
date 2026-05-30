@@ -11,15 +11,17 @@ on:
         options:
           - 'src/evaluation/data/answers_google_gemini-3.5-flash_t0.2_p2.csv'
           - 'src/evaluation/data/answers_openai_gpt-4o_t0.2_p2.csv'
+          - 'src/evaluation/data/answers_anthropic_claude-opus-4.8_t0.2_p2.csv'
+          - 'src/evaluation/data/answers_deepseek-v4-flash_t0.2_p2.csv'
           - 'custom'
       custom_generated_path:
         description: 'Custom path (used only if generated_answers=custom)'
         required: false
         default: ''
       reference_csv:
-        description: 'Path to reference answers (default: QA_rag.csv)'
+        description: 'Path to reference answers (default: final_notebooklm_QA_reference.csv)'
         required: false
-        default: 'src/evaluation/data/QA_rag.csv'
+        default: 'src/evaluation/data/final_notebooklm_QA_reference.csv'
 
 jobs:
   text-metrics:
