@@ -856,6 +856,7 @@ def evaluate_to_csv(
     ks: list[int],
     output_dir: Path,
     api_url: str | None = None,
+    answers_csv: str | None = None,
     timeout: int = 60,
     use_rewrite: bool = False,
     metric_mode: str = "both",
@@ -901,8 +902,38 @@ def evaluate_to_csv(
         db_urls = _get_db_urls()
         print(f"  Found {len(db_urls)} unique URLs in DB.\n")
 
+    # Load pre-generated answers and sources if provided
+    answers_map: dict[str, tuple[str, list[str]]] = {}
+    if answers_csv:
+        print(f"Loading pre-generated answers from {answers_csv}...")
+        with open(answers_csv, encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row_dict in reader:
+                q = row_dict.get("pytanie", "").strip()
+                ans = row_dict.get("odpowiedz_wygenerowana", "").strip()
+                links_json = row_dict.get("zwrocone_linki", "[]")
+                try:
+                    links_data = json.loads(links_json)
+                    # Extract URLs from ranked list format: [{"rank": 1, "url": "..."}, ...]
+                    if isinstance(links_data, list):
+                        if links_data and isinstance(links_data[0], dict):
+                            links = [item.get("url", "") for item in links_data]
+                        else:
+                            links = links_data
+                    else:
+                        links = []
+                except json.JSONDecodeError:
+                    links = []
+                if q:
+                    answers_map[q] = (ans, links)
+        print(f"  Loaded answers for {len(answers_map)} questions.\n")
+
     for idx, row in enumerate(gold):
-        if api_url:
+        if answers_csv and row.query in answers_map:
+            # Use pre-generated answers and sources
+            answer, raw_sources = answers_map[row.query]
+            retrieval_q = row.query
+        elif api_url:
             try:
                 answer, raw_sources = _call_chat_api(api_url, row.query, timeout)
             except RuntimeError as exc:
@@ -1066,6 +1097,16 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--answers-csv",
+        default=None,
+        metavar="PATH",
+        help=(
+            "Path to CSV with pre-generated answers from generate_chatbot_answers.py. "
+            "Expected columns: pytanie, odpowiedz_wygenerowana, zwrocone_linki. "
+            "When provided, uses stored sources instead of calling API or retrieval."
+        ),
+    )
+    parser.add_argument(
         "--output-dir",
         default="src/evaluation/results",
         help="Directory where CSV / JSON / plot files are saved.",
@@ -1149,6 +1190,7 @@ def main() -> None:
         ks,
         output_dir,
         api_url=args.api_url,
+        answers_csv=args.answers_csv,
         timeout=args.timeout,
         use_rewrite=args.rewrite,
         metric_mode=args.metric_mode,

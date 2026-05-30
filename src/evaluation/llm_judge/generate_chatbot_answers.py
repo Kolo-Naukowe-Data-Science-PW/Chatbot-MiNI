@@ -82,6 +82,8 @@ OUTPUT_FIELDNAMES = [
 
 SIMPLE_OUTPUT_FIELDNAMES = ["pytanie", "odpowiedz_wygenerowana"]
 
+POLISH_OUTPUT_FIELDNAMES = ["pytanie", "odpowiedz_wygenerowana", "zwrocone_linki"]
+
 
 # ── Input data ──────────────────────────────────────────────────────────────
 
@@ -284,6 +286,14 @@ def run(
             "--output-format simple supports exactly one model, one temperature, "
             "and one persona per output CSV. Run the script once per model."
         )
+    
+    if output_format == "polish" and (
+        len(models) != 1 or len(temperatures) != 1 or len(persona_indices) != 1
+    ):
+        raise ValueError(
+            "--output-format polish supports exactly one model, one temperature, "
+            "and one persona per output CSV. Run the script once per model."
+        )
 
     questions = _read_questions(input_csv, limit=limit)
     if not questions:
@@ -296,7 +306,7 @@ def run(
     existing_ids = _read_existing_ids(output_csv) if output_format == "full" else set()
     existing_questions = (
         _read_existing_simple_questions(output_csv)
-        if output_format == "simple"
+        if output_format in ("simple", "polish")
         else set()
     )
     file_existed = output_csv.exists()
@@ -327,7 +337,11 @@ def run(
 
     with open(output_csv, "a", encoding="utf-8", newline="") as out_f:
         fieldnames = (
-            SIMPLE_OUTPUT_FIELDNAMES if output_format == "simple" else OUTPUT_FIELDNAMES
+            POLISH_OUTPUT_FIELDNAMES 
+            if output_format == "polish"
+            else SIMPLE_OUTPUT_FIELDNAMES 
+            if output_format == "simple" 
+            else OUTPUT_FIELDNAMES
         )
         writer = csv.DictWriter(out_f, fieldnames=fieldnames, extrasaction="ignore")
         if not file_existed:
@@ -339,7 +353,7 @@ def run(
                 for t in temperatures:
                     for pi in persona_indices:
                         aid = make_answer_id(q["query"], m, t, pi)
-                        if output_format == "simple":
+                        if output_format in ("simple", "polish"):
                             if q["query"] in existing_questions:
                                 continue
                         elif aid in existing_ids:
@@ -377,6 +391,20 @@ def run(
                                 {
                                     "pytanie": q["query"],
                                     "odpowiedz_wygenerowana": answer,
+                                }
+                            )
+                            existing_questions.add(q["query"])
+                        elif output_format == "polish":
+                            # Add ranking to sources
+                            sources_with_rank = [
+                                {"rank": i + 1, "url": src}
+                                for i, src in enumerate(sources)
+                            ]
+                            writer.writerow(
+                                {
+                                    "pytanie": q["query"],
+                                    "odpowiedz_wygenerowana": answer,
+                                    "zwrocone_linki": json.dumps(sources_with_rank, ensure_ascii=False),
                                 }
                             )
                             existing_questions.add(q["query"])
