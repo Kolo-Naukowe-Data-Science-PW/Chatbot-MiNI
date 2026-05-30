@@ -14,8 +14,8 @@ python -m evaluation.text_metrics \
     [--bertscore-model bert-base-multilingual-cased]
 
 Expected columns in --generated-csv:
-    pytanie     — question text (used to join with reference)
-    odpowiedz   — generated answer
+    pytanie                  — question text (used to join with reference)
+    odpowiedz_wygenerowana   — generated answer
 
 Expected columns in --reference-csv:
     pytanie     — question text
@@ -444,12 +444,12 @@ def evaluate(
     gen_df = gen_df.rename(columns=str.lower)
     ref_df = ref_df.rename(columns=str.lower)
 
-    if "pytanie" not in gen_df.columns or "odpowiedz" not in gen_df.columns:
-        raise ValueError("--generated-csv must have 'pytanie' and 'odpowiedz' columns")
+    if "pytanie" not in gen_df.columns or "odpowiedz_wygenerowana" not in gen_df.columns:
+        raise ValueError("--generated-csv must have 'pytanie' and 'odpowiedz_wygenerowana' columns")
     if "pytanie" not in ref_df.columns or "odpowiedz" not in ref_df.columns:
         raise ValueError("--reference-csv must have 'pytanie' and 'odpowiedz' columns")
 
-    merged = gen_df[["pytanie", "odpowiedz"]].merge(
+    merged = gen_df[["pytanie", "odpowiedz_wygenerowana"]].merge(
         ref_df[["pytanie", "odpowiedz"]].rename(columns={"odpowiedz": "odpowiedz_ref"}),
         on="pytanie",
         how="inner",
@@ -462,7 +462,7 @@ def evaluate(
 
     logger.info("Matched %d questions", len(merged))
 
-    hypotheses = merged["odpowiedz"].fillna("").astype(str).tolist()
+    hypotheses = merged["odpowiedz_wygenerowana"].fillna("").astype(str).tolist()
     references = merged["odpowiedz_ref"].fillna("").astype(str).tolist()
 
     results: dict[str, float] = {}
@@ -489,10 +489,10 @@ def evaluate(
     for _, row in merged.iterrows():
         entry: dict = {
             "pytanie": row["pytanie"],
-            "odpowiedz": row["odpowiedz"],
+            "odpowiedz_wygenerowana": row["odpowiedz_wygenerowana"],
             "odpowiedz_ref": row["odpowiedz_ref"],
         }
-        entry.update(_rouge_per_row(str(row["odpowiedz"]), str(row["odpowiedz_ref"])))
+        entry.update(_rouge_per_row(str(row["odpowiedz_wygenerowana"]), str(row["odpowiedz_ref"])))
         per_q_rows.append(entry)
 
     per_q_df = pd.DataFrame(per_q_rows)
@@ -557,7 +557,7 @@ if __name__ == "__main__":
         "--generated-csv",
         required=True,
         type=Path,
-        help="CSV with generated answers (pytanie, odpowiedz)",
+        help="CSV with generated answers (pytanie, odpowiedz_wygenerowana)",
     )
     parser.add_argument(
         "--reference-csv",

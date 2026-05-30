@@ -3,10 +3,19 @@ name: Generation metrics
 on:
   workflow_dispatch:
     inputs:
-      per_query_csv:
-        description: 'Path to *_per_query.csv from run_experiment (columns: query, generated_answer)'
+      generated_answers:
+        description: 'Path to generated answers CSV (pytanie, odpowiedz_wygenerowana)'
         required: true
-        default: 'src/evaluation/results/baseline_rag_*_per_query.csv'
+        default: 'answers_openai_gpt-4o_t0.2_p2.csv'
+        type: choice
+        options:
+          - 'src/evaluation/data/answers_google_gemini-3.5-flash_t0.2_p2.csv'
+          - 'src/evaluation/data/answers_openai_gpt-4o_t0.2_p2.csv'
+          - 'custom'
+      custom_generated_path:
+        description: 'Custom path (used only if generated_answers=custom)'
+        required: false
+        default: ''
       reference_csv:
         description: 'Path to reference answers (default: QA_rag.csv)'
         required: false
@@ -22,17 +31,31 @@ jobs:
       - name: Create results directory
         run: mkdir -p src/evaluation/results
 
-      - name: Run generation metrics from experiment
+      - name: Resolve generated answers path
+        id: paths
+        shell: bash
+        run: |
+          GENERATED="${{ inputs.generated_answers }}"
+          if [ "$GENERATED" = "custom" ]; then
+            GENERATED="${{ inputs.custom_generated_path }}"
+          fi
+          if [ ! -f "$GENERATED" ]; then
+            echo "Generated answers file not found: $GENERATED" >&2
+            exit 1
+          fi
+          echo "generated=$GENERATED" >> "$GITHUB_OUTPUT"
+
+      - name: Run text metrics
         run: |
           docker run --rm \
             -v $PWD:/app \
             -w /app \
             python:3.11-slim \
             bash -c 'pip install --no-cache-dir --quiet "numpy<2" && \
-                     pip install --no-cache-dir --quiet sacrebleu rouge nltk pandas && \
+                     pip install --no-cache-dir --quiet sacrebleu rouge nltk pandas bert-score && \
                      export PYTHONPATH=/app/src && \
-                     python /app/src/evaluation/metrics_from_experiment.py \
-                       --per-query-csv "${{ inputs.per_query_csv }}" \
+                     python /app/src/evaluation/text_metrics.py \
+                       --generated-csv "${{ steps.paths.outputs.generated }}" \
                        --reference-csv "${{ inputs.reference_csv }}" \
                        --output-dir /app/src/evaluation/results && \
                      pip cache purge'
@@ -41,7 +64,6 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: generation-metrics-${{ github.run_id }}
-          path: src/evaluation/results/generation_metrics_*
-          if-no-files-found: warn
+          name: text-metrics-${{ github.run_id }}
+          path: src/evaluation/results/text_metrics_*
           if-no-files-found: warn
