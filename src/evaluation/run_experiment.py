@@ -162,8 +162,11 @@ def _load_generated_testset(path: Path, n: int | None) -> list[dict]:
             if not query:
                 continue
             fname = (rec.get("Źródła") or "").strip()
-            fname_key = fname[:-4] if fname.endswith(".txt") else fname
-            gold_url = _file_url_map.get(fname_key, "")
+            if fname.startswith("http"):
+                gold_url = fname
+            else:
+                fname_key = fname[:-4] if fname.endswith(".txt") else fname
+                gold_url = _file_url_map.get(fname_key, "")
             rows.append(
                 {
                     "query": query,
