@@ -12,6 +12,9 @@ on:
           - "anthropic/claude-opus-4.8"
           - "openai/gpt-4o"
           - "google/gemini-3.5-flash"
+          - "openrouter/owl-alpha"
+          - "deepseek/deepseek-v4-flash:free"
+          - "nvidia/nemotron-3-super-120b-a12b:free"
           - "deepseek/deepseek-v4-flash"
           - "custom"
       custom_model:
