@@ -415,6 +415,7 @@ def _bertscore(
     references: list[str],
     lang: str,
     model_type: str,
+    num_layers: int | None,
 ) -> dict[str, float]:
     from bert_score import BERTScorer  # type: ignore
 
@@ -428,12 +429,28 @@ def _bertscore(
     ]
 
     for suffix, idf, rescale in variants:
-        scorer = BERTScorer(
-            lang=lang,
-            model_type=model_type,
-            idf=idf,
-            rescale_with_baseline=rescale,
-        )
+        scorer_kwargs = {
+            "lang": lang,
+            "model_type": model_type,
+            "idf": idf,
+            "rescale_with_baseline": rescale,
+        }
+        if num_layers is not None:
+            scorer_kwargs["num_layers"] = num_layers
+
+        try:
+            scorer = BERTScorer(**scorer_kwargs)
+        except (KeyError, ValueError) as exc:
+            if rescale:
+                logger.warning(
+                    "BERTScore variant '%s' skipped for model=%s: %s",
+                    suffix,
+                    model_type,
+                    exc,
+                )
+                continue
+            raise
+
         P, R, F1 = scorer.score(hypotheses, references, verbose=False)
         results[f"bertscore_precision_{suffix}"] = P.mean().item()
         results[f"bertscore_recall_{suffix}"] = R.mean().item()
@@ -467,6 +484,7 @@ def evaluate(
     output_dir: Path,
     lang: str,
     bertscore_model: str,
+    bertscore_num_layers: int | None,
 ) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%dT%H%M%S%f")
@@ -522,7 +540,15 @@ def evaluate(
 
     try:
         logger.info("Computing BERTScore (model=%s) …", bertscore_model)
-        results.update(_bertscore(hypotheses, references, lang, bertscore_model))
+        results.update(
+            _bertscore(
+                hypotheses,
+                references,
+                lang,
+                bertscore_model,
+                bertscore_num_layers,
+            )
+        )
     except ModuleNotFoundError:
         logger.warning("BERTScore skipped (bert_score not installed)")
 
@@ -635,6 +661,15 @@ if __name__ == "__main__":
         default="allegro/herbert-base-cased",
         help="HuggingFace model for BERTScore",
     )
+    parser.add_argument(
+        "--bertscore-num-layers",
+        type=int,
+        default=12,
+        help=(
+            "Transformer layer count for BERTScore custom models "
+            "(default: 12 for allegro/herbert-base-cased)"
+        ),
+    )
     args = parser.parse_args()
 
     evaluate(
@@ -643,4 +678,5 @@ if __name__ == "__main__":
         output_dir=args.output_dir,
         lang=args.lang,
         bertscore_model=args.bertscore_model,
+        bertscore_num_layers=args.bertscore_num_layers,
     )
