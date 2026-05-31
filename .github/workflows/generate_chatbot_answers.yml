@@ -64,6 +64,15 @@ on:
         description: "Custom input questions file, used only when question_set=custom"
         required: false
         default: ""
+      output_columns:
+        description: "Columns to include after the question column"
+        required: true
+        default: "answers_and_links"
+        type: choice
+        options:
+          - "answers_and_links"
+          - "answer_only"
+          - "links_only"
 
 jobs:
   generate:
@@ -186,7 +195,7 @@ jobs:
             --personas "${{ inputs.persona }}" \
             --timeout "${{ inputs.timeout }}" \
             --sleep "${{ inputs.sleep }}" \
-            --output-format polish \
+            --output-format "${{ inputs.output_columns }}" \
             "${LIMIT_ARG[@]}"
 
       - name: Copy CSV from API container

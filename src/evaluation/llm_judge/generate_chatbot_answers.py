@@ -28,7 +28,7 @@ Usage
         --personas   3 \\
         --limit 50
 
-    # Simple two-column output for NotebookLM JSONL questions:
+    # Compact output for NotebookLM JSONL questions:
     python -m evaluation.llm_judge.generate_chatbot_answers \\
         --input-csv  src/evaluation/data/final_notebooklm_QA.jsonl \\
         --output-csv src/data/feedback/answers_A_opus.csv \\
@@ -36,7 +36,7 @@ Usage
         --models     anthropic/claude-opus-4.8 \\
         --temperatures 0.2 \\
         --personas   2 \\
-        --output-format polish
+        --output-format answers_and_links
 """
 
 from __future__ import annotations
@@ -80,9 +80,21 @@ OUTPUT_FIELDNAMES = [
     "sources",
 ]
 
-SIMPLE_OUTPUT_FIELDNAMES = ["pytanie", "odpowiedz_wygenerowana"]
+ANSWER_ONLY_FIELDNAMES = ["pytanie", "odpowiedz_wygenerowana"]
+LINKS_ONLY_FIELDNAMES = ["pytanie", "zwrocone_linki"]
+ANSWERS_AND_LINKS_FIELDNAMES = [
+    "pytanie",
+    "odpowiedz_wygenerowana",
+    "zwrocone_linki",
+]
 
-POLISH_OUTPUT_FIELDNAMES = ["pytanie", "odpowiedz_wygenerowana", "zwrocone_linki"]
+COMPACT_OUTPUT_FORMATS = {
+    "simple",
+    "polish",
+    "answer_only",
+    "links_only",
+    "answers_and_links",
+}
 
 
 # ── Input data ──────────────────────────────────────────────────────────────
@@ -250,7 +262,7 @@ def _read_existing_ids(output_csv: Path) -> set[str]:
 
 
 def _read_existing_simple_questions(output_csv: Path) -> set[str]:
-    """Return questions already present in simple/polish output."""
+    """Return questions already present in compact output."""
     if not output_csv.exists():
         return set()
     with open(output_csv, encoding="utf-8-sig", newline="") as f:
@@ -282,19 +294,11 @@ def run(
         if not 0 <= idx < len(PERSONAS):
             raise ValueError(f"persona index {idx} out of range 0–{len(PERSONAS) - 1}")
 
-    if output_format == "simple" and (
+    if output_format in COMPACT_OUTPUT_FORMATS and (
         len(models) != 1 or len(temperatures) != 1 or len(persona_indices) != 1
     ):
         raise ValueError(
-            "--output-format simple supports exactly one model, one temperature, "
-            "and one persona per output CSV. Run the script once per model."
-        )
-    
-    if output_format == "polish" and (
-        len(models) != 1 or len(temperatures) != 1 or len(persona_indices) != 1
-    ):
-        raise ValueError(
-            "--output-format polish supports exactly one model, one temperature, "
+            f"--output-format {output_format} supports exactly one model, one temperature, "
             "and one persona per output CSV. Run the script once per model."
         )
 
@@ -309,7 +313,7 @@ def run(
     existing_ids = _read_existing_ids(output_csv) if output_format == "full" else set()
     existing_questions = (
         _read_existing_simple_questions(output_csv)
-        if output_format in ("simple", "polish")
+        if output_format in COMPACT_OUTPUT_FORMATS
         else set()
     )
     file_existed = output_csv.exists()
@@ -320,7 +324,7 @@ def run(
         for m in models:
             for t in temperatures:
                 for pi in persona_indices:
-                    if output_format in ("simple", "polish"):
+                    if output_format in COMPACT_OUTPUT_FORMATS:
                         if q["query"] not in existing_questions:
                             todo_count += 1
                     elif make_answer_id(q["query"], m, t, pi) not in existing_ids:
@@ -339,13 +343,7 @@ def run(
     )
 
     with open(output_csv, "a", encoding="utf-8", newline="") as out_f:
-        fieldnames = (
-            POLISH_OUTPUT_FIELDNAMES 
-            if output_format == "polish"
-            else SIMPLE_OUTPUT_FIELDNAMES 
-            if output_format == "simple" 
-            else OUTPUT_FIELDNAMES
-        )
+        fieldnames = _fieldnames_for_output_format(output_format)
         writer = csv.DictWriter(out_f, fieldnames=fieldnames, extrasaction="ignore")
         if not file_existed:
             writer.writeheader()
@@ -356,7 +354,7 @@ def run(
                 for t in temperatures:
                     for pi in persona_indices:
                         aid = make_answer_id(q["query"], m, t, pi)
-                        if output_format in ("simple", "polish"):
+                        if output_format in COMPACT_OUTPUT_FORMATS:
                             if q["query"] in existing_questions:
                                 continue
                         elif aid in existing_ids:
@@ -389,26 +387,21 @@ def run(
                             )
                             continue
 
-                        if output_format == "simple":
-                            writer.writerow(
-                                {
-                                    "pytanie": q["query"],
-                                    "odpowiedz_wygenerowana": answer,
-                                }
-                            )
-                            existing_questions.add(q["query"])
-                        elif output_format == "polish":
-                            # Add ranking to sources
+                        if output_format in COMPACT_OUTPUT_FORMATS:
                             sources_with_rank = [
                                 {"rank": i + 1, "url": src}
                                 for i, src in enumerate(sources)
                             ]
+                            row = {"pytanie": q["query"]}
+                            if output_format in ("simple", "polish", "answer_only", "answers_and_links"):
+                                row["odpowiedz_wygenerowana"] = answer
+                            if output_format in ("polish", "links_only", "answers_and_links"):
+                                row["zwrocone_linki"] = json.dumps(
+                                    sources_with_rank,
+                                    ensure_ascii=False,
+                                )
                             writer.writerow(
-                                {
-                                    "pytanie": q["query"],
-                                    "odpowiedz_wygenerowana": answer,
-                                    "zwrocone_linki": json.dumps(sources_with_rank, ensure_ascii=False),
-                                }
+                                row
                             )
                             existing_questions.add(q["query"])
                         else:
@@ -444,6 +437,16 @@ def run(
                             time.sleep(sleep_between)
 
     logger.info("Done. Wrote %d new answers to %s.", done, output_csv)
+
+
+def _fieldnames_for_output_format(output_format: str) -> list[str]:
+    if output_format in ("simple", "answer_only"):
+        return ANSWER_ONLY_FIELDNAMES
+    if output_format == "links_only":
+        return LINKS_ONLY_FIELDNAMES
+    if output_format in ("polish", "answers_and_links"):
+        return ANSWERS_AND_LINKS_FIELDNAMES
+    return OUTPUT_FIELDNAMES
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -503,12 +506,19 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--output-format",
-        choices=["full", "simple", "polish"],
+        choices=[
+            "full",
+            "simple",
+            "polish",
+            "answer_only",
+            "links_only",
+            "answers_and_links",
+        ],
         default="full",
         help=(
-            "full = metadata-rich CSV; simple = two columns: "
-            "pytanie,odpowiedz_wygenerowana; polish = "
-            "pytanie,odpowiedz_wygenerowana,zwrocone_linki (default: full)."
+            "full = metadata-rich CSV; answer_only/simple = pytanie + answer; "
+            "links_only = pytanie + returned links; answers_and_links/polish = "
+            "pytanie + answer + returned links (default: full)."
         ),
     )
     args = parser.parse_args(argv)

@@ -31,6 +31,9 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import math
+import re
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
@@ -80,16 +83,94 @@ def _read_table(path: Path) -> pd.DataFrame:
     return df
 
 
-def _bleu_score(hypotheses: list[str], references: list[str]) -> dict[str, float]:
-    import sacrebleu  # type: ignore
+def _tokenize_words(text: str) -> list[str]:
+    return re.findall(r"\b\w+\b", text.lower())
 
-    result = sacrebleu.corpus_bleu(hypotheses, [references])
+
+def _ngram_counts(tokens: list[str], n: int) -> Counter:
+    return Counter(tuple(tokens[i : i + n]) for i in range(len(tokens) - n + 1))
+
+
+def _closest_reference_length(candidate_len: int, ref_lens: list[int]) -> int:
+    return min(ref_lens, key=lambda ref_len: (abs(candidate_len - ref_len), ref_len))
+
+
+def _bleu_from_pairs(
+    hypotheses: list[str],
+    references: list[str | list[str]],
+    *,
+    max_n: int = 4,
+) -> dict[str, float]:
+    clipped_totals = [0] * max_n
+    candidate_totals = [0] * max_n
+    candidate_length = 0
+    reference_length = 0
+
+    for hyp, refs in zip(hypotheses, references, strict=False):
+        ref_list = [refs] if isinstance(refs, str) else refs
+        hyp_tokens = _tokenize_words(hyp)
+        ref_tokens_list = [_tokenize_words(ref) for ref in ref_list]
+        ref_tokens_list = [tokens for tokens in ref_tokens_list if tokens]
+
+        candidate_length += len(hyp_tokens)
+        if ref_tokens_list:
+            reference_length += _closest_reference_length(
+                len(hyp_tokens),
+                [len(tokens) for tokens in ref_tokens_list],
+            )
+
+        for n in range(1, max_n + 1):
+            hyp_counts = _ngram_counts(hyp_tokens, n)
+            candidate_totals[n - 1] += sum(hyp_counts.values())
+            if not hyp_counts or not ref_tokens_list:
+                continue
+
+            max_ref_counts: Counter = Counter()
+            for ref_tokens in ref_tokens_list:
+                ref_counts = _ngram_counts(ref_tokens, n)
+                for ngram, count in ref_counts.items():
+                    max_ref_counts[ngram] = max(max_ref_counts[ngram], count)
+
+            clipped_totals[n - 1] += sum(
+                min(count, max_ref_counts[ngram])
+                for ngram, count in hyp_counts.items()
+            )
+
+    precisions = [
+        clipped / total if total else 0.0
+        for clipped, total in zip(clipped_totals, candidate_totals, strict=False)
+    ]
+
+    if candidate_length == 0:
+        bp = 0.0
+    elif candidate_length > reference_length:
+        bp = 1.0
+    else:
+        bp = math.exp(1 - reference_length / candidate_length)
+
+    bleu = (
+        bp * math.exp(sum(math.log(p) for p in precisions) / max_n)
+        if bp > 0 and all(p > 0 for p in precisions)
+        else 0.0
+    )
+
     return {
-        "bleu": result.score / 100,
-        "bleu_1": result.precisions[0] / 100,
-        "bleu_2": result.precisions[1] / 100,
-        "bleu_3": result.precisions[2] / 100,
-        "bleu_4": result.precisions[3] / 100,
+        "bleu": bleu,
+        "bleu_1": precisions[0],
+        "bleu_2": precisions[1],
+        "bleu_3": precisions[2],
+        "bleu_4": precisions[3],
+    }
+
+
+def _bleu_score(hypotheses: list[str], references: list[str]) -> dict[str, float]:
+    result = _bleu_from_pairs(hypotheses, references)
+    return {
+        "bleu": result["bleu"],
+        "bleu_1": result["bleu_1"],
+        "bleu_2": result["bleu_2"],
+        "bleu_3": result["bleu_3"],
+        "bleu_4": result["bleu_4"],
     }
 
 
@@ -389,6 +470,11 @@ def _rouge_scores(
 
 
 def _meteor_score(hypotheses: list[str], references: list[str]) -> dict[str, float]:
+    scores = _meteor_per_row_scores(hypotheses, references)
+    return {"meteor": sum(scores) / len(scores) if scores else 0.0}
+
+
+def _meteor_per_row_scores(hypotheses: list[str], references: list[str]) -> list[float]:
     import nltk  # type: ignore
 
     try:
@@ -402,12 +488,13 @@ def _meteor_score(hypotheses: list[str], references: list[str]) -> dict[str, flo
     from nltk.tokenize import word_tokenize  # type: ignore
     from nltk.translate.meteor_score import meteor_score  # type: ignore
 
-    scores = [
-        meteor_score([word_tokenize(ref)], word_tokenize(hyp))
-        for hyp, ref in zip(hypotheses, references, strict=False)
-        if hyp.strip() and ref.strip()
-    ]
-    return {"meteor": sum(scores) / len(scores) if scores else 0.0}
+    scores: list[float] = []
+    for hyp, ref in zip(hypotheses, references, strict=False):
+        if hyp.strip() and ref.strip():
+            scores.append(meteor_score([word_tokenize(ref)], word_tokenize(hyp)))
+        else:
+            scores.append(0.0)
+    return scores
 
 
 def _bertscore(
@@ -417,9 +504,27 @@ def _bertscore(
     model_type: str,
     num_layers: int | None,
 ) -> dict[str, float]:
+    results, _ = _bertscore_with_rows(
+        hypotheses,
+        references,
+        lang,
+        model_type,
+        num_layers,
+    )
+    return results
+
+
+def _bertscore_with_rows(
+    hypotheses: list[str],
+    references: list[str],
+    lang: str,
+    model_type: str,
+    num_layers: int | None,
+) -> tuple[dict[str, float], list[dict[str, float]]]:
     from bert_score import BERTScorer  # type: ignore
 
     results: dict[str, float] = {}
+    per_rows: list[dict[str, float]] = [{} for _ in hypotheses]
 
     variants = [
         ("base", False, False),
@@ -465,11 +570,74 @@ def _bertscore(
         results[f"bertscore_precision_{suffix}"] = P.mean().item()
         results[f"bertscore_recall_{suffix}"] = R.mean().item()
         results[f"bertscore_f1_{suffix}"] = F1.mean().item()
+        for idx, (precision, recall, f1) in enumerate(zip(P, R, F1, strict=False)):
+            per_rows[idx][f"bertscore_precision_{suffix}"] = precision.item()
+            per_rows[idx][f"bertscore_recall_{suffix}"] = recall.item()
+            per_rows[idx][f"bertscore_f1_{suffix}"] = f1.item()
 
     if not results:
         logger.warning("All BERTScore variants failed for model=%s", model_type)
 
-    return results
+    return results, per_rows
+
+
+def _assert_per_query_consistency(
+    summary: dict[str, float],
+    per_q_df: pd.DataFrame,
+    *,
+    tolerance: float = 1e-9,
+) -> None:
+    """
+    Check metrics whose summary definition is the mean of per-query values.
+
+    BLEU is intentionally excluded: the LaTeX definition is corpus-level BLEU,
+    so the summary BLEU and p_n values are computed from corpus-level clipped
+    counts and must not be replaced by the mean of sentence-level BLEU rows.
+    """
+    mean_based_prefixes = ("rouge_", "bertscore_")
+    mean_based_metrics = [
+        metric
+        for metric in summary
+        if metric == "meteor" or metric.startswith(mean_based_prefixes)
+    ]
+
+    missing = [metric for metric in mean_based_metrics if metric not in per_q_df.columns]
+    if missing:
+        raise ValueError(
+            "Per-query CSV is missing metrics that are present in summary: "
+            + ", ".join(sorted(missing))
+        )
+
+    mismatches: list[str] = []
+    for metric in mean_based_metrics:
+        per_query_mean = float(per_q_df[metric].fillna(0.0).mean())
+        if abs(per_query_mean - summary[metric]) > tolerance:
+            mismatches.append(
+                f"{metric}: summary={summary[metric]:.12f}, "
+                f"per_query_mean={per_query_mean:.12f}"
+            )
+
+    if mismatches:
+        raise ValueError(
+            "Summary/per-query mismatch for mean-based metrics: "
+            + "; ".join(mismatches)
+        )
+
+
+def _sync_mean_based_summary_from_per_query(
+    summary: dict[str, float],
+    per_q_df: pd.DataFrame,
+) -> None:
+    """
+    ROUGE, METEOR and BERTScore summaries are means over evaluated questions.
+
+    This includes questions with empty generated/reference text as zero-valued
+    rows. BLEU is not synchronized here because its LaTeX definition is
+    corpus-level modified n-gram precision with a corpus brevity penalty.
+    """
+    for metric in per_q_df.columns:
+        if metric == "meteor" or metric.startswith(("rouge_", "bertscore_")):
+            summary[metric] = float(per_q_df[metric].fillna(0.0).mean())
 
 
 # ---------------------------------------------------------------------------
@@ -486,6 +654,18 @@ def _rouge_per_row(hyp: str, ref: str) -> dict[str, float]:
         return {}
 
 
+def _bleu_per_row(hyp: str, ref: str) -> dict[str, float]:
+    if not hyp.strip() or not ref.strip():
+        return {
+            "bleu": 0.0,
+            "bleu_1": 0.0,
+            "bleu_2": 0.0,
+            "bleu_3": 0.0,
+            "bleu_4": 0.0,
+        }
+    return _bleu_from_pairs([hyp], [ref])
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -498,6 +678,7 @@ def evaluate(
     lang: str,
     bertscore_model: str,
     bertscore_num_layers: int | None,
+    require_bertscore: bool,
 ) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%dT%H%M%S%f")
@@ -541,6 +722,8 @@ def evaluate(
     references = merged[REFERENCE_JOIN_COL].fillna("").astype(str).tolist()
 
     results: dict[str, float] = {}
+    meteor_per_rows: list[float] = []
+    bertscore_per_rows: list[dict[str, float]] = [{} for _ in hypotheses]
 
     logger.info("Computing BLEU …")
     results.update(_bleu_score(hypotheses, references))
@@ -549,38 +732,56 @@ def evaluate(
     results.update(_rouge_scores(hypotheses, references))
 
     logger.info("Computing METEOR …")
-    results.update(_meteor_score(hypotheses, references))
+    meteor_per_rows = _meteor_per_row_scores(hypotheses, references)
+    results["meteor"] = (
+        sum(meteor_per_rows) / len(meteor_per_rows) if meteor_per_rows else 0.0
+    )
 
     try:
         logger.info("Computing BERTScore (model=%s) …", bertscore_model)
-        results.update(
-            _bertscore(
-                hypotheses,
-                references,
-                lang,
-                bertscore_model,
-                bertscore_num_layers,
-            )
+        bertscore_results, bertscore_per_rows = _bertscore_with_rows(
+            hypotheses,
+            references,
+            lang,
+            bertscore_model,
+            bertscore_num_layers,
         )
+        if require_bertscore and not bertscore_results:
+            raise RuntimeError(
+                f"BERTScore produced no metrics for model={bertscore_model}"
+            )
+        results.update(bertscore_results)
     except ModuleNotFoundError:
+        if require_bertscore:
+            raise
         logger.warning("BERTScore skipped (bert_score not installed)")
     except Exception as exc:
+        if require_bertscore:
+            raise RuntimeError(f"BERTScore failed: {exc}") from exc
         logger.warning("BERTScore skipped: %s", exc)
 
     # ------------------------------------------------------------------
     # Per-question CSV
     # ------------------------------------------------------------------
     per_q_rows = []
-    for _, row in merged.iterrows():
+    for idx, (_, row) in enumerate(merged.iterrows()):
         entry: dict = {
             QUESTION_COL: row[QUESTION_COL],
             GENERATED_COL: row[GENERATED_COL],
             REFERENCE_JOIN_COL: row[REFERENCE_JOIN_COL],
         }
-        entry.update(_rouge_per_row(str(row[GENERATED_COL]), str(row[REFERENCE_JOIN_COL])))
+        hyp = str(row[GENERATED_COL])
+        ref = str(row[REFERENCE_JOIN_COL])
+        entry.update(_bleu_per_row(hyp, ref))
+        entry.update(_rouge_per_row(hyp, ref))
+        entry["meteor"] = meteor_per_rows[idx] if idx < len(meteor_per_rows) else 0.0
+        if idx < len(bertscore_per_rows):
+            entry.update(bertscore_per_rows[idx])
         per_q_rows.append(entry)
 
     per_q_df = pd.DataFrame(per_q_rows)
+    _sync_mean_based_summary_from_per_query(results, per_q_df)
+    _assert_per_query_consistency(results, per_q_df)
     per_q_path = output_dir / f"text_metrics_per_query_{ts}.csv"
     per_q_df.to_csv(per_q_path, index=False, encoding="utf-8")
     logger.info("Per-query results → %s", per_q_path)
@@ -685,6 +886,14 @@ if __name__ == "__main__":
             "(default: 12 for bert-base-multilingual-cased)"
         ),
     )
+    parser.add_argument(
+        "--allow-bertscore-skip",
+        action="store_true",
+        help=(
+            "Do not fail the run if BERTScore cannot be computed. By default "
+            "BERTScore is required so missing semantic metrics are visible."
+        ),
+    )
     args = parser.parse_args()
 
     evaluate(
@@ -694,4 +903,5 @@ if __name__ == "__main__":
         lang=args.lang,
         bertscore_model=args.bertscore_model,
         bertscore_num_layers=args.bertscore_num_layers,
+        require_bertscore=not args.allow_bertscore_skip,
     )

@@ -339,9 +339,9 @@ def mrr_weighted(
 
 def load_gold(path: str) -> list[EvalRow]:
     """
-    Reads a CSV evaluation set.  Accepted column names (case-insensitive):
+    Reads a CSV or JSONL evaluation set. Accepted column names (case-insensitive):
       query   : query / pytanie / question
-      url     : relevant_urls / strona / url / link
+      url     : relevant_urls / strona / url / link / źródła / zrodla
 
     If a URL cell contains multiple URLs separated by '|', only the first
     one is used, since this evaluation assumes exactly one target per query.
@@ -350,23 +350,80 @@ def load_gold(path: str) -> list[EvalRow]:
     def normalize_row(raw: dict[str, str | None]) -> dict[str, str]:
         return {k.strip().lower(): (v or "").strip() for k, v in raw.items() if k}
 
+    def make_row(row: dict[str, str]) -> EvalRow | None:
+        query = row.get("query") or row.get("pytanie") or row.get("question", "")
+        raw_url = (
+            row.get("relevant_urls")
+            or row.get("strona")
+            or row.get("url")
+            or row.get("link")
+            or row.get("źródła")
+            or row.get("zrodla")
+            or ""
+        )
+        raw_url = raw_url.splitlines()[0] if raw_url else ""
+        target_url = normalize_url(raw_url.split("|")[0])
+        if not query or not target_url:
+            return None
+        return EvalRow(query=query, target_url=target_url)
+
+    def notebooklm_source_map(jsonl_path: Path) -> dict[str, str]:
+        if not jsonl_path.exists():
+            return {}
+        source_by_query: dict[str, str] = {}
+        with jsonl_path.open(encoding="utf-8") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                record = json.loads(line)
+                row = normalize_row({str(k): str(v) for k, v in record.items()})
+                query = row.get("pytanie") or row.get("query") or row.get("question", "")
+                raw_url = row.get("źródła") or row.get("zrodla") or ""
+                raw_url = raw_url.splitlines()[0] if raw_url else ""
+                target_url = normalize_url(raw_url.split("|")[0])
+                if query and target_url:
+                    source_by_query[query] = target_url
+        return source_by_query
+
     rows: list[EvalRow] = []
-    with open(path, encoding="utf-8", newline="") as f:
-        reader = csv.DictReader(f)
+    input_path = Path(path)
+    if input_path.suffix.lower() == ".jsonl":
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                record = json.loads(line)
+                row = normalize_row({str(k): str(v) for k, v in record.items()})
+                eval_row = make_row(row)
+                if eval_row:
+                    rows.append(eval_row)
+        return rows
+
+    unresolved_queries: list[str] = []
+    with open(path, encoding="utf-8-sig", newline="") as f:
+        header = f.readline()
+        f.seek(0)
+        delimiter = "|" if "|" in header else ","
+        reader = csv.DictReader(f, delimiter=delimiter)
         for r in reader:
             row = normalize_row(r)
-            query = row.get("query") or row.get("pytanie") or row.get("question", "")
-            raw_url = (
-                row.get("relevant_urls")
-                or row.get("strona")
-                or row.get("url")
-                or row.get("link")
-                or ""
-            )
-            target_url = normalize_url(raw_url.split("|")[0])
-            if not query or not target_url:
-                continue
-            rows.append(EvalRow(query=query, target_url=target_url))
+            eval_row = make_row(row)
+            if eval_row:
+                rows.append(eval_row)
+            else:
+                query = row.get("query") or row.get("pytanie") or row.get("question", "")
+                if query:
+                    unresolved_queries.append(query)
+
+    if unresolved_queries:
+        source_by_query = notebooklm_source_map(input_path.with_name("final_notebooklm_QA.jsonl"))
+        seen = {row.query for row in rows}
+        for query in unresolved_queries:
+            target_url = source_by_query.get(query, "")
+            if query not in seen and target_url:
+                rows.append(EvalRow(query=query, target_url=target_url))
+                seen.add(query)
+
     return rows
 
 

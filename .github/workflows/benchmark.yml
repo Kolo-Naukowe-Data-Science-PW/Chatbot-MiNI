@@ -4,7 +4,33 @@ on:
   workflow_dispatch:
     inputs:
       answers_csv:
-        description: 'Path to answers CSV from generate_chatbot_answers (optional; if provided, uses those sources instead of calling API)'
+        description: 'Answers CSV from generate_chatbot_answers, or live API'
+        required: true
+        default: 'live_api'
+        type: choice
+        options:
+          - 'live_api'
+          - 'src/evaluation/data/answers_anthropic_claude-opus-4.8_t0.2_p2.csv'
+          - 'src/evaluation/data/answers_google_gemini-3.5-flash_t0.2_p2.csv'
+          - 'src/evaluation/data/answers_openai_gpt-4o_t0.2_p2.csv'
+          - 'src/evaluation/data/answers_openai_gpt-oss-120b_free_t0.2_p2.csv'
+          - 'custom'
+      custom_answers_csv:
+        description: 'Custom answers CSV path, used only when answers_csv=custom'
+        required: false
+        default: ''
+      reference_set:
+        description: 'Reference question set'
+        required: true
+        default: '200_stat_test'
+        type: choice
+        options:
+          - '200_stat_test'
+          - '1428_full'
+          - '1324_reference'
+          - 'custom'
+      custom_reference_path:
+        description: 'Custom reference CSV/JSONL path, used only when reference_set=custom'
         required: false
         default: ''
       metric_mode:
@@ -38,17 +64,67 @@ jobs:
       - name: Create results directory
         run: mkdir -p src/evaluation/results
 
+      - name: Resolve inputs
+        id: vars
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ANSWERS_CSV="${{ inputs.answers_csv }}"
+          if [ "$ANSWERS_CSV" = "custom" ]; then
+            ANSWERS_CSV="${{ inputs.custom_answers_csv }}"
+          elif [ "$ANSWERS_CSV" = "live_api" ]; then
+            ANSWERS_CSV=""
+          fi
+          if [ -n "$ANSWERS_CSV" ] && [ ! -f "$ANSWERS_CSV" ]; then
+            echo "Answers CSV not found: $ANSWERS_CSV" >&2
+            exit 1
+          fi
+
+          case "${{ inputs.reference_set }}" in
+            1428_full)
+              REFERENCE_PATH="src/evaluation/data/final_notebooklm_QA.jsonl"
+              ;;
+            1324_reference)
+              REFERENCE_PATH="src/evaluation/data/final_notebooklm_QA_reference.csv"
+              ;;
+            200_stat_test)
+              REFERENCE_PATH="src/evaluation/data/final_notebooklm_QA_stat_test.csv"
+              ;;
+            custom)
+              REFERENCE_PATH="${{ inputs.custom_reference_path }}"
+              ;;
+            *)
+              echo "Unsupported reference_set: ${{ inputs.reference_set }}" >&2
+              exit 1
+              ;;
+          esac
+          if [ -z "$REFERENCE_PATH" ]; then
+            echo "custom_reference_path must be provided when reference_set=custom" >&2
+            exit 1
+          fi
+          if [ ! -f "$REFERENCE_PATH" ]; then
+            echo "Reference file not found: $REFERENCE_PATH" >&2
+            exit 1
+          fi
+
+          {
+            echo "answers_csv=$ANSWERS_CSV"
+            echo "reference_path=$REFERENCE_PATH"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Run benchmark
         run: |
           BENCHMARK_CMD="python -m evaluation.benchmark \
+            --input-csv \"${{ steps.vars.outputs.reference_path }}\" \
             --output-dir /app/src/evaluation/results \
             --ks \"${{ inputs.ks }}\" \
             --metric-mode \"${{ inputs.metric_mode }}\" \
             --timeout \"${{ inputs.timeout }}\" \
             --no-plots"
           
-          if [ -n "${{ inputs.answers_csv }}" ]; then
-            BENCHMARK_CMD="$BENCHMARK_CMD --answers-csv \"${{ inputs.answers_csv }}\""
+          if [ -n "${{ steps.vars.outputs.answers_csv }}" ]; then
+            BENCHMARK_CMD="$BENCHMARK_CMD --answers-csv \"${{ steps.vars.outputs.answers_csv }}\""
           else
             BENCHMARK_CMD="$BENCHMARK_CMD --api-url http://api:8000/chat"
           fi
