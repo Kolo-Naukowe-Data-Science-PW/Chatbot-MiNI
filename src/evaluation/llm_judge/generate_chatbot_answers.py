@@ -36,7 +36,7 @@ Usage
         --models     anthropic/claude-opus-4.8 \\
         --temperatures 0.2 \\
         --personas   2 \\
-        --output-format simple
+        --output-format polish
 """
 
 from __future__ import annotations
@@ -94,7 +94,10 @@ def _read_csv_questions(
     """Read questions from CSV; tolerate common column names (PL / EN)."""
     rows: list[dict[str, str]] = []
     with open(input_csv, encoding="utf-8-sig", newline="") as f:
-        reader = csv.DictReader(f)
+        header = f.readline()
+        f.seek(0)
+        delimiter = "|" if "|" in header else ","
+        reader = csv.DictReader(f, delimiter=delimiter)
         for r in reader:
             normalized = {
                 (k or "").strip().lower(): (v or "").strip() for k, v in r.items()
@@ -247,7 +250,7 @@ def _read_existing_ids(output_csv: Path) -> set[str]:
 
 
 def _read_existing_simple_questions(output_csv: Path) -> set[str]:
-    """Return questions already present in simple two-column output."""
+    """Return questions already present in simple/polish output."""
     if not output_csv.exists():
         return set()
     with open(output_csv, encoding="utf-8-sig", newline="") as f:
@@ -317,7 +320,7 @@ def run(
         for m in models:
             for t in temperatures:
                 for pi in persona_indices:
-                    if output_format == "simple":
+                    if output_format in ("simple", "polish"):
                         if q["query"] not in existing_questions:
                             todo_count += 1
                     elif make_answer_id(q["query"], m, t, pi) not in existing_ids:
@@ -500,11 +503,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--output-format",
-        choices=["full", "simple"],
+        choices=["full", "simple", "polish"],
         default="full",
         help=(
             "full = metadata-rich CSV; simple = two columns: "
-            "pytanie,odpowiedz_wygenerowana (default: full)."
+            "pytanie,odpowiedz_wygenerowana; polish = "
+            "pytanie,odpowiedz_wygenerowana,zwrocone_linki (default: full)."
         ),
     )
     args = parser.parse_args(argv)

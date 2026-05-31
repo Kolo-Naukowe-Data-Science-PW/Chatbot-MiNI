@@ -50,10 +50,20 @@ on:
         description: "Output CSV filename; leave empty for automatic name"
         required: false
         default: ""
-      input_file:
-        description: "Path to input questions file (JSONL or CSV)"
+      question_set:
+        description: "Question set for generation"
+        required: true
+        default: "200_stat_test"
+        type: choice
+        options:
+          - "200_stat_test"
+          - "1428_full"
+          - "1324_reference"
+          - "custom"
+      custom_input_file:
+        description: "Custom input questions file, used only when question_set=custom"
         required: false
-        default: "src/evaluation/data/final_notebooklm_QA.jsonl"
+        default: ""
 
 jobs:
   generate:
@@ -86,7 +96,29 @@ jobs:
             OUTPUT_NAME="answers_${SAFE_MODEL}_t${{ inputs.temperature }}_p${{ inputs.persona }}.csv"
           fi
 
-          INPUT_FILE="${{ inputs.input_file }}"
+          case "${{ inputs.question_set }}" in
+            1428_full)
+              INPUT_FILE="src/evaluation/data/final_notebooklm_QA.jsonl"
+              ;;
+            1324_reference)
+              INPUT_FILE="src/evaluation/data/final_notebooklm_QA_reference.csv"
+              ;;
+            200_stat_test)
+              INPUT_FILE="src/evaluation/data/final_notebooklm_QA_stat_test.csv"
+              ;;
+            custom)
+              INPUT_FILE="${{ inputs.custom_input_file }}"
+              ;;
+            *)
+              echo "Unsupported question_set: ${{ inputs.question_set }}" >&2
+              exit 1
+              ;;
+          esac
+
+          if [ -z "$INPUT_FILE" ]; then
+            echo "custom_input_file must be provided when question_set=custom" >&2
+            exit 1
+          fi
           if [ ! -f "$INPUT_FILE" ]; then
             echo "Input file not found: $INPUT_FILE" >&2
             exit 1
@@ -154,7 +186,7 @@ jobs:
             --personas "${{ inputs.persona }}" \
             --timeout "${{ inputs.timeout }}" \
             --sleep "${{ inputs.sleep }}" \
-            --output-format simple \
+            --output-format polish \
             "${LIMIT_ARG[@]}"
 
       - name: Copy CSV from API container

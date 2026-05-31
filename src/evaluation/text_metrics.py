@@ -451,10 +451,23 @@ def _bertscore(
                 continue
             raise
 
-        P, R, F1 = scorer.score(hypotheses, references, verbose=False)
+        try:
+            P, R, F1 = scorer.score(hypotheses, references, verbose=False)
+        except Exception as exc:
+            logger.warning(
+                "BERTScore variant '%s' skipped for model=%s: %s",
+                suffix,
+                model_type,
+                exc,
+            )
+            continue
+
         results[f"bertscore_precision_{suffix}"] = P.mean().item()
         results[f"bertscore_recall_{suffix}"] = R.mean().item()
         results[f"bertscore_f1_{suffix}"] = F1.mean().item()
+
+    if not results:
+        logger.warning("All BERTScore variants failed for model=%s", model_type)
 
     return results
 
@@ -551,6 +564,8 @@ def evaluate(
         )
     except ModuleNotFoundError:
         logger.warning("BERTScore skipped (bert_score not installed)")
+    except Exception as exc:
+        logger.warning("BERTScore skipped: %s", exc)
 
     # ------------------------------------------------------------------
     # Per-question CSV
@@ -658,7 +673,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--bertscore-model",
-        default="allegro/herbert-base-cased",
+        default="bert-base-multilingual-cased",
         help="HuggingFace model for BERTScore",
     )
     parser.add_argument(
@@ -667,7 +682,7 @@ if __name__ == "__main__":
         default=12,
         help=(
             "Transformer layer count for BERTScore custom models "
-            "(default: 12 for allegro/herbert-base-cased)"
+            "(default: 12 for bert-base-multilingual-cased)"
         ),
     )
     args = parser.parse_args()
