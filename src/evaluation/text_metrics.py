@@ -20,6 +20,10 @@ Expected columns in --generated-csv:
 Expected columns in --reference-csv:
     pytanie     — question text
     odpowiedz   — reference / gold answer
+
+Reference files can also be JSONL with NotebookLM-style keys:
+    Pytanie
+    Odpowiedź
 """
 
 from __future__ import annotations
@@ -36,9 +40,44 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
 logger = logging.getLogger(__name__)
 
 
+QUESTION_COL = "pytanie"
+GENERATED_COL = "odpowiedz_wygenerowana"
+REFERENCE_COL = "odpowiedz"
+REFERENCE_JOIN_COL = "odpowiedz_ref"
+
+
 # ---------------------------------------------------------------------------
 # Lazy imports — these heavy packages are only needed at runtime
 # ---------------------------------------------------------------------------
+
+
+def _normalise_column_name(column: str) -> str:
+    return (
+        column.strip()
+        .lower()
+        .replace("ź", "z")
+        .replace("ż", "z")
+        .replace("ó", "o")
+        .replace("ą", "a")
+        .replace("ć", "c")
+        .replace("ę", "e")
+        .replace("ł", "l")
+        .replace("ń", "n")
+        .replace("ś", "s")
+    )
+
+
+def _read_table(path: Path) -> pd.DataFrame:
+    if path.suffix.lower() == ".jsonl":
+        df = pd.read_json(path, lines=True)
+    else:
+        with path.open("r", encoding="utf-8-sig") as f:
+            header = f.readline()
+        sep = "|" if "|" in header else ","
+        df = pd.read_csv(path, sep=sep, engine="python")
+
+    df.columns = [_normalise_column_name(str(col)) for col in df.columns]
+    return df
 
 
 def _bleu_score(hypotheses: list[str], references: list[str]) -> dict[str, float]:
@@ -430,28 +469,26 @@ def evaluate(
     bertscore_model: str,
 ) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
-    ts = datetime.now().strftime("%Y%m%dT%H%M%S")
+    ts = datetime.now().strftime("%Y%m%dT%H%M%S%f")
 
     logger.info("Loading generated answers from %s", generated_csv)
-    gen_df = pd.read_csv(generated_csv, sep='|', engine="python")
-    gen_df.columns = gen_df.columns.str.strip()
+    gen_df = _read_table(generated_csv)
 
     logger.info("Loading reference answers from %s", reference_csv)
-    ref_df = pd.read_csv(reference_csv, sep='|', engine="python")
-    ref_df.columns = ref_df.columns.str.strip()
+    ref_df = _read_table(reference_csv)
 
-    # Normalise column names to lowercase
-    gen_df = gen_df.rename(columns=str.lower)
-    ref_df = ref_df.rename(columns=str.lower)
-
-    if "pytanie" not in gen_df.columns or "odpowiedz_wygenerowana" not in gen_df.columns:
+    if QUESTION_COL not in gen_df.columns or GENERATED_COL not in gen_df.columns:
         raise ValueError("--generated-csv must have 'pytanie' and 'odpowiedz_wygenerowana' columns")
-    if "pytanie" not in ref_df.columns or "odpowiedz" not in ref_df.columns:
+    if QUESTION_COL not in ref_df.columns or REFERENCE_COL not in ref_df.columns:
         raise ValueError("--reference-csv must have 'pytanie' and 'odpowiedz' columns")
 
-    merged = gen_df[["pytanie", "odpowiedz_wygenerowana"]].merge(
-        ref_df[["pytanie", "odpowiedz"]].rename(columns={"odpowiedz": "odpowiedz_ref"}),
-        on="pytanie",
+    gen_eval_df = gen_df[[QUESTION_COL, GENERATED_COL]].dropna(subset=[QUESTION_COL])
+    ref_eval_df = ref_df[[QUESTION_COL, REFERENCE_COL]].dropna(subset=[QUESTION_COL])
+    ref_eval_df = ref_eval_df.drop_duplicates(subset=[QUESTION_COL], keep="first")
+
+    merged = gen_eval_df.merge(
+        ref_eval_df.rename(columns={REFERENCE_COL: REFERENCE_JOIN_COL}),
+        on=QUESTION_COL,
         how="inner",
     )
 
@@ -460,10 +497,17 @@ def evaluate(
             "No matching questions found between generated and reference CSVs"
         )
 
-    logger.info("Matched %d questions", len(merged))
+    skipped = len(gen_eval_df) - len(merged)
+    logger.info(
+        "Matched %d/%d generated questions against %d reference questions; skipped %d without reference",
+        len(merged),
+        len(gen_eval_df),
+        len(ref_eval_df),
+        skipped,
+    )
 
-    hypotheses = merged["odpowiedz_wygenerowana"].fillna("").astype(str).tolist()
-    references = merged["odpowiedz_ref"].fillna("").astype(str).tolist()
+    hypotheses = merged[GENERATED_COL].fillna("").astype(str).tolist()
+    references = merged[REFERENCE_JOIN_COL].fillna("").astype(str).tolist()
 
     results: dict[str, float] = {}
 
@@ -488,11 +532,11 @@ def evaluate(
     per_q_rows = []
     for _, row in merged.iterrows():
         entry: dict = {
-            "pytanie": row["pytanie"],
-            "odpowiedz_wygenerowana": row["odpowiedz_wygenerowana"],
-            "odpowiedz_ref": row["odpowiedz_ref"],
+            QUESTION_COL: row[QUESTION_COL],
+            GENERATED_COL: row[GENERATED_COL],
+            REFERENCE_JOIN_COL: row[REFERENCE_JOIN_COL],
         }
-        entry.update(_rouge_per_row(str(row["odpowiedz_wygenerowana"]), str(row["odpowiedz_ref"])))
+        entry.update(_rouge_per_row(str(row[GENERATED_COL]), str(row[REFERENCE_JOIN_COL])))
         per_q_rows.append(entry)
 
     per_q_df = pd.DataFrame(per_q_rows)
@@ -506,7 +550,16 @@ def evaluate(
     summary_path = output_dir / f"text_metrics_summary_{ts}.json"
     with summary_path.open("w", encoding="utf-8") as f:
         json.dump(
-            {"n_questions": len(merged), **results}, f, ensure_ascii=False, indent=2
+            {
+                "n_questions": len(merged),
+                "n_generated_questions": len(gen_eval_df),
+                "n_reference_questions": len(ref_eval_df),
+                "n_skipped_without_reference": skipped,
+                **results,
+            },
+            f,
+            ensure_ascii=False,
+            indent=2,
         )
     logger.info("Summary → %s", summary_path)
 
@@ -517,6 +570,9 @@ def evaluate(
         "# Text Metrics Evaluation",
         "",
         f"**Questions evaluated:** {len(merged)}  ",
+        f"**Generated questions:** {len(gen_eval_df)}  ",
+        f"**Reference questions:** {len(ref_eval_df)}  ",
+        f"**Skipped without reference:** {skipped}  ",
         f"**Generated answers:** `{generated_csv}`  ",
         f"**Reference:** `{reference_csv}`  ",
         f"**Timestamp:** {ts}",

@@ -11,6 +11,7 @@ on:
         options:
           - 'src/evaluation/data/answers_google_gemini-3.5-flash_t0.2_p2.csv'
           - 'src/evaluation/data/answers_openai_gpt-4o_t0.2_p2.csv'
+          - 'src/evaluation/data/answers_openai_gpt-oss-120b_free_t0.2_p2.csv'
           - 'src/evaluation/data/answers_anthropic_claude-opus-4.8_t0.2_p2.csv'
           - 'src/evaluation/data/answers_deepseek-v4-flash_t0.2_p2.csv'
           - 'custom'
@@ -19,9 +20,13 @@ on:
         required: false
         default: ''
       reference_csv:
-        description: 'Path to reference answers (default: final_notebooklm_QA_reference.csv)'
+        description: 'Path to reference answers'
         required: false
         default: 'src/evaluation/data/final_notebooklm_QA_reference.csv'
+        type: choice
+        options:
+          - 'src/evaluation/data/final_notebooklm_QA_reference.csv'
+          - 'src/evaluation/data/final_notebooklm_QA.jsonl'
 
 jobs:
   text-metrics:
