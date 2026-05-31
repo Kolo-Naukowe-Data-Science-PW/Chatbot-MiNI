@@ -514,6 +514,31 @@ def _bertscore(
     return results
 
 
+def _ensure_bertscore_tokenizer_compat(scorer: object) -> None:
+    tokenizer = getattr(scorer, "_tokenizer", None) or getattr(scorer, "tokenizer", None)
+    if tokenizer is None or hasattr(tokenizer, "build_inputs_with_special_tokens"):
+        return
+
+    cls_token_id = getattr(tokenizer, "cls_token_id", None)
+    sep_token_id = getattr(tokenizer, "sep_token_id", None)
+    if cls_token_id is None or sep_token_id is None:
+        convert = getattr(tokenizer, "convert_tokens_to_ids", None)
+        if convert is None:
+            return
+        cls_token_id = convert(getattr(tokenizer, "cls_token", "[CLS]"))
+        sep_token_id = convert(getattr(tokenizer, "sep_token", "[SEP]"))
+
+    def build_inputs_with_special_tokens(
+        token_ids_0: list[int],
+        token_ids_1: list[int] | None = None,
+    ) -> list[int]:
+        if token_ids_1 is None:
+            return [cls_token_id, *token_ids_0, sep_token_id]
+        return [cls_token_id, *token_ids_0, sep_token_id, *token_ids_1, sep_token_id]
+
+    tokenizer.build_inputs_with_special_tokens = build_inputs_with_special_tokens
+
+
 def _bertscore_with_rows(
     hypotheses: list[str],
     references: list[str],
@@ -557,6 +582,7 @@ def _bertscore_with_rows(
             raise
 
         try:
+            _ensure_bertscore_tokenizer_compat(scorer)
             if idf:
                 scorer.compute_idf(references)
             P, R, F1 = scorer.score(hypotheses, references, verbose=False)
