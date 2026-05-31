@@ -557,6 +557,8 @@ def _bertscore_with_rows(
             raise
 
         try:
+            if idf:
+                scorer.compute_idf(references)
             P, R, F1 = scorer.score(hypotheses, references, verbose=False)
         except Exception as exc:
             logger.warning(
