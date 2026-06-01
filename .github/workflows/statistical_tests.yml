@@ -23,25 +23,15 @@ on:
         required: true
         default: "src/evaluation/data/stat_test/text_metrics_per_query_openai_gpt-oss-120b_free_t0.2_p2_1324.csv"
         type: string
-      metric:
-        description: "Metric column to compare"
+      test:
+        description: "Statistical test(s) to perform"
         required: true
-        default: "bertscore_f1_base"
+        default: "all"
         type: choice
         options:
-          - "bertscore_f1_base"
-          - "meteor"
-          - "rouge_l_f"
-          - "rouge_1_f"
-          - "rouge_2_f"
-          - "bleu"
-      test_type:
-        description: "Statistical test to perform"
-        required: true
-        default: "wilcoxon"
-        type: choice
-        options:
+          - "all"
           - "wilcoxon"
+          - "permutation"
           - "gamma"
           - "kappa"
       alpha:
@@ -49,10 +39,24 @@ on:
         required: true
         default: "0.05"
         type: string
+      alternative:
+        description: "Alternative hypothesis direction"
+        required: true
+        default: "two-sided"
+        type: choice
+        options:
+          - "two-sided"
+          - "greater"
+          - "less"
+      n_permutations:
+        description: "Number of permutations (permutation test only)"
+        required: false
+        default: "10000"
+        type: string
 
 jobs:
   statistical_comparison:
-    name: Compare Model A vs Model B
+    name: Compare Model A vs Model B — all metrics
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -66,19 +70,19 @@ jobs:
           set -euo pipefail
 
           if [ ! -f "${{ inputs.model_a_csv }}" ]; then
-            echo "Model A CSV not found: ${{ inputs.model_a_csv }}" >&2
+            echo "ERROR: Model A CSV not found: ${{ inputs.model_a_csv }}" >&2
             exit 1
           fi
 
           if [ ! -f "${{ inputs.model_b_csv }}" ]; then
-            echo "Model B CSV not found: ${{ inputs.model_b_csv }}" >&2
+            echo "ERROR: Model B CSV not found: ${{ inputs.model_b_csv }}" >&2
             exit 1
           fi
 
           echo "Model A CSV: ${{ inputs.model_a_csv }}"
           echo "Model B CSV: ${{ inputs.model_b_csv }}"
 
-      - name: Run statistical comparison
+      - name: Run statistical comparison (all metrics)
         shell: bash
         run: |
           set -euo pipefail
@@ -88,57 +92,78 @@ jobs:
             -v "$PWD:/app" \
             -w /app \
             python:3.11-slim \
-            bash -c 'pip install --no-cache-dir -q numpy scipy && \
-                     export PYTHONPATH=/app/src && \
-                     python -m evaluation.statistical_comparison \
-                       --model_a_csv "/app/${{ inputs.model_a_csv }}" \
-                       --model_b_csv "/app/${{ inputs.model_b_csv }}" \
-                       --metric "${{ inputs.metric }}" \
-                       --test-type "${{ inputs.test_type }}" \
-                       --alpha "${{ inputs.alpha }}" \
-                       --output_dir /app/src/evaluation/results/stats' \
-            2>&1 | tee stats_output.log
+            bash -c '
+              pip install --no-cache-dir -q numpy scipy && \
+              python /app/src/evaluation/statistical_comparison.py \
+                --model_a_csv "/app/${{ inputs.model_a_csv }}" \
+                --model_b_csv "/app/${{ inputs.model_b_csv }}" \
+                --metric \
+                  bleu bleu_1 bleu_2 bleu_3 bleu_4 \
+                  rouge_1_r rouge_1_p rouge_1_f \
+                  rouge_2_r rouge_2_p rouge_2_f \
+                  rouge_l_r rouge_l_p rouge_l_f \
+                  rouge_w_r rouge_w_p rouge_w_f \
+                  rouge_s_r rouge_s_p rouge_s_f \
+                  meteor \
+                  bertscore_precision_base bertscore_recall_base bertscore_f1_base \
+                --test "${{ inputs.test }}" \
+                --alpha "${{ inputs.alpha }}" \
+                --alternative "${{ inputs.alternative }}" \
+                --n_permutations "${{ inputs.n_permutations }}" \
+                --output_dir /app/src/evaluation/results/stats
+            ' 2>&1 | tee src/evaluation/results/stats/stats_output.log
 
       - name: Generate comparison report
+        if: always()
         shell: bash
         run: |
           GENERATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+          # Find the JSON results file produced by the script
+          JSON_FILE="$(ls src/evaluation/results/stats/stats_*.json 2>/dev/null | tail -1 || echo 'not found')"
+
           cat > src/evaluation/results/stats/COMPARISON_REPORT.md << EOF
           # Statistical Comparison Report
 
-          ## Model A
-          - Name: ${{ inputs.model_a_name }}
-          - CSV: ${{ inputs.model_a_csv }}
-
-          ## Model B
-          - Name: ${{ inputs.model_b_name }}
-          - CSV: ${{ inputs.model_b_csv }}
+          ## Models
+          | | Name | CSV |
+          |---|---|---|
+          | **A** | ${{ inputs.model_a_name }} | \`${{ inputs.model_a_csv }}\` |
+          | **B** | ${{ inputs.model_b_name }} | \`${{ inputs.model_b_csv }}\` |
 
           ## Configuration
-          - Metric: ${{ inputs.metric }}
-          - Test type: ${{ inputs.test_type }}
-          - Significance level: ${{ inputs.alpha }}
+          | Parameter | Value |
+          |---|---|
+          | Metrics | all (24 columns) |
+          | Test(s) | ${{ inputs.test }} |
+          | Significance level α | ${{ inputs.alpha }} |
+          | Alternative hypothesis | ${{ inputs.alternative }} |
+          | Permutations | ${{ inputs.n_permutations }} |
 
-          See stats_output.log and JSON files in this artifact for detailed results.
+          ## Artifacts in this download
+          | File | Description |
+          |---|---|
+          | \`stats_output.log\` | Full console output |
+          | \`stats_*.json\` | Machine-readable results (all metrics) |
+          | \`COMPARISON_REPORT.md\` | This file |
 
           Generated: ${GENERATED_AT}
-          Workflow run: [${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          Workflow run: [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
           EOF
 
-      - name: Upload results as artifact
+      - name: Print summary to job log
+        if: always()
+        shell: bash
+        run: |
+          if [ -f src/evaluation/results/stats/stats_output.log ]; then
+            echo "=== Statistical Tests Output (last 150 lines) ==="
+            tail -150 src/evaluation/results/stats/stats_output.log
+          fi
+
+      - name: Upload results artifact
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: statistical-tests-results-${{ github.run_number }}
-          path: |
-            src/evaluation/results/stats/
-            stats_output.log
+          name: stats-${{ inputs.model_a_name }}-vs-${{ inputs.model_b_name }}-${{ github.run_number }}
+          path: src/evaluation/results/stats/
           retention-days: 30
-
-      - name: Print statistical tests results
-        if: always()
-        run: |
-          if [ -f stats_output.log ]; then
-            echo "=== Statistical Tests Output ==="
-            tail -100 stats_output.log
-          fi
