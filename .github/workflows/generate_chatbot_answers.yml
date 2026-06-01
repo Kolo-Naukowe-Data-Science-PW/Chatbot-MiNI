@@ -1,5 +1,8 @@
 name: Generate Chatbot Answers
 
+permissions:
+  contents: write
+
 on:
   workflow_dispatch:
     inputs:
@@ -73,6 +76,10 @@ on:
           - "answers_and_links"
           - "answer_only"
           - "links_only"
+      stat_test_label:
+        description: "Suffix for stat_test per-query filename"
+        required: true
+        default: "1324"
 
 jobs:
   generate:
@@ -138,6 +145,7 @@ jobs:
             echo "safe_model=$SAFE_MODEL"
             echo "output_name=$OUTPUT_NAME"
             echo "input_file=$INPUT_FILE"
+            echo "stat_test_name=text_metrics_per_query_${SAFE_MODEL}_t${{ inputs.temperature }}_p${{ inputs.persona }}_${{ inputs.stat_test_label }}.csv"
           } >> "$GITHUB_OUTPUT"
 
       - name: Ensure API container is running
@@ -175,6 +183,10 @@ jobs:
             "${{ steps.vars.outputs.input_file }}" \
             api:/app/src/evaluation/data/$(basename "${{ steps.vars.outputs.input_file }}")
 
+          docker compose cp \
+            src/evaluation/text_metrics.py \
+            api:/app/src/evaluation/text_metrics.py
+
       - name: Generate answers
         shell: bash
         run: |
@@ -207,9 +219,54 @@ jobs:
           ls -la feedback-output
           wc -l "feedback-output/${{ steps.vars.outputs.output_name }}"
 
+      - name: Compute per-query text metrics for statistical tests
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          docker compose exec -T api mkdir -p \
+            /app/src/evaluation/results \
+            /app/src/evaluation/data/stat_test
+
+          docker compose exec -T api micromamba run -n app python \
+            /app/src/evaluation/text_metrics.py \
+            --generated-csv "/app/src/data/feedback/${{ steps.vars.outputs.output_name }}" \
+            --reference-csv "/app/src/evaluation/data/$(basename "${{ steps.vars.outputs.input_file }}")" \
+            --output-dir /app/src/evaluation/results
+
+          LATEST_PER_QUERY="$(docker compose exec -T api sh -c \
+            'ls -t /app/src/evaluation/results/text_metrics_per_query_*.csv | head -1')"
+          docker compose exec -T api cp \
+            "$LATEST_PER_QUERY" \
+            "/app/src/evaluation/data/stat_test/${{ steps.vars.outputs.stat_test_name }}"
+
+          mkdir -p src/evaluation/data/stat_test
+          docker compose cp \
+            "api:/app/src/evaluation/data/stat_test/${{ steps.vars.outputs.stat_test_name }}" \
+            "src/evaluation/data/stat_test/${{ steps.vars.outputs.stat_test_name }}"
+          ls -la src/evaluation/data/stat_test
+
+      - name: Commit stat_test per-query file
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -z "$(git status --porcelain -- "src/evaluation/data/stat_test/${{ steps.vars.outputs.stat_test_name }}")" ]; then
+            echo "No stat_test per-query changes to commit."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "src/evaluation/data/stat_test/${{ steps.vars.outputs.stat_test_name }}"
+          git commit -m "Add stat test metrics for ${{ steps.vars.outputs.safe_model }}"
+          git push
+
       - name: Upload CSV
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: chatbot-answers-${{ steps.vars.outputs.safe_model }}-${{ github.run_id }}
-          path: feedback-output/*.csv
+          path: |
+            feedback-output/*.csv
+            src/evaluation/data/stat_test/${{ steps.vars.outputs.stat_test_name }}
