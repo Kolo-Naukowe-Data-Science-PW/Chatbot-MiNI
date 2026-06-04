@@ -309,10 +309,11 @@ def _prepare_compact_output_for_resume(
     if not output_csv.exists():
         return set()
 
-    with open(output_csv, encoding="utf-8-sig", newline="") as f:
-        reader = csv.DictReader(f)
-        rows = list(reader)
-        existing_fieldnames = reader.fieldnames or []
+    existing_fieldnames, rows = _read_compact_rows_for_resume(
+        output_csv,
+        output_format,
+        fieldnames,
+    )
 
     complete_rows: list[dict[str, str]] = []
     complete_questions: set[str] = set()
@@ -343,6 +344,42 @@ def _prepare_compact_output_for_resume(
         )
 
     return complete_questions
+
+
+def _read_compact_rows_for_resume(
+    output_csv: Path,
+    output_format: str,
+    fieldnames: list[str],
+) -> tuple[list[str], list[dict[str, str]]]:
+    with open(output_csv, encoding="utf-8-sig", newline="") as f:
+        raw_rows = list(csv.reader(f))
+
+    if not raw_rows:
+        return fieldnames, []
+
+    header = raw_rows[0]
+    data_rows = raw_rows[1:]
+    max_width = max(
+        [len(header), *(len(row) for row in data_rows)],
+        default=len(header),
+    )
+
+    if (
+        output_format in ("polish", "answers_and_links")
+        and header == ANSWER_ONLY_FIELDNAMES
+        and max_width == len(ANSWERS_AND_LINKS_FIELDNAMES)
+    ):
+        header = ANSWERS_AND_LINKS_FIELDNAMES.copy()
+
+    while len(header) < max_width:
+        header.append(f"extra_{len(header) + 1}")
+
+    rows = []
+    for row in data_rows:
+        padded = [*row, *([""] * (len(header) - len(row)))]
+        rows.append(dict(zip(header, padded, strict=False)))
+
+    return header, rows
 
 
 # ── Main runner ─────────────────────────────────────────────────────────────
