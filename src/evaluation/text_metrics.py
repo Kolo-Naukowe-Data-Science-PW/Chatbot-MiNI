@@ -29,6 +29,7 @@ Reference files can also be JSONL with NotebookLM-style keys:
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import logging
 import math
@@ -77,10 +78,48 @@ def _read_table(path: Path) -> pd.DataFrame:
         with path.open("r", encoding="utf-8-sig") as f:
             header = f.readline()
         sep = "|" if "|" in header else ","
-        df = pd.read_csv(path, sep=sep, engine="python")
+        try:
+            df = pd.read_csv(path, sep=sep, engine="python")
+        except pd.errors.ParserError:
+            df = _read_csv_with_wide_rows(path, sep)
 
     df.columns = [_normalise_column_name(str(col)) for col in df.columns]
     return df
+
+
+def _read_csv_with_wide_rows(path: Path, sep: str) -> pd.DataFrame:
+    with path.open("r", encoding="utf-8-sig", newline="") as f:
+        rows = list(csv.reader(f, delimiter=sep))
+
+    if not rows:
+        return pd.DataFrame()
+
+    header = rows[0]
+    data_rows = rows[1:]
+    max_width = max(
+        [len(header), *(len(row) for row in data_rows)],
+        default=len(header),
+    )
+
+    if len(header) == 2 and max_width == 3:
+        normalized_header = [_normalise_column_name(str(col)) for col in header]
+        if normalized_header == [QUESTION_COL, GENERATED_COL]:
+            header = [*header, "zwrocone_linki"]
+
+    while len(header) < max_width:
+        header.append(f"extra_{len(header) + 1}")
+
+    padded_rows = [
+        [*row, *([""] * (len(header) - len(row)))]
+        if len(row) < len(header)
+        else row[: len(header)]
+        for row in data_rows
+    ]
+    logger.warning(
+        "CSV %s has rows wider than its header; read with lenient parser.",
+        path,
+    )
+    return pd.DataFrame(padded_rows, columns=header)
 
 
 def _tokenize_words(text: str) -> list[str]:

@@ -6,6 +6,7 @@ Implements:
   2. Goodman–Kruskal γ (gamma)  — ordinal association between score-based ranks
   3. Kappa Coefficient           — stability / agreement between two score vectors
   4. Paired Permutation Test     — non-parametric permutation test
+  5. Paired T-Test               — parametric comparison of paired metrics
 
 CSV format (per query):
   pytanie, odpowiedz_wygenerowana, odpowiedz_ref,
@@ -19,7 +20,7 @@ Usage:
         --model_a_csv eval_A.csv \\
         --model_b_csv eval_B.csv \\
         --metric bertscore_f1_base \\
-        --test wilcoxon permutation gamma kappa \\
+        --test wilcoxon permutation gamma kappa ttest \\
         --output_dir results/
 
     # Run all tests on multiple metrics:
@@ -58,7 +59,7 @@ AVAILABLE_METRICS: list[str] = [
     "bertscore_precision_base", "bertscore_recall_base", "bertscore_f1_base",
 ]
 
-ALL_TESTS = ["wilcoxon", "permutation", "gamma", "kappa"]
+ALL_TESTS = ["wilcoxon", "permutation", "gamma", "kappa", "ttest"]
 
 
 # ---------------------------------------------------------------------------
@@ -107,6 +108,24 @@ class KappaResult:
 
 
 @dataclass
+class TTestResult:
+    n: int
+    mean_A: float
+    mean_B: float
+    std_A: float
+    std_B: float
+    mean_diff: float
+    std_diff: float
+    t_statistic: float
+    degrees_of_freedom: int
+    p_value: float
+    is_significant: bool
+    alternative: str
+    ci_lower: float
+    ci_upper: float
+
+
+@dataclass
 class MetricComparison:
     metric: str
     n_queries: int
@@ -118,6 +137,7 @@ class MetricComparison:
     permutation: PermutationResult | None = None
     gamma: GammaResult | None = None
     kappa: KappaResult | None = None
+    ttest: TTestResult | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -164,18 +184,15 @@ def _scores_to_ordinal_ranks(scores: np.ndarray, n_bins: int = 5) -> np.ndarray:
     non_zero = scores[~zero_mask]
 
     if len(non_zero) > 0:
-        # Percentile-based binning on non-zero scores
         percentiles = np.linspace(0, 100, n_bins + 1)
         breakpoints = np.percentile(non_zero, percentiles)
-        # Ensure unique breakpoints to avoid empty bins
         breakpoints = np.unique(breakpoints)
         bin_labels = np.digitize(non_zero, breakpoints[1:-1], right=False) + 1
-        # Invert so rank 1 = highest score
         bin_labels = n_bins + 1 - bin_labels
         bin_labels = np.clip(bin_labels, 1, n_bins)
         ranks[~zero_mask] = bin_labels.astype(float)
 
-    ranks[zero_mask] = float(n_bins + 1)  # analogous to ∞ / "not found"
+    ranks[zero_mask] = float(n_bins + 1)
     return ranks
 
 
@@ -198,7 +215,7 @@ def _rank_with_ties(values: np.ndarray) -> np.ndarray:
         j = i
         while j < n and values[sorted_idx[j]] == values[sorted_idx[i]]:
             j += 1
-        avg_rank = (i + j + 1) / 2.0  # 1-indexed
+        avg_rank = (i + j + 1) / 2.0
         for k in range(i, j):
             ranks[sorted_idx[k]] = avg_rank
         i = j
@@ -214,17 +231,13 @@ def wilcoxon_signed_rank_test(
     r"""
     Wilcoxon Signed-Rank Test.
 
-    Per thesis (section 2):
-
       1. d_q = score_A(q) − score_B(q)
       2. Remove zeros; n = |{q : d_q ≠ 0}|
       3. Rank |d_q| with tie-averaging
       4. W⁺ = Σ_{d_q>0} rank(|d_q|),  W⁻ = Σ_{d_q<0} rank(|d_q|)
       5. W  = min(W⁺, W⁻)
       6. n < 25  → exact distribution (scipy)
-         n ≥ 25  → normal approximation:
-                   E[W] = n(n+1)/4,  Var(W) = n(n+1)(2n+1)/24
-                   Z = (W − E[W]) / √Var(W) → N(0,1)
+         n ≥ 25  → normal approximation
     """
     nonzero = differences[differences != 0]
     n = len(nonzero)
@@ -254,7 +267,6 @@ def wilcoxon_signed_rank_test(
             method=f"Exact (n={n} < 25)",
         )
 
-    # Normal approximation for n ≥ 25
     E_W   = n * (n + 1) / 4.0
     Var_W = n * (n + 1) * (2 * n + 1) / 24.0
     z     = (W - E_W) / np.sqrt(Var_W)
@@ -263,7 +275,7 @@ def wilcoxon_signed_rank_test(
         p_value = 2.0 * (1.0 - stats.norm.cdf(abs(z)))
     elif alternative == "greater":
         p_value = 1.0 - stats.norm.cdf(z)
-    else:  # "less"
+    else:
         p_value = stats.norm.cdf(z)
 
     return WilcoxonResult(
@@ -302,7 +314,7 @@ def paired_permutation_test(
         p_value = float(np.mean(np.abs(perm_stats) >= abs(obs)))
     elif alternative == "greater":
         p_value = float(np.mean(perm_stats >= obs))
-    else:  # "less"
+    else:
         p_value = float(np.mean(perm_stats <= obs))
 
     return PermutationResult(
@@ -322,16 +334,11 @@ def goodman_kruskal_gamma(
     r"""
     Goodman–Kruskal γ coefficient.
 
-    Per thesis (section 3):
-
       For each pair (q_i, q_j):
         concordant  if (a_i − a_j)(b_i − b_j) > 0
         discordant  if (a_i − a_j)(b_i − b_j) < 0
 
       γ = (C − D) / (C + D)
-
-    Continuous scores are converted to ordinal ranks (1 … n_bins+1) via
-    percentile-based binning before computing C and D.
     """
     ranks_A = _scores_to_ordinal_ranks(scores_A, n_bins)
     ranks_B = _scores_to_ordinal_ranks(scores_B, n_bins)
@@ -376,40 +383,25 @@ def kappa_coefficient(
     r"""
     Kappa Coefficient of Agreement.
 
-    Per thesis (section 4):
-
       For each query q, treat the ordinal-rank assignments by model A and B
       as two "retrievers" over a shared universe of rank classes {1,…,n_bins+1}.
 
-      Universe per query:  U = {rank_A(q)} ∪ {rank_B(q)} ∪ {all bin classes}
-                             = {1, …, n_bins + 1}  (always full)
-
-      Contingency counts (over the universe of rank classes):
-        a = classes retrieved by both  (rank_A(q) == rank_B(q) → a = 1, else 0)
-        b = classes in A only
-        c = classes in B only
-        d = classes in neither
-
-      p_o = (a + d) / |U|
-      p_e = (a+b)/|U| · (a+c)/|U|  +  (c+d)/|U| · (b+d)/|U|
-      κ   = (p_o − p_e) / (1 − p_e)
+      κ = (p_o − p_e) / (1 − p_e)
 
     The mean κ across all queries is reported.
     """
     ranks_A = _scores_to_ordinal_ranks(scores_A, n_bins)
     ranks_B = _scores_to_ordinal_ranks(scores_B, n_bins)
 
-    universe_size = n_bins + 1  # classes 1 … n_bins+1
+    universe_size = n_bins + 1
     kappas: list[float] = []
 
     for rA, rB in zip(ranks_A, ranks_B):
-        # Treat each rank class as a binary "retrieved/not" decision
-        # a = 1 if both agree (same class), else 0
         agree = int(rA == rB)
-        a = agree          # in both
-        b = 1 - agree      # in A only  (1 class if disagree)
-        c = 1 - agree      # in B only
-        d = universe_size - a - b - c  # neither
+        a = agree
+        b = 1 - agree
+        c = 1 - agree
+        d = universe_size - a - b - c
 
         p_o = (a + d) / universe_size
         p_A     = (a + b) / universe_size
@@ -427,6 +419,74 @@ def kappa_coefficient(
         kappa_mean=float(np.mean(kappas)),
         kappa_min=float(np.min(kappas)),
         kappa_max=float(np.max(kappas)),
+    )
+
+
+def paired_ttest(
+    scores_A: np.ndarray,
+    scores_B: np.ndarray,
+    alpha: float = 0.05,
+    alternative: str = "two-sided",
+) -> TTestResult:
+    r"""
+    Paired T-Test (parametric).
+
+    Assumes the differences d_q = score_A(q) − score_B(q) are approximately
+    normally distributed (central limit theorem typically holds for n ≥ 30).
+
+      H0: mean(d) = 0
+      t  = mean(d) / (std(d) / sqrt(n))
+      df = n − 1
+
+    Also reports:
+      - Standard deviation of each model's scores independently (std_A, std_B)
+      - Standard deviation of the paired differences (std_diff)
+      - 95% confidence interval for the mean difference
+
+    Parameters
+    ----------
+    scores_A, scores_B : aligned per-query score arrays (same length, no NaNs)
+    alpha              : significance level (default 0.05)
+    alternative        : "two-sided" | "greater" | "less"
+    """
+    n = len(scores_A)
+    diffs = scores_A - scores_B
+
+    mean_A   = float(np.mean(scores_A))
+    mean_B   = float(np.mean(scores_B))
+    std_A    = float(np.std(scores_A, ddof=1))
+    std_B    = float(np.std(scores_B, ddof=1))
+    mean_diff = float(np.mean(diffs))
+    std_diff  = float(np.std(diffs, ddof=1))
+
+    se = std_diff / np.sqrt(n)
+    t_stat = mean_diff / se if se > 0 else 0.0
+    df = n - 1
+
+    # p-value via scipy for accuracy
+    t_res = stats.ttest_rel(scores_A, scores_B, alternative=alternative)
+    p_value = float(t_res.pvalue)
+
+    # 95% confidence interval for the mean difference
+    t_crit = stats.t.ppf(1 - alpha / 2, df)
+    ci_lower = mean_diff - t_crit * se
+    ci_upper = mean_diff + t_crit * se
+
+    return TTestResult(
+        n=n,
+        mean_A=mean_A,
+        mean_B=mean_B,
+        std_A=std_A,
+        std_B=std_B,
+        mean_diff=mean_diff,
+        std_diff=std_diff,
+        t_statistic=float(t_stat),
+        degrees_of_freedom=df,
+        p_value=p_value,
+        is_significant=p_value <= alpha,
+        alternative=alternative,
+        ci_lower=float(ci_lower),
+        ci_upper=float(ci_upper),
     )
 
 
@@ -458,7 +518,6 @@ def compare_models(
         arr_A = np.array(data_A[metric], dtype=float)
         arr_B = np.array(data_B[metric], dtype=float)
 
-        # Drop rows where either value is NaN
         valid = ~(np.isnan(arr_A) | np.isnan(arr_B))
         arr_A, arr_B = arr_A[valid], arr_B[valid]
 
@@ -494,6 +553,9 @@ def compare_models(
 
         if "kappa" in tests:
             comparison.kappa = kappa_coefficient(arr_A, arr_B, kappa_bins)
+
+        if "ttest" in tests:
+            comparison.ttest = paired_ttest(arr_A, arr_B, alpha, alternative)
 
         results.append(comparison)
 
@@ -575,6 +637,22 @@ def format_comparison(c: MetricComparison, alpha: float = 0.05) -> str:
             f"  κ max:           {k.kappa_max:.4f}",
         ]
 
+    if c.ttest:
+        t = c.ttest
+        lines += [
+            "",
+            "  ── Paired T-Test ──────────────────────────────────────────────",
+            f"  n:               {t.n}",
+            f"  Model A mean:    {t.mean_A:.6f}  (std = {t.std_A:.6f})",
+            f"  Model B mean:    {t.mean_B:.6f}  (std = {t.std_B:.6f})",
+            f"  Mean diff (A−B): {t.mean_diff:+.6f}  (std = {t.std_diff:.6f})",
+            f"  t-statistic:     {t.t_statistic:.4f}",
+            f"  Degrees of freedom: {t.degrees_of_freedom}",
+            f"  Alternative:     {t.alternative}",
+            f"  95% CI (A−B):    [{t.ci_lower:+.6f},  {t.ci_upper:+.6f}]",
+            f"  p-value:         {t.p_value:.6f}{_sig(t.is_significant, alpha)}",
+        ]
+
     return "\n".join(lines)
 
 
@@ -619,6 +697,24 @@ def _result_to_dict(c: MetricComparison) -> dict:
             "kappa_mean": k.kappa_mean,
             "kappa_min": k.kappa_min,
             "kappa_max": k.kappa_max,
+        }
+    if c.ttest:
+        t = c.ttest
+        d["ttest"] = {
+            "n": t.n,
+            "mean_A": t.mean_A,
+            "mean_B": t.mean_B,
+            "std_A": t.std_A,
+            "std_B": t.std_B,
+            "mean_diff": t.mean_diff,
+            "std_diff": t.std_diff,
+            "t_statistic": t.t_statistic,
+            "degrees_of_freedom": t.degrees_of_freedom,
+            "p_value": t.p_value,
+            "is_significant": t.is_significant,
+            "alternative": t.alternative,
+            "ci_lower": t.ci_lower,
+            "ci_upper": t.ci_upper,
         }
     return d
 
@@ -683,18 +779,15 @@ def main() -> None:
             print(f"  {m}")
         sys.exit(0)
 
-    # Validate paths
     for label, path in [("Model A", args.model_a_csv), ("Model B", args.model_b_csv)]:
         if not path.exists():
             print(f"ERROR: {label} CSV not found: {path}", file=sys.stderr)
             sys.exit(1)
 
-    # Resolve "all" test shorthand
     tests = ALL_TESTS if "all" in args.test else list(dict.fromkeys(args.test))
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Header
     print()
     print("=" * 72)
     print("  STATISTICAL COMPARISON — Model A vs Model B")
@@ -725,7 +818,6 @@ def main() -> None:
     for c in comparisons:
         print(format_comparison(c, args.alpha))
 
-    # Save JSON
     ts = datetime.now().strftime("%Y%m%dT%H%M%S")
     out_json = args.output_dir / f"stats_{ts}.json"
     payload = {

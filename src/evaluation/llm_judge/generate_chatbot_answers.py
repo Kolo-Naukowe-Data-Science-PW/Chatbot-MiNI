@@ -96,6 +96,9 @@ COMPACT_OUTPUT_FORMATS = {
     "answers_and_links",
 }
 
+ERROR_ANSWER_TEXT = "Sorry, I encountered an error while generating the response."
+ERROR_ANSWER_RETRIES = 2
+
 
 # ── Input data ──────────────────────────────────────────────────────────────
 
@@ -273,6 +276,75 @@ def _read_existing_simple_questions(output_csv: Path) -> set[str]:
         }
 
 
+def _compact_required_columns(output_format: str) -> list[str]:
+    required = ["pytanie"]
+    if output_format in ("simple", "polish", "answer_only", "answers_and_links"):
+        required.append("odpowiedz_wygenerowana")
+    if output_format in ("polish", "links_only", "answers_and_links"):
+        required.append("zwrocone_linki")
+    return required
+
+
+def _compact_row_is_complete(row: dict[str, str], output_format: str) -> bool:
+    generated_answer = (row.get("odpowiedz_wygenerowana") or "").strip()
+    if generated_answer == ERROR_ANSWER_TEXT:
+        return False
+    return all(
+        (row.get(column) or "").strip()
+        for column in _compact_required_columns(output_format)
+    )
+
+
+def _prepare_compact_output_for_resume(
+    output_csv: Path,
+    output_format: str,
+    fieldnames: list[str],
+) -> set[str]:
+    """
+    Keep only rows that are complete for the selected compact format.
+
+    This lets a later answers_and_links run refill rows created earlier by
+    answer_only without losing rows that already have returned links.
+    """
+    if not output_csv.exists():
+        return set()
+
+    with open(output_csv, encoding="utf-8-sig", newline="") as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+        existing_fieldnames = reader.fieldnames or []
+
+    complete_rows: list[dict[str, str]] = []
+    complete_questions: set[str] = set()
+    for row in rows:
+        question = (row.get("pytanie") or "").strip()
+        if not question or question in complete_questions:
+            continue
+        if not _compact_row_is_complete(row, output_format):
+            continue
+        complete_rows.append({column: row.get(column, "") for column in fieldnames})
+        complete_questions.add(question)
+
+    needs_rewrite = (
+        existing_fieldnames != fieldnames
+        or len(complete_rows) != len(rows)
+    )
+    if needs_rewrite:
+        with open(output_csv, "w", encoding="utf-8", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+            writer.writeheader()
+            writer.writerows(complete_rows)
+        logger.info(
+            "Prepared %s for %s resume: kept %d complete rows, %d rows will be regenerated.",
+            output_csv,
+            output_format,
+            len(complete_rows),
+            len(rows) - len(complete_rows),
+        )
+
+    return complete_questions
+
+
 # ── Main runner ─────────────────────────────────────────────────────────────
 
 
@@ -310,9 +382,10 @@ def run(
         return
 
     output_csv.parent.mkdir(parents=True, exist_ok=True)
+    fieldnames = _fieldnames_for_output_format(output_format)
     existing_ids = _read_existing_ids(output_csv) if output_format == "full" else set()
     existing_questions = (
-        _read_existing_simple_questions(output_csv)
+        _prepare_compact_output_for_resume(output_csv, output_format, fieldnames)
         if output_format in COMPACT_OUTPUT_FORMATS
         else set()
     )
@@ -343,7 +416,6 @@ def run(
     )
 
     with open(output_csv, "a", encoding="utf-8", newline="") as out_f:
-        fieldnames = _fieldnames_for_output_format(output_format)
         writer = csv.DictWriter(out_f, fieldnames=fieldnames, extrasaction="ignore")
         if not file_existed:
             writer.writeheader()
@@ -359,31 +431,54 @@ def run(
                                 continue
                         elif aid in existing_ids:
                             continue
-                        try:
-                            answer, sources = call_chat(
-                                api_url,
-                                query=q["query"],
-                                model=m,
-                                temperature=t,
-                                persona=PERSONAS[pi],
-                                language=language,
-                                timeout_sec=timeout_sec,
-                            )
-                        except RuntimeError as exc:
-                            logger.error(
-                                "FAILED aid=%s q=%r model=%s t=%s p=%d — skipping. %s",
-                                aid,
-                                q["query"][:60],
-                                m,
-                                t,
-                                pi,
-                                exc,
-                            )
-                            continue
+                        answer = ""
+                        sources: list[str] = []
+                        for attempt in range(ERROR_ANSWER_RETRIES + 1):
+                            try:
+                                answer, sources = call_chat(
+                                    api_url,
+                                    query=q["query"],
+                                    model=m,
+                                    temperature=t,
+                                    persona=PERSONAS[pi],
+                                    language=language,
+                                    timeout_sec=timeout_sec,
+                                )
+                            except RuntimeError as exc:
+                                logger.error(
+                                    "FAILED aid=%s q=%r model=%s t=%s p=%d — skipping. %s",
+                                    aid,
+                                    q["query"][:60],
+                                    m,
+                                    t,
+                                    pi,
+                                    exc,
+                                )
+                                break
+
+                            if answer != ERROR_ANSWER_TEXT:
+                                break
+
+                            if attempt < ERROR_ANSWER_RETRIES:
+                                logger.warning(
+                                    "Retrying aid=%s q=%r after generator error response (%d/%d).",
+                                    aid,
+                                    q["query"][:60],
+                                    attempt + 1,
+                                    ERROR_ANSWER_RETRIES,
+                                )
+                                if sleep_between > 0:
+                                    time.sleep(sleep_between)
 
                         if not answer:
                             logger.warning(
                                 "Empty answer for aid=%s — skipping write.", aid
+                            )
+                            continue
+                        if answer == ERROR_ANSWER_TEXT:
+                            logger.warning(
+                                "Generator returned error response for aid=%s after retries — skipping write.",
+                                aid,
                             )
                             continue
 
