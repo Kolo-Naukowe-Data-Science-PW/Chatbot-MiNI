@@ -144,6 +144,7 @@ jobs:
             echo "model=$MODEL"
             echo "safe_model=$SAFE_MODEL"
             echo "output_name=$OUTPUT_NAME"
+            echo "output_file=src/evaluation/data/$OUTPUT_NAME"
             echo "input_file=$INPUT_FILE"
             echo "stat_test_name=text_metrics_per_query_${SAFE_MODEL}_t${{ inputs.temperature }}_p${{ inputs.persona }}_${{ inputs.stat_test_label }}.csv"
           } >> "$GITHUB_OUTPUT"
@@ -172,8 +173,7 @@ jobs:
         run: |
           docker compose exec -T api mkdir -p \
             /app/src/evaluation/llm_judge \
-            /app/src/evaluation/data \
-            /app/src/data/feedback
+            /app/src/evaluation/data
 
           docker compose cp \
             src/evaluation/llm_judge/generate_chatbot_answers.py \
@@ -182,6 +182,12 @@ jobs:
           docker compose cp \
             "${{ steps.vars.outputs.input_file }}" \
             api:/app/src/evaluation/data/$(basename "${{ steps.vars.outputs.input_file }}")
+
+          if [ -f "${{ steps.vars.outputs.output_file }}" ]; then
+            docker compose cp \
+              "${{ steps.vars.outputs.output_file }}" \
+              api:/app/src/evaluation/data/${{ steps.vars.outputs.output_name }}
+          fi
 
           docker compose cp \
             src/evaluation/text_metrics.py \
@@ -200,7 +206,7 @@ jobs:
           docker compose exec -T api micromamba run -n app python \
             -m evaluation.llm_judge.generate_chatbot_answers \
             --input-csv "/app/src/evaluation/data/$(basename "${{ steps.vars.outputs.input_file }}")" \
-            --output-csv "/app/src/data/feedback/${{ steps.vars.outputs.output_name }}" \
+            --output-csv "/app/src/evaluation/data/${{ steps.vars.outputs.output_name }}" \
             --api-url http://localhost:8000/chat \
             --models "${{ steps.vars.outputs.model }}" \
             --temperatures "${{ inputs.temperature }}" \
@@ -212,9 +218,13 @@ jobs:
 
       - name: Copy CSV from API container
         run: |
+          mkdir -p src/evaluation/data
           mkdir -p feedback-output
           docker compose cp \
-            "api:/app/src/data/feedback/${{ steps.vars.outputs.output_name }}" \
+            "api:/app/src/evaluation/data/${{ steps.vars.outputs.output_name }}" \
+            "${{ steps.vars.outputs.output_file }}"
+          cp \
+            "${{ steps.vars.outputs.output_file }}" \
             "./feedback-output/${{ steps.vars.outputs.output_name }}"
           ls -la feedback-output
           wc -l "feedback-output/${{ steps.vars.outputs.output_name }}"
@@ -230,7 +240,7 @@ jobs:
 
           docker compose exec -T api micromamba run -n app python \
             /app/src/evaluation/text_metrics.py \
-            --generated-csv "/app/src/data/feedback/${{ steps.vars.outputs.output_name }}" \
+            --generated-csv "/app/src/evaluation/data/${{ steps.vars.outputs.output_name }}" \
             --reference-csv "/app/src/evaluation/data/$(basename "${{ steps.vars.outputs.input_file }}")" \
             --output-dir /app/src/evaluation/results
 
@@ -246,20 +256,21 @@ jobs:
             "src/evaluation/data/stat_test/${{ steps.vars.outputs.stat_test_name }}"
           ls -la src/evaluation/data/stat_test
 
-      - name: Commit stat_test per-query file
+      - name: Commit generated answers and stat_test file
         shell: bash
         run: |
           set -euo pipefail
 
-          if [ -z "$(git status --porcelain -- "src/evaluation/data/stat_test/${{ steps.vars.outputs.stat_test_name }}")" ]; then
-            echo "No stat_test per-query changes to commit."
+          if [ -z "$(git status --porcelain -- "${{ steps.vars.outputs.output_file }}" "src/evaluation/data/stat_test/${{ steps.vars.outputs.stat_test_name }}")" ]; then
+            echo "No generated answer or stat_test changes to commit."
             exit 0
           fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "${{ steps.vars.outputs.output_file }}"
           git add "src/evaluation/data/stat_test/${{ steps.vars.outputs.stat_test_name }}"
-          git commit -m "Add stat test metrics for ${{ steps.vars.outputs.safe_model }}"
+          git commit -m "Update generated answers for ${{ steps.vars.outputs.safe_model }}"
           git push
 
       - name: Upload CSV
