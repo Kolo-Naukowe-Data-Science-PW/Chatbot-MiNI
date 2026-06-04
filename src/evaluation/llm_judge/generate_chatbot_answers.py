@@ -299,6 +299,8 @@ def _prepare_compact_output_for_resume(
     output_csv: Path,
     output_format: str,
     fieldnames: list[str],
+    *,
+    rewrite_incomplete: bool = True,
 ) -> set[str]:
     """
     Keep only rows that are complete for the selected compact format.
@@ -330,13 +332,21 @@ def _prepare_compact_output_for_resume(
         existing_fieldnames != fieldnames
         or len(complete_rows) != len(rows)
     )
-    if needs_rewrite:
+    if needs_rewrite and rewrite_incomplete:
         with open(output_csv, "w", encoding="utf-8", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
             writer.writeheader()
             writer.writerows(complete_rows)
         logger.info(
-            "Prepared %s for %s resume: kept %d complete rows, %d rows will be regenerated.",
+            "Prepared %s for %s resume: kept %d complete rows, removed %d incomplete/duplicate rows.",
+            output_csv,
+            output_format,
+            len(complete_rows),
+            len(rows) - len(complete_rows),
+        )
+    elif needs_rewrite:
+        logger.info(
+            "Prepared %s for %s resume: found %d complete rows, %d rows will be regenerated.",
             output_csv,
             output_format,
             len(complete_rows),
@@ -382,6 +392,39 @@ def _read_compact_rows_for_resume(
     return header, rows
 
 
+def _detect_existing_compact_format(output_csv: Path) -> str | None:
+    """Infer compact output format from an existing CSV header."""
+    if not output_csv.exists():
+        return None
+
+    with open(output_csv, encoding="utf-8-sig", newline="") as f:
+        header = next(csv.reader(f), None)
+
+    if header == ANSWERS_AND_LINKS_FIELDNAMES:
+        return "answers_and_links"
+    if header == ANSWER_ONLY_FIELDNAMES:
+        return "answer_only"
+    if header == LINKS_ONLY_FIELDNAMES:
+        return "links_only"
+    return None
+
+
+def _validate_compact_config(
+    output_format: str,
+    models: list[str],
+    temperatures: list[float],
+    persona_indices: list[int],
+) -> None:
+    if output_format not in COMPACT_OUTPUT_FORMATS:
+        return
+    if len(models) == 1 and len(temperatures) == 1 and len(persona_indices) == 1:
+        return
+    raise ValueError(
+        f"--output-format {output_format} supports exactly one model, one temperature, "
+        "and one persona per output CSV. Run the script once per model."
+    )
+
+
 # ── Main runner ─────────────────────────────────────────────────────────────
 
 
@@ -403,13 +446,7 @@ def run(
         if not 0 <= idx < len(PERSONAS):
             raise ValueError(f"persona index {idx} out of range 0–{len(PERSONAS) - 1}")
 
-    if output_format in COMPACT_OUTPUT_FORMATS and (
-        len(models) != 1 or len(temperatures) != 1 or len(persona_indices) != 1
-    ):
-        raise ValueError(
-            f"--output-format {output_format} supports exactly one model, one temperature, "
-            "and one persona per output CSV. Run the script once per model."
-        )
+    _validate_compact_config(output_format, models, temperatures, persona_indices)
 
     questions = _read_questions(input_csv, limit=limit)
     if not questions:
@@ -419,10 +456,27 @@ def run(
         return
 
     output_csv.parent.mkdir(parents=True, exist_ok=True)
+    if output_format == "full":
+        detected_output_format = _detect_existing_compact_format(output_csv)
+        if detected_output_format:
+            logger.info(
+                "Detected existing compact %s CSV at %s; resuming in that format.",
+                detected_output_format,
+                output_csv,
+            )
+            output_format = detected_output_format
+    _validate_compact_config(output_format, models, temperatures, persona_indices)
+
     fieldnames = _fieldnames_for_output_format(output_format)
+    same_input_output = input_csv.resolve() == output_csv.resolve()
     existing_ids = _read_existing_ids(output_csv) if output_format == "full" else set()
     existing_questions = (
-        _prepare_compact_output_for_resume(output_csv, output_format, fieldnames)
+        _prepare_compact_output_for_resume(
+            output_csv,
+            output_format,
+            fieldnames,
+            rewrite_incomplete=not same_input_output,
+        )
         if output_format in COMPACT_OUTPUT_FORMATS
         else set()
     )
@@ -569,6 +623,13 @@ def run(
                             time.sleep(sleep_between)
 
     logger.info("Done. Wrote %d new answers to %s.", done, output_csv)
+    if output_format in COMPACT_OUTPUT_FORMATS and same_input_output:
+        _prepare_compact_output_for_resume(
+            output_csv,
+            output_format,
+            fieldnames,
+            rewrite_incomplete=True,
+        )
 
 
 def _fieldnames_for_output_format(output_format: str) -> list[str]:
