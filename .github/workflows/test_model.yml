@@ -22,6 +22,14 @@ on:
         description: 'Custom model id, used only when model=custom'
         required: false
         default: ''
+      openrouter_api_key:
+        description: 'OpenRouter API key secret to use'
+        required: true
+        default: 'OPENROUTER_API_KEY'
+        type: choice
+        options:
+          - 'OPENROUTER_API_KEY'
+          - 'OPENROUTER_API_KEY_1'
 
 jobs:
   test:
@@ -29,6 +37,8 @@ jobs:
     steps:
       - name: Test model
         shell: bash
+        env:
+          SELECTED_OPENROUTER_API_KEY: ${{ inputs.openrouter_api_key == 'OPENROUTER_API_KEY_1' && secrets.OPENROUTER_API_KEY_1 || secrets.OPENROUTER_API_KEY }}
         run: |
           set -euo pipefail
           MODEL="${{ github.event.inputs.model }}"
@@ -39,9 +49,13 @@ jobs:
             echo "custom_model must be provided when model=custom" >&2
             exit 1
           fi
+          if [ -z "$SELECTED_OPENROUTER_API_KEY" ]; then
+            echo "Selected OpenRouter API key secret is empty or missing: ${{ inputs.openrouter_api_key }}" >&2
+            exit 1
+          fi
 
           curl -s https://openrouter.ai/api/v1/chat/completions \
-            -H "Authorization: Bearer ${{ secrets.OPENROUTER_API_KEY }}" \
+            -H "Authorization: Bearer $SELECTED_OPENROUTER_API_KEY" \
             -H "Content-Type: application/json" \
             -d "{
               \"model\": \"$MODEL\",

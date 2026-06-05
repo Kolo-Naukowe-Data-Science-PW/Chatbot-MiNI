@@ -26,6 +26,14 @@ on:
         description: "Custom model id, used only when model=custom"
         required: false
         default: ""
+      openrouter_api_key:
+        description: "OpenRouter API key secret to use"
+        required: true
+        default: "OPENROUTER_API_KEY"
+        type: choice
+        options:
+          - "OPENROUTER_API_KEY"
+          - "OPENROUTER_API_KEY_1"
       temperature:
         description: "Generation temperature"
         required: true
@@ -92,7 +100,22 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Copy .env file
-        run: cp ~/.env.backup .env
+        env:
+          SELECTED_OPENROUTER_API_KEY: ${{ inputs.openrouter_api_key == 'OPENROUTER_API_KEY_1' && secrets.OPENROUTER_API_KEY_1 || secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_API_KEY_1: ${{ secrets.OPENROUTER_API_KEY_1 }}
+        run: |
+          set -euo pipefail
+          if [ -z "$SELECTED_OPENROUTER_API_KEY" ]; then
+            echo "Selected OpenRouter API key secret is empty or missing: ${{ inputs.openrouter_api_key }}" >&2
+            exit 1
+          fi
+
+          cp ~/.env.backup .env
+          {
+            echo ""
+            echo "OPENROUTER_API_KEY=$SELECTED_OPENROUTER_API_KEY"
+            echo "OPENROUTER_API_KEY_1=$OPENROUTER_API_KEY_1"
+          } >> .env
 
       - name: Resolve inputs
         id: vars
