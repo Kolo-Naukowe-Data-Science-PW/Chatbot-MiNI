@@ -6,14 +6,16 @@ on:
       generated_answers:
         description: 'Path to generated answers CSV (pytanie, odpowiedz_wygenerowana)'
         required: true
-        default: 'answers_openai_gpt-4o_t0.2_p2.csv'
+        default: 'src/evaluation/data/stat_test/200/answers_google_gemini-3.5-flash_t0.2_p2_200.csv'
         type: choice
         options:
+          - 'src/evaluation/data/stat_test/200/answers_google_gemini-3.5-flash_t0.2_p2_200.csv'
+          - 'src/evaluation/data/stat_test/200/answers_openai_gpt-oss-120b_free_t0.2_p2_200.csv'
           - 'src/evaluation/data/answers_google_gemini-3.5-flash_t0.2_p2.csv'
-          - 'src/evaluation/data/answers_openai_gpt-4o_t0.2_p2.csv'
-          - 'src/evaluation/data/answers_openai_gpt-oss-120b_free_t0.2_p2.csv'
+          - 'src/evaluation/data/answers_openai_gpt-oss-120b_free_t0.2_p2-1.csv'
+          - 'src/evaluation/data/answers_openai_gpt-oss-120b_free_t0.2_p2_1324.csv'
           - 'src/evaluation/data/answers_anthropic_claude-opus-4.8_t0.2_p2.csv'
-          - 'src/evaluation/data/answers_deepseek-v4-flash_t0.2_p2.csv'
+          - 'src/evaluation/data/answers_google_gemma-4-31b-it_free_t0.2_p2.csv'
           - 'custom'
       custom_generated_path:
         description: 'Custom path (used only if generated_answers=custom)'
@@ -22,9 +24,10 @@ on:
       reference_csv:
         description: 'Path to reference answers'
         required: false
-        default: 'src/evaluation/data/final_notebooklm_QA_reference.csv'
+        default: 'src/evaluation/data/final_notebooklm_QA_stat_test.csv'
         type: choice
         options:
+          - 'src/evaluation/data/final_notebooklm_QA_stat_test.csv'
           - 'src/evaluation/data/final_notebooklm_QA_reference.csv'
           - 'src/evaluation/data/final_notebooklm_QA.jsonl'
 

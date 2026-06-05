@@ -50,7 +50,7 @@ on:
         required: false
         default: "0.5"
       output_name:
-        description: "Output CSV filename; leave empty for automatic name"
+        description: "Output CSV filename; for 200_stat_test the stat_test_folder suffix is added before .csv"
         required: false
         default: ""
       question_set:
