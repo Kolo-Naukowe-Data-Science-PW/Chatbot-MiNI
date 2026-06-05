@@ -1,0 +1,50 @@
+name: Test OpenRouter Model
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: 'Model ID to test'
+        required: true
+        default: 'anthropic/claude-opus-4.8'
+        type: choice
+        options:
+          - 'anthropic/claude-opus-4.8'
+          - 'openai/gpt-4o'
+          - 'google/gemini-3.5-flash'
+          - 'openai/gpt-oss-120b:free'
+          - 'google/gemma-4-31b-it:free'
+          - 'openai/gpt-oss-20b:free'
+          - 'nvidia/nemotron-3-super-120b-a12b:free'
+          - 'qwen/qwen3-coder:free'
+          - 'meta-llama/llama-3.3-70b-instruct:free'
+          - 'custom'
+      custom_model:
+        description: 'Custom model id, used only when model=custom'
+        required: false
+        default: ''
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Test model
+        shell: bash
+        run: |
+          set -euo pipefail
+          MODEL="${{ github.event.inputs.model }}"
+          if [ "$MODEL" = "custom" ]; then
+            MODEL="${{ github.event.inputs.custom_model }}"
+          fi
+          if [ -z "$MODEL" ]; then
+            echo "custom_model must be provided when model=custom" >&2
+            exit 1
+          fi
+
+          curl -s https://openrouter.ai/api/v1/chat/completions \
+            -H "Authorization: Bearer ${{ secrets.OPENROUTER_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"model\": \"$MODEL\",
+              \"messages\": [{\"role\": \"user\", \"content\": \"test\"}],
+              \"max_tokens\": 50
+            }" | python3 -m json.tool
