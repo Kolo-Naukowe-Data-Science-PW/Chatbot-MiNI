@@ -76,8 +76,8 @@ on:
           - "answers_and_links"
           - "answer_only"
           - "links_only"
-      stat_test_label:
-        description: "Suffix for stat_test per-query filename"
+      stat_test_folder:
+        description: "Subfolder under src/evaluation/data/stat_test for generated files"
         required: true
         default: "200"
 
@@ -112,7 +112,13 @@ jobs:
             OUTPUT_NAME="answers_${SAFE_MODEL}_t${{ inputs.temperature }}_p${{ inputs.persona }}.csv"
           fi
           OUTPUT_NAME="$(basename "$OUTPUT_NAME")"
+          STAT_TEST_FOLDER="$(basename "${{ inputs.stat_test_folder }}")"
+          if [ -z "$STAT_TEST_FOLDER" ]; then
+            echo "stat_test_folder must be provided" >&2
+            exit 1
+          fi
           OUTPUT_DIR="src/evaluation/data"
+          STAT_TEST_DIR="src/evaluation/data/stat_test/$STAT_TEST_FOLDER"
 
           case "${{ inputs.question_set }}" in
             1428_full)
@@ -123,7 +129,12 @@ jobs:
               ;;
             200_stat_test)
               INPUT_FILE="src/evaluation/data/final_notebooklm_QA_stat_test.csv"
-              OUTPUT_DIR="src/evaluation/data/stat_test/${{ inputs.stat_test_label }}"
+              OUTPUT_DIR="$STAT_TEST_DIR"
+              OUTPUT_STEM="${OUTPUT_NAME%.csv}"
+              if [[ "$OUTPUT_STEM" != *"_$STAT_TEST_FOLDER" ]]; then
+                OUTPUT_STEM="${OUTPUT_STEM}_$STAT_TEST_FOLDER"
+              fi
+              OUTPUT_NAME="${OUTPUT_STEM}.csv"
               ;;
             custom)
               INPUT_FILE="${{ inputs.custom_input_file }}"
@@ -150,8 +161,9 @@ jobs:
             echo "output_dir=$OUTPUT_DIR"
             echo "output_file=$OUTPUT_DIR/$OUTPUT_NAME"
             echo "input_file=$INPUT_FILE"
-            echo "stat_test_name=text_metrics_per_query_${SAFE_MODEL}_t${{ inputs.temperature }}_p${{ inputs.persona }}_${{ inputs.stat_test_label }}.csv"
-            echo "stat_test_file=$OUTPUT_DIR/text_metrics_per_query_${SAFE_MODEL}_t${{ inputs.temperature }}_p${{ inputs.persona }}_${{ inputs.stat_test_label }}.csv"
+            echo "stat_test_dir=$STAT_TEST_DIR"
+            echo "stat_test_name=text_metrics_per_query_${SAFE_MODEL}_t${{ inputs.temperature }}_p${{ inputs.persona }}_${STAT_TEST_FOLDER}.csv"
+            echo "stat_test_file=$STAT_TEST_DIR/text_metrics_per_query_${SAFE_MODEL}_t${{ inputs.temperature }}_p${{ inputs.persona }}_${STAT_TEST_FOLDER}.csv"
           } >> "$GITHUB_OUTPUT"
 
       - name: Ensure API container is running
@@ -179,7 +191,8 @@ jobs:
           docker compose exec -T api mkdir -p \
             /app/src/evaluation/llm_judge \
             /app/src/evaluation/data \
-            "/app/${{ steps.vars.outputs.output_dir }}"
+            "/app/${{ steps.vars.outputs.output_dir }}" \
+            "/app/${{ steps.vars.outputs.stat_test_dir }}"
 
           docker compose cp \
             src/evaluation/llm_judge/generate_chatbot_answers.py \
@@ -242,7 +255,7 @@ jobs:
 
           docker compose exec -T api mkdir -p \
             /app/src/evaluation/results \
-            "/app/${{ steps.vars.outputs.output_dir }}"
+            "/app/${{ steps.vars.outputs.stat_test_dir }}"
 
           docker compose exec -T api micromamba run -n app python \
             /app/src/evaluation/text_metrics.py \
@@ -256,7 +269,7 @@ jobs:
             "$LATEST_PER_QUERY" \
             "/app/${{ steps.vars.outputs.stat_test_file }}"
 
-          mkdir -p "${{ steps.vars.outputs.output_dir }}"
+          mkdir -p "${{ steps.vars.outputs.stat_test_dir }}"
           docker compose cp \
             "api:/app/${{ steps.vars.outputs.stat_test_file }}" \
             "${{ steps.vars.outputs.stat_test_file }}"
