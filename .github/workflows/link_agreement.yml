@@ -6,11 +6,11 @@ on:
       model_a_csv:
         description: "Path to model A generated answers CSV"
         required: true
-        default: "src/evaluation/results/model_a_answers.csv"
+        default: "src/evaluation/data/stat_test/200/answers_google_gemini-3.5-flash_t0.2_p2_200.csv"
       model_b_csv:
         description: "Path to model B generated answers CSV"
         required: true
-        default: "src/evaluation/results/model_b_answers.csv"
+        default: "src/evaluation/data/stat_test/200/answers_openai_gpt-oss-120b_free_t0.2_p2_200.csv"
       model_a_name:
         description: "Display name for model A"
         required: false
@@ -22,7 +22,7 @@ on:
       gold_csv:
         description: "Path to gold links CSV (optional)"
         required: false
-        default: "src/evaluation/data/questions_with_links.csv"
+        default: "src/evaluation/data/final_notebooklm_QA_stat_test.csv"
       top_k:
         description: "Top-k links to compare"
         required: false
