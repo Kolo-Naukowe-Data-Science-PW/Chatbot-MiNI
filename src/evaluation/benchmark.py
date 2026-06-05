@@ -24,7 +24,7 @@ def _get_top_k_chunks(query: str, top_k: int, **kwargs) -> list:
     """Lazy proxy — loads the retrieval module (and ML models) only on first call."""
     from src.api.retrieval import get_top_k_chunks  # noqa: PLC0415
 
-    global _get_top_k_chunks  # replace self with the real function after first load
+    global _get_top_k_chunks
 
     def _real_get_top_k_chunks(q: str, top_k: int, **kw) -> list:
         return get_top_k_chunks(q, top_k=top_k, **kw)
@@ -42,22 +42,17 @@ def _rewrite_query(query: str) -> str:
     return rewrite_query(query)
 
 
-# logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICAL)
-
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 # Minimum relevance score to treat a retrieved URL as "relevant" in binary
 # metrics (Hit, Precision, Recall, F1, MAP, MRR).
-# At the default value of 0.25, exact matches (1.0) and direct parents (0.75)
-# are counted as hits; children (0.5625) and more distant relatives are not.
-# Raise this to 0.5 to exclude child pages.
+# The threshold is STRICT (>), matching the definition:
+#   Z_rel^τ(q) = { z ∈ Z : rel(z, q) > τ }
+# At τ=0.25: exact matches (1.0) and direct parents (0.75) are counted as hits;
+# children (0.5625) are not.  Raise to 0.5 to also exclude child pages.
 RELEVANCE_THRESHOLD: float = 0.25
 
 # MRRw parameters (Metryka_chatbot.pdf)
-# α: weight for a URL that is deeper (more specific) than the gold by 1 level.
-#    α^d applied for d levels deeper.  0 < β < α < 1.
-# β: weight for a URL that is shallower (more general) than the gold by 1 level.
-#    β^|d| applied for |d| levels shallower.
 MRRW_ALPHA: float = 0.8
 MRRW_BETA: float = 0.4
 
@@ -68,17 +63,13 @@ MRRW_BETA: float = 0.4
 @dataclass
 class EvalRow:
     query: str
-    target_url: str  # single ground-truth URL per question
+    target_url: str
 
 
 # ── URL normalisation and deduplication ──────────────────────────────────────
 
 
 def normalize_url(url: str) -> str:
-    """
-    Strips trailing slashes and removes query/fragment components so that
-    semantically equivalent URLs are treated as the same source.
-    """
     cleaned = url.strip()
     if not cleaned:
         return ""
@@ -91,7 +82,6 @@ _DB_URLS_CACHE: frozenset[str] | None = None
 
 
 def _get_db_urls() -> frozenset[str]:
-    """Load all unique normalized URLs stored in the Qdrant collection (cached)."""
     global _DB_URLS_CACHE
     if _DB_URLS_CACHE is not None:
         return _DB_URLS_CACHE
@@ -124,7 +114,6 @@ def _get_db_urls() -> frozenset[str]:
 
 
 def is_covered(target_url: str, db_urls: frozenset[str]) -> bool:
-    """True if target URL or its direct parent is present in the DB."""
     if not target_url:
         return False
     if target_url in db_urls:
@@ -140,7 +129,6 @@ def is_covered(target_url: str, db_urls: frozenset[str]) -> bool:
 
 
 def unique_preserve_order(items: list[str]) -> list[str]:
-    """Returns a deduplicated list while preserving the original order."""
     seen: set[str] = set()
     result: list[str] = []
     for item in items:
@@ -160,20 +148,15 @@ def hierarchical_relevance(retrieved_url: str, target_url: str) -> float:
     single ground-truth target URL, based on the URL path hierarchy:
 
         Exact match                          -> 1.00
-        Direct parent (1 level above)        -> 0.75
-        Grandparent (2 levels above)         -> 0.5625
-        Great-grandparent (3 levels above)   -> 0.4219  etc.
-        Direct child (1 level below)         -> 0.5625
-        Grandchild (2 levels below)          -> 0.4219  etc.
+        Direct parent (1 level above)        -> 0.75^1  = 0.75
+        Grandparent (2 levels above)         -> 0.75^2  = 0.5625
+        Direct child (1 level below)         -> 0.75^2  = 0.5625
+        Grandchild (2 levels below)          -> 0.75^3  = 0.4219
         Unrelated path or different origin   -> 0.00
 
-    Algorithm:
-    1. Compare scheme and netloc -- different origins always yield 0.
-    2. Determine ancestor / descendant relationship from the URL path.
-    3. Score = 0.75^depth, where depth is the difference in path depth.
-       For descendants, depth is incremented by 1 (one step stricter than
-       ancestors, reflecting that a child page is a less reliable source
-       than a parent page for a query about the parent).
+    Per the definition:
+        rel(z, q) = 0.75^d      if z is an ancestor at depth d
+        rel(z, q) = 0.75^(d+1) if z is a descendant at depth d
     """
     if not retrieved_url or not target_url:
         return 0.0
@@ -181,7 +164,6 @@ def hierarchical_relevance(retrieved_url: str, target_url: str) -> float:
     t = urlsplit(target_url)
     r = urlsplit(retrieved_url)
 
-    # Different origins are never relevant
     if t.scheme != r.scheme or t.netloc != r.netloc:
         return 0.0
 
@@ -191,12 +173,12 @@ def hierarchical_relevance(retrieved_url: str, target_url: str) -> float:
     if t_path == r_path:
         return 1.0
 
-    # retrieved URL is an ancestor (parent, grandparent, ...) of the target
+    # retrieved URL is an ancestor (parent, grandparent, …) of the target
     if t_path.startswith(r_path + "/"):
         depth = t_path.count("/") - r_path.count("/")
         return 0.75**depth
 
-    # retrieved URL is a descendant (child, grandchild, ...) of the target
+    # retrieved URL is a descendant (child, grandchild, …) of the target
     if r_path.startswith(t_path + "/"):
         depth = r_path.count("/") - t_path.count("/")
         return 0.75 ** (depth + 1)
@@ -204,30 +186,10 @@ def hierarchical_relevance(retrieved_url: str, target_url: str) -> float:
     return 0.0
 
 
-# ── MRRw: weighted MRR with depth-aware link accuracy ────────────────────────
-#
-# Reference: Metryka_chatbot.pdf (B. Gawlik, 2026-03-13)
-#
-# Unlike hierarchical_relevance (which uses a fixed 0.5^depth decay and treats
-# child URLs as worse than parent URLs), MRRw distinguishes:
-#   - deeper (more specific) links → penalised less   (weight α^d)
-#   - shallower (more general) links → penalised more  (weight β^|d|)
-# This reflects the intuition that returning a more specific page is better
-# than returning a too-general one.
+# ── MRRw ─────────────────────────────────────────────────────────────────────
 
 
 def _url_depth_difference(retrieved_url: str, target_url: str) -> int | None:
-    """
-    Return the signed depth difference d between retrieved_url and target_url,
-    or None if the two URLs are not on the same path (unrelated).
-
-    d > 0  → retrieved is deeper (more specific) than target by d levels
-    d = 0  → exact path match
-    d < 0  → retrieved is shallower (more general) than target by |d| levels
-
-    Only ancestor / descendant relationships count; unrelated sibling paths
-    (same depth but different branch) return None.
-    """
     if not retrieved_url or not target_url:
         return None
 
@@ -243,24 +205,16 @@ def _url_depth_difference(retrieved_url: str, target_url: str) -> int | None:
     if t_path == r_path:
         return 0
 
-    # retrieved is an ancestor (shallower): target starts with retrieved path
     if t_path.startswith(r_path + "/"):
-        return -(t_path.count("/") - r_path.count("/"))  # negative → shallower
+        return -(t_path.count("/") - r_path.count("/"))
 
-    # retrieved is a descendant (deeper): retrieved starts with target path
     if r_path.startswith(t_path + "/"):
-        return r_path.count("/") - t_path.count("/")  # positive → deeper
+        return r_path.count("/") - t_path.count("/")
 
-    return None  # unrelated branch
+    return None
 
 
 def _mrr_weight(d: int, alpha: float = MRRW_ALPHA, beta: float = MRRW_BETA) -> float:
-    """
-    Accuracy weight w(d) from Metryka_chatbot.pdf:
-        w(0)   = 1.0
-        w(d>0) = alpha^d   (deeper is penalised less than shallower)
-        w(d<0) = beta^|d|  (shallower is penalised more)
-    """
     if d == 0:
         return 1.0
     if d > 0:
@@ -274,14 +228,6 @@ def mrr_weighted_single(
     alpha: float = MRRW_ALPHA,
     beta: float = MRRW_BETA,
 ) -> float:
-    """
-    Compute the MRRw score S for a single query (Metryka_chatbot.pdf, eq. 3).
-
-    S = max over all returned links i of  w(d_i) / r_i
-
-    where r_i is the 1-based rank and d_i is the depth difference.
-    Unrelated links (d_i = None) are skipped.  Returns 0.0 if no link matches.
-    """
     best = 0.0
     for rank, url in enumerate(retrieved_urls, start=1):
         d = _url_depth_difference(url, target_url)
@@ -299,27 +245,6 @@ def mrr_weighted(
     alpha: float = MRRW_ALPHA,
     beta: float = MRRW_BETA,
 ) -> float:
-    """
-    Compute MRRw over the full evaluation set (Metryka_chatbot.pdf, eq. 4).
-
-    MRRw = (1/N) * Σ S_j
-
-    Parameters
-    ----------
-    gold : list[EvalRow]
-        Evaluation set (query + target URL pairs).
-    k : int
-        Rank cut-off — only the top-k retrieved URLs are considered.
-    alpha : float
-        Weight decay for URLs deeper than the target (default 0.8).
-    beta : float
-        Weight decay for URLs shallower than the target (default 0.4).
-
-    Returns
-    -------
-    float
-        MRRw in [0, 1].
-    """
     scores = []
     for row in gold:
         retrieved_chunks = _get_top_k_chunks(row.query, top_k=k)
@@ -338,15 +263,6 @@ def mrr_weighted(
 
 
 def load_gold(path: str) -> list[EvalRow]:
-    """
-    Reads a CSV or JSONL evaluation set. Accepted column names (case-insensitive):
-      query   : query / pytanie / question
-      url     : relevant_urls / strona / url / link / źródła / zrodla
-
-    If a URL cell contains multiple URLs separated by '|', only the first
-    one is used, since this evaluation assumes exactly one target per query.
-    """
-
     def normalize_row(raw: dict[str, str | None]) -> dict[str, str]:
         return {k.strip().lower(): (v or "").strip() for k, v in raw.items() if k}
 
@@ -416,7 +332,9 @@ def load_gold(path: str) -> list[EvalRow]:
                     unresolved_queries.append(query)
 
     if unresolved_queries:
-        source_by_query = notebooklm_source_map(input_path.with_name("final_notebooklm_QA.jsonl"))
+        source_by_query = notebooklm_source_map(
+            input_path.with_name("final_notebooklm_QA.jsonl")
+        )
         seen = {row.query for row in rows}
         for query in unresolved_queries:
             target_url = source_by_query.get(query, "")
@@ -429,19 +347,21 @@ def load_gold(path: str) -> list[EvalRow]:
 
 # ── Metric implementations ────────────────────────────────────────────────────
 #
-# Shared parameter conventions across all functions:
-#   rel_scores  -- ordered list of relevance scores for unique retrieved URLs
-#   k           -- rank cut-off
-#   threshold   -- binarisation threshold (default: RELEVANCE_THRESHOLD)
-#   total_rel   -- total number of relevant documents in the gold set
-#                  (always 1 because each query has exactly one target URL)
+# Threshold semantics: a URL is "relevant" iff rel(z, q) > τ  (strict ">")
+# matching the definition  Z_rel^τ(q) = { z ∈ Z : rel(z,q) > τ }.
+
+
+def _is_relevant(score: float, threshold: float = RELEVANCE_THRESHOLD) -> bool:
+    """Strict threshold check: rel(z,q) > τ."""
+    # FIX: was ">=" throughout the codebase; the definition uses strict ">"
+    return score > threshold
 
 
 def hit_at_k(
     rel_scores: list[float], k: int, threshold: float = RELEVANCE_THRESHOLD
 ) -> float:
     """Hit@k: 1 if at least one of the top-k results is relevant, else 0."""
-    return 1.0 if any(s >= threshold for s in rel_scores[:k]) else 0.0
+    return 1.0 if any(_is_relevant(s, threshold) for s in rel_scores[:k]) else 0.0
 
 
 def mrr_at_k(
@@ -449,7 +369,7 @@ def mrr_at_k(
 ) -> float:
     """MRR@k: reciprocal rank of the first relevant result within top-k."""
     for rank, score in enumerate(rel_scores[:k], start=1):
-        if score >= threshold:
+        if _is_relevant(score, threshold):
             return 1.0 / rank
     return 0.0
 
@@ -460,22 +380,32 @@ def recall_at_k(
     total_rel: int,
     threshold: float = RELEVANCE_THRESHOLD,
 ) -> float:
-    """Recall@k: fraction of all relevant documents found within top-k."""
-    if total_rel == 0:
-        return 0.0
-    hits = sum(1 for s in rel_scores[:k] if s >= threshold)
-    return hits / total_rel
+    """
+    Recall@k ≈ Hit@k per the specification.
+
+    The spec states:
+        Recall@k(q) = Hit@k(q)
+    because computing |Z_rel^τ(q)| over all Z is too expensive; instead
+    Z_rel^τ is approximated by restricting it to the top-k retrieved documents.
+    With a single gold URL per query, this equals Hit@k exactly.
+    """
+    # FIX: was hits/total_rel; the spec approx. Recall@k = Hit@k
+    return hit_at_k(rel_scores, k, threshold)
 
 
 def precision_at_k(
     rel_scores: list[float], k: int, threshold: float = RELEVANCE_THRESHOLD
 ) -> float:
-    """Precision@k: fraction of top-k results that are relevant."""
-    topk = rel_scores[:k]
-    if not topk:
-        return 0.0
-    hits = sum(1 for s in topk if s >= threshold)
-    return hits / len(topk)
+    """
+    Precision@k: fraction of the top-k slots that are relevant.
+
+    Definition: |Z_top-k ∩ Z_rel| / |Z_top-k| = hits / k.
+    The denominator is always k (the requested cut-off), not the number of
+    actually retrieved documents — even if fewer than k were returned.
+    """
+    # FIX: was hits/len(topk); definition divides by k (fixed denominator)
+    hits = sum(1 for s in rel_scores[:k] if _is_relevant(s, threshold))
+    return hits / k if k > 0 else 0.0
 
 
 def f_measure_at_k(
@@ -520,18 +450,28 @@ def average_precision_at_k(
     threshold: float = RELEVANCE_THRESHOLD,
 ) -> float:
     """
-    AP@k: average of Precision@i over every position i (1 <= i <= k) where
-    the i-th document is relevant.  Normalised by total_rel so that a
-    system that retrieves the only relevant document at rank 1 scores 1.0.
+    AP@k (modern definition):
+        AP(q) = (1 / |K_rel(q)|) * Σ_{i ∈ K_rel^(k)(q)} Precision@i(q)
+
+    where K_rel^(k)(q) = { i ≤ k : z_i is relevant }.
+    Normalised by the number of relevant documents actually found within
+    the top-k (|K_rel^(k)(q)|), not by total_rel.
+
+    Edge cases:
+    - If no relevant document is found in the top-k, AP@k = 0.
+    - With a single gold URL per query, |K_rel^(k)| is either 0 or 1,
+      so AP@k collapses to Precision@rank_of_first_hit (or 0).
     """
-    if total_rel == 0:
-        return 0.0
+    # FIX: was normalised by total_rel; definition normalises by |K_rel(q)| —
+    # the count of relevant documents retrieved, not the total gold set size.
     ap, hits = 0.0, 0
     for i, score in enumerate(rel_scores[:k], start=1):
-        if score >= threshold:
+        if _is_relevant(score, threshold):
             hits += 1
             ap += hits / i
-    return ap / total_rel
+    if hits == 0:
+        return 0.0
+    return ap / hits  # normalise by |K_rel^(k)(q)|
 
 
 def r_precision(
@@ -540,20 +480,8 @@ def r_precision(
     """R-Precision: Precision@R where R = |gold relevant set|."""
     if total_rel == 0:
         return 0.0
-    hits = sum(1 for s in rel_scores[:total_rel] if s >= threshold)
+    hits = sum(1 for s in rel_scores[:total_rel] if _is_relevant(s, threshold))
     return hits / total_rel
-
-
-# def source_diversity_at_k(retrieved: list[str], k: int) -> float:
-#     """
-#     Fraction of distinct sources among the top-k chunks.
-#     1.0 means every slot comes from a different URL; lower values indicate
-#     that duplicate chunks consume context-window budget unnecessarily.
-#     """
-#     topk = retrieved[:k]
-#     if not topk:
-#         return 0.0
-#     return len(set(topk)) / len(topk)
 
 
 # ── Precision-Recall curve helpers ───────────────────────────────────────────
@@ -564,15 +492,14 @@ def pr_curve_points(
 ) -> tuple[list[float], list[float]]:
     """
     Computes raw (recall, precision) pairs at every rank position.
-    The full ranking is used (not truncated to k) so that the curve can
-    reach recall = 1.0 whenever the relevant document is present.
+    Uses the corrected precision denominator (fixed k) and strict threshold.
     """
     recalls, precisions = [], []
     hits = 0
     for i, score in enumerate(rel_scores, start=1):
-        if score >= threshold:
+        if _is_relevant(score, threshold):
             hits += 1
-        precisions.append(hits / i)
+        precisions.append(hits / i)  # P@i always divides by i (the rank)
         recalls.append(hits / total_rel if total_rel > 0 else 0.0)
     return recalls, precisions
 
@@ -583,9 +510,7 @@ def interpolated_precision_at_levels(
     levels: list[float] | None = None,
 ) -> tuple[list[float], list[float]]:
     """
-    Computes interpolated precision at standard recall levels:
-        p_interp(r) = max_{r' >= r} p(r')
-
+    p_interp(r) = max_{r' >= r} p(r')
     Defaults to the 11-point scale [0.0, 0.1, ..., 1.0].
     """
     if levels is None:
@@ -608,15 +533,13 @@ class MetricsAtK:
     k: int
     hit: float
     mrr: float
-    mrr_weighted: float  # MRRw (Metryka_chatbot.pdf) — depth-aware weighted MRR
+    mrr_weighted: float
     recall: float
     precision: float
     f1: float
     ndcg: float
-    map_score: float  # MAP@k
-    r_prec: float  # R-Precision (rank-cutoff independent)
-    # source_diversity: float
-    # source_redundancy: float
+    map_score: float
+    r_prec: float
 
 
 # ── Evaluation loop ───────────────────────────────────────────────────────────
@@ -627,19 +550,11 @@ def evaluate(
     k: int,
     use_rewrite: bool = False,
 ) -> tuple[MetricsAtK, list[tuple[list[float], list[float]]]]:
-    """
-    Evaluates the retriever on the gold set for a given rank cut-off k.
-
-    Returns:
-        metrics   -- averaged MetricsAtK instance
-        pr_curves -- per-query list of (recall_points, precision_points)
-    """
     hits, mrrs, mrrws, recalls, precisions = [], [], [], [], []
     f1s, ndcgs, aps, r_precs = [], [], [], []
     pr_curves: list[tuple[list[float], list[float]]] = []
 
-    # Each query has exactly one ground-truth URL, so total_rel is always 1.
-    total_rel = 1
+    total_rel = 1  # each query has exactly one gold URL
 
     for index, row in enumerate(gold):
         retrieval_q = _rewrite_query(row.query) if use_rewrite else row.query
@@ -648,12 +563,10 @@ def evaluate(
         raw_urls = [u for u in raw_urls if u]
         unique_urls = unique_preserve_order(raw_urls)
 
-        # Graded relevance scores for existing metrics (hierarchical, symmetric decay)
         rel_scores = [
             hierarchical_relevance(url, row.target_url) for url in unique_urls
         ]
 
-        # MRRw score for this query (depth-aware, asymmetric α/β weights)
         mrrws.append(mrr_weighted_single(unique_urls[:k], row.target_url))
 
         if index < 5:
@@ -708,17 +621,9 @@ def plot_pr_curves(
     all_pr_curves: dict[int, list[tuple[list[float], list[float]]]],
     output_path: str = "pr_curves.png",
 ) -> None:
-    """
-    Produces a two-panel figure:
-      Panel A -- mean interpolated P-R curves for every value of k.
-      Panel B -- raw vs. interpolated mean P-R curve for the largest k,
-                 illustrating the monotone-envelope property of
-                 interpolated precision.
-    """
     recall_levels = [i / 10 for i in range(11)]
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
 
-    # Panel A: interpolated curves for all k values
     ax = axes[0]
     for color, (k, curves) in zip(COLORS, sorted(all_pr_curves.items()), strict=False):
         mean_interp: list[float] = []
@@ -746,12 +651,10 @@ def plot_pr_curves(
     ax.set_ylim([0, 1])
     ax.grid(True, alpha=0.3)
 
-    # Panel B: raw vs. interpolated for the largest k
     ax2 = axes[1]
     max_k = max(all_pr_curves)
     curves = all_pr_curves[max_k]
 
-    # Average raw precision at each recall level (nearest-neighbour lookup)
     mean_raw_pr: dict[float, list[float]] = {r: [] for r in recall_levels}
     for rc, pr in curves:
         for level in recall_levels:
@@ -809,7 +712,6 @@ def plot_metrics_summary(
     all_metrics: list[MetricsAtK],
     output_path: str = "metrics_summary.png",
 ) -> None:
-    """Grouped bar chart comparing all metrics across values of k."""
     metric_labels = ["Hit", "MRR", "MRRw", "Recall", "Precision", "F1", "nDCG", "MAP"]
     attr_names = [
         "hit",
@@ -848,18 +750,10 @@ def plot_metrics_summary(
     print(f"Saved metrics summary plot -> {output_path}")
 
 
-# ── Filtered gold loader (wymagany kontekst = 0) ─────────────────────────────
+# ── Filtered gold loader ──────────────────────────────────────────────────────
 
 
 def load_gold_filtered(path: str) -> list[EvalRow]:
-    """
-    Load from questions_with_links.csv, keeping only rows where
-    "wymagany kontekst" == "0" (exact match after stripping whitespace).
-
-    These are the only questions that have a reliable gold URL — other
-    categories (1, 2, 3, 0*, 0**, ?) either require personal context or
-    lack a definitive source link.
-    """
     rows: list[EvalRow] = []
     with open(path, encoding="utf-8-sig", newline="") as f:
         reader = csv.DictReader(f)
@@ -889,7 +783,6 @@ def load_gold_filtered(path: str) -> list[EvalRow]:
 def _call_chat_api(
     api_url: str, query: str, timeout: int = 60
 ) -> tuple[str, list[str]]:
-    """POST query to /chat and return (answer_text, source_urls)."""
     data = json.dumps({"query": query, "language": "pl"}).encode("utf-8")
     req = Request(
         api_url,
@@ -920,32 +813,6 @@ def evaluate_to_csv(
     check_coverage: bool = False,
     use_rerank: bool = True,
 ) -> dict[str, float]:
-    """
-    Evaluate the chatbot on gold and write two output files:
-      - eval_per_query_<timestamp>.csv  — one row per query with selected metrics
-      - eval_summary_<timestamp>.csv    — single-row averages (also as .json)
-
-    Parameters
-    ----------
-    use_rewrite : bool
-        When True, each query is rewritten via rewrite_query() before retrieval,
-        matching the production /chat pipeline. Has no effect when api_url is given
-        (the /chat endpoint already rewrites queries internally).
-    metric_mode : str
-        "standard" — compute only fixed-k metrics (hit@k, mrr@k, etc.)
-        "adaptive" — compute only adaptive-k metrics (hit_adaptive, mrr_adaptive, etc.)
-        "both" (default) — compute both standard and adaptive metrics
-
-    Columns per query (varies by metric_mode):
-      Standard: query | retrieval_query | chatbot_answer | chatbot_links | gold_link |
-                hit@k | mrr@k | ... | r_prec
-      Adaptive: query | retrieval_query | chatbot_answer | chatbot_links | gold_link |
-                hit_adaptive | mrr_adaptive | ... | r_prec_adaptive
-      Both: all of the above
-
-    Adaptive metrics are computed at k = actual number of retrieved links per query.
-    Standard metrics use fixed k values from the 'ks' parameter.
-    """
     max_k = max(ks)
     total_rel = 1
     per_query_rows: list[dict] = []
@@ -959,7 +826,6 @@ def evaluate_to_csv(
         db_urls = _get_db_urls()
         print(f"  Found {len(db_urls)} unique URLs in DB.\n")
 
-    # Load pre-generated answers and sources if provided
     answers_map: dict[str, tuple[str, list[str]]] = {}
     if answers_csv:
         print(f"Loading pre-generated answers from {answers_csv}...")
@@ -971,7 +837,6 @@ def evaluate_to_csv(
                 links_json = row_dict.get("zwrocone_linki", "[]")
                 try:
                     links_data = json.loads(links_json)
-                    # Extract URLs from ranked list format: [{"rank": 1, "url": "..."}, ...]
                     if isinstance(links_data, list):
                         if links_data and isinstance(links_data[0], dict):
                             links = [item.get("url", "") for item in links_data]
@@ -987,7 +852,6 @@ def evaluate_to_csv(
 
     for idx, row in enumerate(gold):
         if answers_csv and row.query in answers_map:
-            # Use pre-generated answers and sources
             answer, raw_sources = answers_map[row.query]
             retrieval_q = row.query
         elif api_url:
@@ -996,7 +860,7 @@ def evaluate_to_csv(
             except RuntimeError as exc:
                 print(f"  WARNING [{idx + 1}]: {exc}")
                 answer, raw_sources = "", []
-            retrieval_q = row.query  # rewriting happens inside /chat
+            retrieval_q = row.query
         else:
             answer = ""
             retrieval_q = _rewrite_query(row.query) if use_rewrite else row.query
@@ -1029,15 +893,12 @@ def evaluate_to_csv(
             for col, val in metrics_k.items():
                 accum.setdefault(col, []).append(val)
 
-        # Only add standard metrics if mode is not "adaptive-only"
         if metric_mode in ("standard", "both"):
             r_prec_val = r_precision(rel_scores, total_rel)
             csv_row["r_prec"] = r_prec_val
             accum.setdefault("r_prec", []).append(r_prec_val)
 
-        # Only add adaptive metrics if mode is not "standard-only"
         if metric_mode in ("adaptive", "both"):
-            # Adaptive metrics: all metrics computed at k = actual number of retrieved links
             adaptive_k = len(sources)
             csv_row["hit_adaptive"] = hit_at_k(rel_scores, adaptive_k)
             csv_row["mrr_adaptive"] = mrr_at_k(rel_scores, adaptive_k)
@@ -1051,9 +912,7 @@ def evaluate_to_csv(
             csv_row["map_adaptive"] = average_precision_at_k(
                 rel_scores, adaptive_k, total_rel
             )
-            csv_row["r_prec_adaptive"] = r_precision(
-                rel_scores, total_rel
-            )  # k-independent
+            csv_row["r_prec_adaptive"] = r_precision(rel_scores, total_rel)
 
             for col in [
                 "hit_adaptive",
@@ -1068,7 +927,6 @@ def evaluate_to_csv(
             ]:
                 accum.setdefault(col, []).append(csv_row[col])
 
-        # Coverage-corrected hit@k
         if db_urls is not None:
             covered = is_covered(row.target_url, db_urls)
             covered_list.append(covered)
@@ -1084,7 +942,6 @@ def evaluate_to_csv(
 
     ts = datetime.now().strftime("%Y%m%dT%H%M%S")
 
-    # Per-query CSV
     per_query_path = output_dir / f"eval_per_query_{ts}.csv"
     if per_query_rows:
         fieldnames = list(per_query_rows[0].keys())
@@ -1094,10 +951,8 @@ def evaluate_to_csv(
             writer.writerows(per_query_rows)
         print(f"\nSaved per-query results  -> {per_query_path}")
 
-    # Summary (mean of every metric column)
     summary = {col: mean(vals) for col, vals in accum.items() if vals}
 
-    # Coverage-corrected summary
     if db_urls is not None and covered_list:
         summary["coverage_rate"] = sum(covered_list) / len(covered_list)
         for key, vals in covered_hits.items():
@@ -1137,93 +992,27 @@ def main() -> None:
     parser.add_argument(
         "--input-csv",
         default="src/evaluation/data/questions_with_links.csv",
-        help=(
-            "Evaluation CSV. Use questions_with_links.csv (default) to auto-filter "
-            "wymagany kontekst=0, or questions_filtered.csv for the pre-filtered set."
-        ),
     )
-    parser.add_argument(
-        "--api-url",
-        default=None,
-        metavar="URL",
-        help=(
-            "Chatbot /chat endpoint, e.g. http://localhost:8000/chat. "
-            "When given, each query is sent to the full chatbot pipeline and the "
-            "returned answer + sources are used for evaluation. "
-            "When omitted, the retrieval module is called directly (no answer text)."
-        ),
-    )
-    parser.add_argument(
-        "--answers-csv",
-        default=None,
-        metavar="PATH",
-        help=(
-            "Path to CSV with pre-generated answers from generate_chatbot_answers.py. "
-            "Expected columns: pytanie, odpowiedz_wygenerowana, zwrocone_linki. "
-            "When provided, uses stored sources instead of calling API or retrieval."
-        ),
-    )
-    parser.add_argument(
-        "--output-dir",
-        default="src/evaluation/results",
-        help="Directory where CSV / JSON / plot files are saved.",
-    )
-    parser.add_argument(
-        "--ks",
-        default="3,5,7,10",
-        help="Comma-separated rank cut-offs (default: 3,5,7,10).",
-    )
-    parser.add_argument(
-        "--timeout",
-        type=int,
-        default=60,
-        help="HTTP timeout in seconds for /chat calls (only used with --api-url).",
-    )
-    parser.add_argument(
-        "--no-plots",
-        action="store_true",
-        help="Skip P-R curve and bar-chart plots.",
-    )
-    parser.add_argument(
-        "--rewrite",
-        action="store_true",
-        help=(
-            "Rewrite each query via rewrite_query() before retrieval, matching the "
-            "production /chat pipeline. Has no effect when --api-url is given "
-            "(the /chat endpoint already rewrites queries internally). "
-            "Requires OPENROUTER_API_KEY to be set."
-        ),
-    )
+    parser.add_argument("--api-url", default=None, metavar="URL")
+    parser.add_argument("--answers-csv", default=None, metavar="PATH")
+    parser.add_argument("--output-dir", default="src/evaluation/results")
+    parser.add_argument("--ks", default="3,5,7,10")
+    parser.add_argument("--timeout", type=int, default=60)
+    parser.add_argument("--no-plots", action="store_true")
+    parser.add_argument("--rewrite", action="store_true")
     parser.add_argument(
         "--metric-mode",
         choices=["standard", "adaptive", "both"],
         default="both",
-        help="Metrics to compute: 'standard' (fixed k only), 'adaptive' (adaptive k only), or 'both' (default).",
     )
-    parser.add_argument(
-        "--check-coverage",
-        action="store_true",
-        help=(
-            "Compute coverage-corrected Hit@k (cch@k): hit rate restricted to queries "
-            "whose target URL (or direct parent) is present in the Qdrant DB. "
-            "Also adds 'coverage_rate' and 'covered' column to output."
-        ),
-    )
-    parser.add_argument(
-        "--no-rerank",
-        action="store_true",
-        help=(
-            "Skip cross-encoder reranking — return raw RRF results instead. "
-            "Useful for ablation: compare with vs. without reranker."
-        ),
-    )
+    parser.add_argument("--check-coverage", action="store_true")
+    parser.add_argument("--no-rerank", action="store_true")
     args = parser.parse_args()
 
     ks = [int(k.strip()) for k in args.ks.split(",")]
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Load evaluation set — filter for wymagany kontekst=0 when using the full CSV
     input_path = Path(args.input_csv)
     if input_path.name == "questions_with_links.csv":
         gold = load_gold_filtered(args.input_csv)
@@ -1235,13 +1024,10 @@ def main() -> None:
     print(f"Loaded {len(gold)} evaluation queries from {source_label}\n")
 
     if args.rewrite:
-        print(
-            "Query rewriting ENABLED — each query will be rewritten before retrieval.\n"
-        )
+        print("Query rewriting ENABLED\n")
     if args.no_rerank:
-        print("Cross-encoder reranking DISABLED — using raw RRF output.\n")
+        print("Cross-encoder reranking DISABLED\n")
 
-    # CSV-based evaluation (per-query + summary)
     evaluate_to_csv(
         gold,
         ks,
@@ -1255,7 +1041,6 @@ def main() -> None:
         use_rerank=not args.no_rerank,
     )
 
-    # Plots use the legacy evaluate() loop (calls retrieval directly per k)
     if not args.no_plots:
         print("\nGenerating plots (direct retrieval per k)...")
         all_metrics: list[MetricsAtK] = []
