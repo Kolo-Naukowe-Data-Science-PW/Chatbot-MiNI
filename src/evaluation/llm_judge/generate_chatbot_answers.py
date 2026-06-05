@@ -278,7 +278,7 @@ def _read_existing_simple_questions(output_csv: Path) -> set[str]:
 
 def _compact_required_columns(output_format: str) -> list[str]:
     required = ["pytanie"]
-    if output_format in ("simple", "polish", "answer_only", "answers_and_links"):
+    if output_format in ("simple", "polish", "answer_only"):
         required.append("odpowiedz_wygenerowana")
     if output_format in ("polish", "links_only", "answers_and_links"):
         required.append("zwrocone_linki")
@@ -547,14 +547,20 @@ def run(
                                 )
                                 break
 
-                            if answer != ERROR_ANSWER_TEXT:
+                            if answer and answer != ERROR_ANSWER_TEXT:
                                 break
 
                             if attempt < ERROR_ANSWER_RETRIES:
+                                retry_reason = (
+                                    "empty answer"
+                                    if not answer
+                                    else "generator error response"
+                                )
                                 logger.warning(
-                                    "Retrying aid=%s q=%r after generator error response (%d/%d).",
+                                    "Retrying aid=%s q=%r after %s (%d/%d).",
                                     aid,
                                     q["query"][:60],
+                                    retry_reason,
                                     attempt + 1,
                                     ERROR_ANSWER_RETRIES,
                                 )
@@ -562,10 +568,17 @@ def run(
                                     time.sleep(sleep_between)
 
                         if not answer:
-                            logger.warning(
-                                "Empty answer for aid=%s — skipping write.", aid
-                            )
-                            continue
+                            if output_format in ("links_only", "answers_and_links"):
+                                logger.warning(
+                                    "Empty answer for aid=%s after retries; writing row with %d sources for retrieval metrics.",
+                                    aid,
+                                    len(sources),
+                                )
+                            else:
+                                logger.warning(
+                                    "Empty answer for aid=%s — skipping write.", aid
+                                )
+                                continue
                         if answer == ERROR_ANSWER_TEXT:
                             logger.warning(
                                 "Generator returned error response for aid=%s after retries — skipping write.",

@@ -4,33 +4,36 @@ on:
   workflow_dispatch:
     inputs:
       answers_csv:
-        description: 'Answers CSV from generate_chatbot_answers, or live API'
+        description: 'Generated answers CSV'
         required: true
-        default: 'live_api'
+        default: 'src/evaluation/data/stat_test/200/answers_google_gemini-3.5-flash_t0.2_p2_200.csv'
         type: choice
         options:
-          - 'live_api'
+          - 'src/evaluation/data/stat_test/200/answers_google_gemini-3.5-flash_t0.2_p2_200.csv'
+          - 'src/evaluation/data/stat_test/200/answers_openai_gpt-oss-120b_free_t0.2_p2_200.csv'
           - 'src/evaluation/data/answers_anthropic_claude-opus-4.8_t0.2_p2.csv'
           - 'src/evaluation/data/answers_google_gemini-3.5-flash_t0.2_p2.csv'
+          - 'src/evaluation/data/answers_google_gemma-4-31b-it_free_t0.2_p2.csv'
           - 'src/evaluation/data/answers_openai_gpt-4o_t0.2_p2.csv'
           - 'src/evaluation/data/answers_openai_gpt-oss-120b_free_t0.2_p2.csv'
+          - 'src/evaluation/data/answers_openai_gpt-oss-120b_free_t0.2_p2_1324.csv'
           - 'custom'
       custom_answers_csv:
-        description: 'Custom answers CSV path, used only when answers_csv=custom'
+        description: 'Custom generated answers CSV path, used only when answers_csv=custom'
         required: false
         default: ''
-      reference_set:
-        description: 'Reference question set'
+      reference_csv:
+        description: 'Reference CSV/JSONL'
         required: true
-        default: '200_stat_test'
+        default: 'src/evaluation/data/final_notebooklm_QA_stat_test.csv'
         type: choice
         options:
-          - '200_stat_test'
-          - '1428_full'
-          - '1324_reference'
+          - 'src/evaluation/data/final_notebooklm_QA_stat_test.csv'
+          - 'src/evaluation/data/final_notebooklm_QA_reference.csv'
+          - 'src/evaluation/data/final_notebooklm_QA.jsonl'
           - 'custom'
       custom_reference_path:
-        description: 'Custom reference CSV/JSONL path, used only when reference_set=custom'
+        description: 'Custom reference CSV/JSONL path, used only when reference_csv=custom'
         required: false
         default: ''
       metric_mode:
@@ -46,10 +49,6 @@ on:
         description: 'Rank cut-offs (comma-separated, e.g. 3,5,7,10) — ignored for adaptive-only mode'
         required: false
         default: '3,5,7,10'
-      timeout:
-        description: 'HTTP timeout per query in seconds'
-        required: false
-        default: '60'
 
 jobs:
   benchmark:
@@ -73,34 +72,22 @@ jobs:
           ANSWERS_CSV="${{ inputs.answers_csv }}"
           if [ "$ANSWERS_CSV" = "custom" ]; then
             ANSWERS_CSV="${{ inputs.custom_answers_csv }}"
-          elif [ "$ANSWERS_CSV" = "live_api" ]; then
-            ANSWERS_CSV=""
           fi
-          if [ -n "$ANSWERS_CSV" ] && [ ! -f "$ANSWERS_CSV" ]; then
+          if [ -z "$ANSWERS_CSV" ]; then
+            echo "custom_answers_csv must be provided when answers_csv=custom" >&2
+            exit 1
+          fi
+          if [ ! -f "$ANSWERS_CSV" ]; then
             echo "Answers CSV not found: $ANSWERS_CSV" >&2
             exit 1
           fi
 
-          case "${{ inputs.reference_set }}" in
-            1428_full)
-              REFERENCE_PATH="src/evaluation/data/final_notebooklm_QA.jsonl"
-              ;;
-            1324_reference)
-              REFERENCE_PATH="src/evaluation/data/final_notebooklm_QA_reference.csv"
-              ;;
-            200_stat_test)
-              REFERENCE_PATH="src/evaluation/data/final_notebooklm_QA_stat_test.csv"
-              ;;
-            custom)
-              REFERENCE_PATH="${{ inputs.custom_reference_path }}"
-              ;;
-            *)
-              echo "Unsupported reference_set: ${{ inputs.reference_set }}" >&2
-              exit 1
-              ;;
-          esac
+          REFERENCE_PATH="${{ inputs.reference_csv }}"
+          if [ "$REFERENCE_PATH" = "custom" ]; then
+            REFERENCE_PATH="${{ inputs.custom_reference_path }}"
+          fi
           if [ -z "$REFERENCE_PATH" ]; then
-            echo "custom_reference_path must be provided when reference_set=custom" >&2
+            echo "custom_reference_path must be provided when reference_csv=custom" >&2
             exit 1
           fi
           if [ ! -f "$REFERENCE_PATH" ]; then
@@ -114,23 +101,14 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Run benchmark
+        shell: bash
         run: |
-          BENCHMARK_CMD="python -m evaluation.benchmark \
-            --input-csv \"${{ steps.vars.outputs.reference_path }}\" \
-            --output-dir /app/src/evaluation/results \
-            --ks \"${{ inputs.ks }}\" \
-            --metric-mode \"${{ inputs.metric_mode }}\" \
-            --timeout \"${{ inputs.timeout }}\" \
-            --no-plots"
-          
-          if [ -n "${{ steps.vars.outputs.answers_csv }}" ]; then
-            BENCHMARK_CMD="$BENCHMARK_CMD --answers-csv \"${{ steps.vars.outputs.answers_csv }}\""
-          else
-            BENCHMARK_CMD="$BENCHMARK_CMD --api-url http://api:8000/chat"
-          fi
-          
-          docker compose --profile benchmark run --rm --build=never benchmark \
-            micromamba run -n app $BENCHMARK_CMD
+          PYTHONPATH=src python -m evaluation.retrieval_metrics_from_answers \
+            --answers-csv "${{ steps.vars.outputs.answers_csv }}" \
+            --reference-csv "${{ steps.vars.outputs.reference_path }}" \
+            --output-dir src/evaluation/results/retrieval_metrics \
+            --ks "${{ inputs.ks }}" \
+            --metric-mode "${{ inputs.metric_mode }}"
 
       - name: Upload results
         uses: actions/upload-artifact@v4
