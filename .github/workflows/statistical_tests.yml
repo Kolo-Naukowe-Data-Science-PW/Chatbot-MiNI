@@ -1,4 +1,4 @@
-name: Statistical Tests — Compare Two Per-Query Files
+name: Statistical Tests — Text and Retrieval
 
 on:
   workflow_dispatch:
@@ -8,20 +8,30 @@ on:
         required: true
         default: "google_gemini-3.5-flash"
         type: string
-      model_a_csv:
+      model_a_text_csv:
         description: "Model A per-query text metrics CSV"
         required: true
-        default: "src/evaluation/data/stat_test/text_metrics_per_query_google_gemini-3.5-flash_t0.2_p2_1324.csv"
+        default: "src/evaluation/data/stat_test/200/text_metrics_per_query_google_gemini-3.5-flash_t0.2_p2_200.csv"
+        type: string
+      model_a_retrieval_csv:
+        description: "Model A per-query retrieval metrics CSV"
+        required: true
+        default: "src/evaluation/data/stat_test/200/retrieval_metrics_per_query_answers_google_gemini-3.5-flash_t0.2_p2_200.csv"
         type: string
       model_b_name:
         description: "Model B identifier for report"
         required: true
         default: "openai_gpt-oss-120b_free"
         type: string
-      model_b_csv:
+      model_b_text_csv:
         description: "Model B per-query text metrics CSV"
         required: true
-        default: "src/evaluation/data/stat_test/text_metrics_per_query_openai_gpt-oss-120b_free_t0.2_p2_1324.csv"
+        default: "src/evaluation/data/stat_test/200/text_metrics_per_query_openai_gpt-oss-120b_free_t0.2_p2_200.csv"
+        type: string
+      model_b_retrieval_csv:
+        description: "Model B per-query retrieval metrics CSV"
+        required: true
+        default: "src/evaluation/data/stat_test/200/retrieval_metrics_per_query_answers_openai_gpt-oss-120b_free_t0.2_p2_200.csv"
         type: string
       test:
         description: "Statistical test(s) to perform"
@@ -34,6 +44,7 @@ on:
           - "permutation"
           - "gamma"
           - "kappa"
+          - "ttest"
       alpha:
         description: "Significance level"
         required: true
@@ -56,7 +67,7 @@ on:
 
 jobs:
   statistical_comparison:
-    name: Compare Model A vs Model B — all metrics
+    name: Compare Model A vs Model B
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -69,20 +80,20 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [ ! -f "${{ inputs.model_a_csv }}" ]; then
-            echo "ERROR: Model A CSV not found: ${{ inputs.model_a_csv }}" >&2
-            exit 1
-          fi
+          for path in \
+            "${{ inputs.model_a_text_csv }}" \
+            "${{ inputs.model_a_retrieval_csv }}" \
+            "${{ inputs.model_b_text_csv }}" \
+            "${{ inputs.model_b_retrieval_csv }}"
+          do
+            if [ ! -f "$path" ]; then
+              echo "ERROR: CSV not found: $path" >&2
+              exit 1
+            fi
+            echo "Found CSV: $path"
+          done
 
-          if [ ! -f "${{ inputs.model_b_csv }}" ]; then
-            echo "ERROR: Model B CSV not found: ${{ inputs.model_b_csv }}" >&2
-            exit 1
-          fi
-
-          echo "Model A CSV: ${{ inputs.model_a_csv }}"
-          echo "Model B CSV: ${{ inputs.model_b_csv }}"
-
-      - name: Run statistical comparison (all metrics)
+      - name: Run statistical comparison
         shell: bash
         run: |
           set -euo pipefail
@@ -95,17 +106,11 @@ jobs:
             bash -c '
               pip install --no-cache-dir -q numpy scipy && \
               python /app/src/evaluation/statistical_comparison.py \
-                --model_a_csv "/app/${{ inputs.model_a_csv }}" \
-                --model_b_csv "/app/${{ inputs.model_b_csv }}" \
-                --metric \
-                  bleu bleu_1 bleu_2 bleu_3 bleu_4 \
-                  rouge_1_r rouge_1_p rouge_1_f \
-                  rouge_2_r rouge_2_p rouge_2_f \
-                  rouge_l_r rouge_l_p rouge_l_f \
-                  rouge_w_r rouge_w_p rouge_w_f \
-                  rouge_s_r rouge_s_p rouge_s_f \
-                  meteor \
-                  bertscore_precision_base bertscore_recall_base bertscore_f1_base \
+                --model_a_text_csv "/app/${{ inputs.model_a_text_csv }}" \
+                --model_a_retrieval_csv "/app/${{ inputs.model_a_retrieval_csv }}" \
+                --model_b_text_csv "/app/${{ inputs.model_b_text_csv }}" \
+                --model_b_retrieval_csv "/app/${{ inputs.model_b_retrieval_csv }}" \
+                --metric all \
                 --test "${{ inputs.test }}" \
                 --alpha "${{ inputs.alpha }}" \
                 --alternative "${{ inputs.alternative }}" \
@@ -128,13 +133,15 @@ jobs:
           ## Models
           | | Name | CSV |
           |---|---|---|
-          | **A** | ${{ inputs.model_a_name }} | \`${{ inputs.model_a_csv }}\` |
-          | **B** | ${{ inputs.model_b_name }} | \`${{ inputs.model_b_csv }}\` |
+          | **A text** | ${{ inputs.model_a_name }} | \`${{ inputs.model_a_text_csv }}\` |
+          | **A retrieval** | ${{ inputs.model_a_name }} | \`${{ inputs.model_a_retrieval_csv }}\` |
+          | **B text** | ${{ inputs.model_b_name }} | \`${{ inputs.model_b_text_csv }}\` |
+          | **B retrieval** | ${{ inputs.model_b_name }} | \`${{ inputs.model_b_retrieval_csv }}\` |
 
           ## Configuration
           | Parameter | Value |
           |---|---|
-          | Metrics | all (24 columns) |
+          | Metrics | all common supported text and retrieval metrics |
           | Test(s) | ${{ inputs.test }} |
           | Significance level α | ${{ inputs.alpha }} |
           | Alternative hypothesis | ${{ inputs.alternative }} |

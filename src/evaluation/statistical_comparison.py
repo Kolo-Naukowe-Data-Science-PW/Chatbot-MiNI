@@ -8,12 +8,18 @@ Implements:
   4. Paired Permutation Test     — non-parametric permutation test
   5. Paired T-Test               — parametric comparison of paired metrics
 
-CSV format (per query):
+Text CSV format (per query):
   pytanie, odpowiedz_wygenerowana, odpowiedz_ref,
   bleu, bleu_1, bleu_2, bleu_3, bleu_4,
   rouge_1_r/p/f, rouge_2_r/p/f, rouge_l_r/p/f, rouge_w_r/p/f, rouge_s_r/p/f,
   meteor,
   bertscore_precision_base, bertscore_recall_base, bertscore_f1_base
+
+Retrieval CSV format (per query):
+  pytanie, ..., retrieved_count, missing_answer,
+  hit_adaptive, mrr_adaptive, mrrw_adaptive, recall_adaptive,
+  precision_adaptive, f1_adaptive, ndcg_adaptive, map_adaptive,
+  r_prec_adaptive
 
 Usage:
     python statistical_comparison.py \\
@@ -25,9 +31,11 @@ Usage:
 
     # Run all tests on multiple metrics:
     python statistical_comparison.py \\
-        --model_a_csv eval_A.csv \\
-        --model_b_csv eval_B.csv \\
-        --metric bleu meteor bertscore_f1_base rouge_1_f rouge_l_f \\
+        --model_a_text_csv text_A.csv \\
+        --model_a_retrieval_csv retrieval_A.csv \\
+        --model_b_text_csv text_B.csv \\
+        --model_b_retrieval_csv retrieval_B.csv \\
+        --metric all \\
         --test all
 """
 
@@ -48,7 +56,7 @@ from scipy import stats
 # ---------------------------------------------------------------------------
 # Known metric columns in the CSV
 # ---------------------------------------------------------------------------
-AVAILABLE_METRICS: list[str] = [
+TEXT_METRICS: list[str] = [
     "bleu", "bleu_1", "bleu_2", "bleu_3", "bleu_4",
     "rouge_1_r", "rouge_1_p", "rouge_1_f",
     "rouge_2_r", "rouge_2_p", "rouge_2_f",
@@ -58,6 +66,22 @@ AVAILABLE_METRICS: list[str] = [
     "meteor",
     "bertscore_precision_base", "bertscore_recall_base", "bertscore_f1_base",
 ]
+
+RETRIEVAL_METRICS: list[str] = [
+    "retrieved_count",
+    "missing_answer",
+    "hit_adaptive",
+    "mrr_adaptive",
+    "mrrw_adaptive",
+    "recall_adaptive",
+    "precision_adaptive",
+    "f1_adaptive",
+    "ndcg_adaptive",
+    "map_adaptive",
+    "r_prec_adaptive",
+]
+
+AVAILABLE_METRICS: list[str] = TEXT_METRICS + RETRIEVAL_METRICS
 
 ALL_TESTS = ["wilcoxon", "permutation", "gamma", "kappa", "ttest"]
 
@@ -165,6 +189,61 @@ def load_metrics(csv_path: Path, metric_cols: list[str]) -> dict[str, list[float
                     result[col].append(float("nan"))
 
     return result
+
+
+def load_metrics_from_sources(
+    csv_paths: list[Path],
+    metric_cols: list[str],
+) -> dict[str, list[float]]:
+    """
+    Load metric columns from one or more per-query CSVs.
+
+    This lets a single model be represented by both text-metric and
+    retrieval-metric files. Each requested metric must be present in exactly
+    one of the provided files for that model.
+    """
+    result: dict[str, list[float]] = {}
+    owners: dict[str, Path] = {}
+
+    for csv_path in csv_paths:
+        with open(csv_path, encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            fieldnames = set(reader.fieldnames or [])
+            present_metrics = [col for col in metric_cols if col in fieldnames]
+
+            for col in present_metrics:
+                if col in owners:
+                    raise ValueError(
+                        f"Metric '{col}' appears in both {owners[col]} and {csv_path}."
+                    )
+                owners[col] = csv_path
+                result[col] = []
+
+            for row in reader:
+                for col in present_metrics:
+                    raw = row.get(col, "").strip()
+                    try:
+                        result[col].append(float(raw))
+                    except (ValueError, TypeError):
+                        result[col].append(float("nan"))
+
+    missing = [col for col in metric_cols if col not in result]
+    if missing:
+        joined = ", ".join(missing)
+        paths = ", ".join(str(p) for p in csv_paths)
+        raise ValueError(f"Missing metric columns in provided CSVs ({paths}): {joined}")
+
+    return result
+
+
+def available_metric_columns(csv_paths: list[Path]) -> set[str]:
+    """Return supported metric columns present in the provided CSV files."""
+    columns: set[str] = set()
+    for csv_path in csv_paths:
+        with open(csv_path, encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            columns.update((reader.fieldnames or []))
+    return columns & set(AVAILABLE_METRICS)
 
 
 def _scores_to_ordinal_ranks(scores: np.ndarray, n_bins: int = 5) -> np.ndarray:
@@ -495,8 +574,8 @@ def paired_ttest(
 # ---------------------------------------------------------------------------
 
 def compare_models(
-    csv_A: Path,
-    csv_B: Path,
+    csv_A: Path | list[Path],
+    csv_B: Path | list[Path],
     metrics: list[str],
     tests: list[str],
     alpha: float = 0.05,
@@ -509,8 +588,10 @@ def compare_models(
     """
     Load both CSVs and run selected tests for each metric.
     """
-    data_A = load_metrics(csv_A, metrics)
-    data_B = load_metrics(csv_B, metrics)
+    csvs_A = [csv_A] if isinstance(csv_A, Path) else csv_A
+    csvs_B = [csv_B] if isinstance(csv_B, Path) else csv_B
+    data_A = load_metrics_from_sources(csvs_A, metrics)
+    data_B = load_metrics_from_sources(csvs_B, metrics)
 
     results: list[MetricComparison] = []
 
@@ -725,19 +806,27 @@ def _result_to_dict(c: MetricComparison) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Statistical comparison of two model variants (text metrics).",
+        description="Statistical comparison of two model variants.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
-    parser.add_argument("--model_a_csv", type=Path, required=True,
-                        help="Per-query CSV for model A.")
-    parser.add_argument("--model_b_csv", type=Path, required=True,
-                        help="Per-query CSV for model B.")
+    parser.add_argument("--model_a_csv", type=Path,
+                        help="Per-query CSV for model A (backward-compatible alias for text metrics).")
+    parser.add_argument("--model_b_csv", type=Path,
+                        help="Per-query CSV for model B (backward-compatible alias for text metrics).")
+    parser.add_argument("--model_a_text_csv", type=Path,
+                        help="Per-query text-metrics CSV for model A.")
+    parser.add_argument("--model_b_text_csv", type=Path,
+                        help="Per-query text-metrics CSV for model B.")
+    parser.add_argument("--model_a_retrieval_csv", type=Path,
+                        help="Per-query retrieval-metrics CSV for model A.")
+    parser.add_argument("--model_b_retrieval_csv", type=Path,
+                        help="Per-query retrieval-metrics CSV for model B.")
     parser.add_argument(
         "--metric", nargs="+", default=["bertscore_f1_base"],
         metavar="METRIC",
         help=(
-            "One or more metric column names to compare. "
+            "One or more metric column names to compare, or 'all'. "
             f"Available: {', '.join(AVAILABLE_METRICS)}. "
             "Default: bertscore_f1_base."
         ),
@@ -774,15 +863,56 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.list_metrics:
-        print("Available metrics:")
-        for m in AVAILABLE_METRICS:
+        print("Available text metrics:")
+        for m in TEXT_METRICS:
+            print(f"  {m}")
+        print("\nAvailable retrieval metrics:")
+        for m in RETRIEVAL_METRICS:
             print(f"  {m}")
         sys.exit(0)
 
-    for label, path in [("Model A", args.model_a_csv), ("Model B", args.model_b_csv)]:
-        if not path.exists():
-            print(f"ERROR: {label} CSV not found: {path}", file=sys.stderr)
-            sys.exit(1)
+    model_a_csvs = [
+        p for p in [args.model_a_text_csv or args.model_a_csv, args.model_a_retrieval_csv]
+        if p is not None
+    ]
+    model_b_csvs = [
+        p for p in [args.model_b_text_csv or args.model_b_csv, args.model_b_retrieval_csv]
+        if p is not None
+    ]
+
+    if not model_a_csvs:
+        print("ERROR: Provide --model_a_csv or --model_a_text_csv/--model_a_retrieval_csv.", file=sys.stderr)
+        sys.exit(1)
+    if not model_b_csvs:
+        print("ERROR: Provide --model_b_csv or --model_b_text_csv/--model_b_retrieval_csv.", file=sys.stderr)
+        sys.exit(1)
+
+    for label, paths in [("Model A", model_a_csvs), ("Model B", model_b_csvs)]:
+        for path in paths:
+            if not path.exists():
+                print(f"ERROR: {label} CSV not found: {path}", file=sys.stderr)
+                sys.exit(1)
+
+    if "all" in args.metric:
+        model_a_metrics = available_metric_columns(model_a_csvs)
+        model_b_metrics = available_metric_columns(model_b_csvs)
+        common_metrics = model_a_metrics & model_b_metrics
+        metrics = [m for m in AVAILABLE_METRICS if m in common_metrics]
+    else:
+        metrics = list(dict.fromkeys(args.metric))
+
+    if not metrics:
+        print("ERROR: No common supported metric columns found in the provided CSVs.", file=sys.stderr)
+        sys.exit(1)
+
+    unknown_metrics = [m for m in metrics if m not in AVAILABLE_METRICS]
+    if unknown_metrics:
+        print(
+            f"ERROR: Unknown metric(s): {', '.join(unknown_metrics)}. "
+            "Use --list_metrics to see supported names.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     tests = ALL_TESTS if "all" in args.test else list(dict.fromkeys(args.test))
 
@@ -792,9 +922,9 @@ def main() -> None:
     print("=" * 72)
     print("  STATISTICAL COMPARISON — Model A vs Model B")
     print("=" * 72)
-    print(f"  Model A:       {args.model_a_csv}")
-    print(f"  Model B:       {args.model_b_csv}")
-    print(f"  Metrics:       {', '.join(args.metric)}")
+    print(f"  Model A CSVs:  {', '.join(str(p) for p in model_a_csvs)}")
+    print(f"  Model B CSVs:  {', '.join(str(p) for p in model_b_csvs)}")
+    print(f"  Metrics:       {', '.join(metrics)}")
     print(f"  Tests:         {', '.join(tests)}")
     print(f"  α (alpha):     {args.alpha}")
     print(f"  Alternative:   {args.alternative}")
@@ -803,9 +933,9 @@ def main() -> None:
     print("=" * 72)
 
     comparisons = compare_models(
-        csv_A=args.model_a_csv,
-        csv_B=args.model_b_csv,
-        metrics=args.metric,
+        csv_A=model_a_csvs,
+        csv_B=model_b_csvs,
+        metrics=metrics,
         tests=tests,
         alpha=args.alpha,
         alternative=args.alternative,
@@ -822,9 +952,9 @@ def main() -> None:
     out_json = args.output_dir / f"stats_{ts}.json"
     payload = {
         "timestamp": ts,
-        "model_a_csv": str(args.model_a_csv),
-        "model_b_csv": str(args.model_b_csv),
-        "metrics": args.metric,
+        "model_a_csvs": [str(p) for p in model_a_csvs],
+        "model_b_csvs": [str(p) for p in model_b_csvs],
+        "metrics": metrics,
         "tests": tests,
         "alpha": args.alpha,
         "alternative": args.alternative,
