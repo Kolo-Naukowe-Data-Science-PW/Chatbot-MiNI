@@ -101,10 +101,23 @@ jobs:
 
       - name: Copy .env file
         env:
-          SELECTED_OPENROUTER_API_KEY: ${{ inputs.openrouter_api_key == 'OPENROUTER_API_KEY_1' && secrets.OPENROUTER_API_KEY_1 || secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           OPENROUTER_API_KEY_1: ${{ secrets.OPENROUTER_API_KEY_1 }}
         run: |
           set -euo pipefail
+          case "${{ inputs.openrouter_api_key }}" in
+            OPENROUTER_API_KEY)
+              SELECTED_OPENROUTER_API_KEY="$OPENROUTER_API_KEY"
+              ;;
+            OPENROUTER_API_KEY_1)
+              SELECTED_OPENROUTER_API_KEY="$OPENROUTER_API_KEY_1"
+              ;;
+            *)
+              echo "Unsupported OpenRouter API key secret: ${{ inputs.openrouter_api_key }}" >&2
+              exit 1
+              ;;
+          esac
+
           if [ -z "$SELECTED_OPENROUTER_API_KEY" ]; then
             echo "Selected OpenRouter API key secret is empty or missing: ${{ inputs.openrouter_api_key }}" >&2
             exit 1
@@ -193,7 +206,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Ensure API container is running
-        run: docker compose up -d api
+        run: docker compose up -d --force-recreate api
 
       - name: Wait for API
         shell: bash
@@ -206,10 +219,15 @@ jobs:
               exit 0
             fi
             echo "Waiting for API... ($i/60)"
+            if [ $((i % 10)) -eq 0 ]; then
+              docker compose ps api
+              docker compose logs --tail=40 api
+            fi
             sleep 2
           done
           echo "API did not become ready in time" >&2
           docker compose ps
+          docker compose logs --tail=200 api
           exit 1
 
       - name: Copy generator and NotebookLM questions into API container
