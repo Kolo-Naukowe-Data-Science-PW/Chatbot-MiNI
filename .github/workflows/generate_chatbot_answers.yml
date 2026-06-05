@@ -18,6 +18,9 @@ on:
           - "openai/gpt-oss-120b:free"
           - "google/gemma-4-31b-it:free"
           - "openai/gpt-oss-20b:free"
+          - "nvidia/nemotron-3-super-120b-a12b:free"
+          - "qwen/qwen3-coder:free"
+          - "meta-llama/llama-3.3-70b-instruct:free"
           - "custom"
       custom_model:
         description: "Custom model id, used only when model=custom"
