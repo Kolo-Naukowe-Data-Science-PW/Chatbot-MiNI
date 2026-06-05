@@ -29,7 +29,7 @@ on:
         default: "5"
   push:
     paths:
-      - "src/evaluation/scripts/link_agreement.py"
+      - "src/evaluation/link_agreement_tests.py"
       - ".github/workflows/link_agreement.yml"
 
 jobs:
@@ -53,7 +53,7 @@ jobs:
 
       - name: Run link agreement script
         run: |
-          python src/evaluation/scripts/link_agreement.py \
+          python src/evaluation/link_agreement_tests.py \
             "${{ github.event.inputs.model_a_csv || 'src/evaluation/results/model_a_answers.csv' }}" \
             "${{ github.event.inputs.model_b_csv || 'src/evaluation/results/model_b_answers.csv' }}" \
             --model-a-name "${{ github.event.inputs.model_a_name || 'Model A' }}" \
