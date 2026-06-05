@@ -1,0 +1,76 @@
+name: Link Agreement Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      model_a_csv:
+        description: "Path to model A generated answers CSV"
+        required: true
+        default: "src/evaluation/results/model_a_answers.csv"
+      model_b_csv:
+        description: "Path to model B generated answers CSV"
+        required: true
+        default: "src/evaluation/results/model_b_answers.csv"
+      model_a_name:
+        description: "Display name for model A"
+        required: false
+        default: "Model A"
+      model_b_name:
+        description: "Display name for model B"
+        required: false
+        default: "Model B"
+      gold_csv:
+        description: "Path to gold links CSV (optional)"
+        required: false
+        default: "src/evaluation/data/questions_with_links.csv"
+      top_k:
+        description: "Top-k links to compare"
+        required: false
+        default: "5"
+  push:
+    paths:
+      - "src/evaluation/scripts/link_agreement.py"
+      - ".github/workflows/link_agreement.yml"
+
+jobs:
+  link-agreement:
+    name: Goodman-Kruskal Gamma & Kappa
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # No third-party dependencies required — stdlib only.
+
+      - name: Run link agreement script
+        run: |
+          python src/evaluation/scripts/link_agreement.py \
+            "${{ github.event.inputs.model_a_csv || 'src/evaluation/results/model_a_answers.csv' }}" \
+            "${{ github.event.inputs.model_b_csv || 'src/evaluation/results/model_b_answers.csv' }}" \
+            --model-a-name "${{ github.event.inputs.model_a_name || 'Model A' }}" \
+            --model-b-name "${{ github.event.inputs.model_b_name || 'Model B' }}" \
+            --gold-csv "${{ github.event.inputs.gold_csv || 'src/evaluation/data/questions_with_links.csv' }}" \
+            --top-k "${{ github.event.inputs.top_k || '5' }}" \
+            --output-dir src/evaluation/results/link_agreement
+
+      - name: Upload results as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: link-agreement-results
+          path: src/evaluation/results/link_agreement/
+          retention-days: 30
+
+      - name: Print report summary
+        run: |
+          echo "### Link Agreement Results" >> $GITHUB_STEP_SUMMARY
+          REPORT=$(ls src/evaluation/results/link_agreement/link_agreement_report_*.md | tail -1)
+          cat "$REPORT" >> $GITHUB_STEP_SUMMARY
