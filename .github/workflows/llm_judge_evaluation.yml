@@ -1,0 +1,92 @@
+name: LLM-as-Judge Batch Evaluation
+
+on:
+  workflow_dispatch:
+    inputs:
+      model_a_csv:
+        description: "Path to Model A answers CSV"
+        required: true
+        default: "src/evaluation/data/stat_test/200/answers_google_gemini-3.5-flash_t0.2_p2_200.csv"
+      model_b_csv:
+        description: "Path to Model B answers CSV"
+        required: true
+        default: "src/evaluation/data/stat_test/200/answers_openai_gpt-oss-120b_free_t0.2_p2_200.csv"
+      judge_model:
+        description: "Judge model ID (via OpenRouter)"
+        required: true
+        default: "anthropic/claude-opus-4.7"
+      language:
+        description: "Language (pl, en, etc)"
+        required: true
+        default: "pl"
+      limit:
+        description: "Limit number of questions (leave empty for all)"
+        required: false
+        default: ""
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas numpy scipy python-dotenv openai
+          # Install project in development mode
+          pip install -e .
+
+      - name: Set up environment
+        run: |
+          echo "OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}" >> $GITHUB_ENV
+
+      - name: Verify API key
+        run: |
+          if [ -z "${{ secrets.OPENROUTER_API_KEY }}" ]; then
+            echo "ERROR: OPENROUTER_API_KEY secret is not set!"
+            exit 1
+          fi
+          echo "✓ OPENROUTER_API_KEY is set"
+
+      - name: Run LLM-as-Judge evaluation
+        run: |
+          python -m src.evaluation.llm_judge.batch_evaluator \
+            --model-a "${{ github.event.inputs.model_a_csv }}" \
+            --model-b "${{ github.event.inputs.model_b_csv }}" \
+            --judge-model "${{ github.event.inputs.judge_model }}" \
+            --language "${{ github.event.inputs.language }}" \
+            --output-dir ./llm_judge_output \
+            ${{ github.event.inputs.limit != '' && format('--limit {0}', github.event.inputs.limit) || '' }}
+
+      - name: List output files
+        run: ls -lh ./llm_judge_output/
+
+      - name: Upload results as artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: llm-judge-results
+          path: ./llm_judge_output/
+          retention-days: 30
+
+      - name: Generate summary
+        run: |
+          echo "## LLM-as-Judge Evaluation Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✓ Evaluation completed successfully!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Output Files" >> $GITHUB_STEP_SUMMARY
+          echo "- **llm_judge_metrics_model_a.csv** - Model A metrics (usefulness, accuracy, conciseness per query)" >> $GITHUB_STEP_SUMMARY
+          echo "- **llm_judge_metrics_model_b.csv** - Model B metrics (usefulness, accuracy, conciseness per query)" >> $GITHUB_STEP_SUMMARY
+          echo "- **llm_judge_results.json** - Detailed results with better_variant, judge reasons, and summary statistics" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Download artifacts or use CSV files with \`statistical_comparison.py\`" >> $GITHUB_STEP_SUMMARY
