@@ -23,10 +23,6 @@ on:
         description: "Path to gold links CSV (optional)"
         required: false
         default: "src/evaluation/data/final_notebooklm_QA_stat_test.csv"
-      top_k:
-        description: "Top-k links to compare"
-        required: false
-        default: "5"
   push:
     paths:
       - "src/evaluation/link_agreement_tests.py"
@@ -59,7 +55,6 @@ jobs:
             --model-a-name "${{ github.event.inputs.model_a_name || 'Model A' }}" \
             --model-b-name "${{ github.event.inputs.model_b_name || 'Model B' }}" \
             --gold-csv "${{ github.event.inputs.gold_csv || 'src/evaluation/data/final_notebooklm_QA_stat_test.csv' }}" \
-            --top-k "${{ github.event.inputs.top_k || '5' }}" \
             --output-dir src/evaluation/results/link_agreement
 
       - name: Upload results as artifact

@@ -8,14 +8,19 @@ Goodman-Kruskal gamma is computed from the rank of the gold/correct link in
 each model's returned list. If gold links are not present in the answer CSVs,
 pass --gold-csv (default: src/evaluation/data/questions_with_links.csv).
 
-Kappa is computed over top-k returned-link sets for each query:
-    U(q) = Z_A_topk(q) ∪ Z_B_topk(q)
+This implementation uses an *adaptive* k: instead of truncating to a fixed
+top-k, each model's full list of (unique) returned links for the query is
+used as Z_A(q) / Z_B(q). k is therefore however many links the model
+actually returned for that particular query.
+
+Kappa is computed over the adaptive returned-link sets for each query:
+    U(q) = Z_A(q) ∪ Z_B(q)
 
 Contingency table for kappa (per the paper):
 
-             Z^(A)_top-k    U \\ Z^(A)_top-k
-Z^(B)_top-k       a                b
-U\\Z^(B)_top-k    c                d
+             Z^(A)         U \\ Z^(A)
+Z^(B)             a                b
+U\\Z^(B)          c                d
 
   a = |Z_A ∩ Z_B|          (both retrieved it)
   b = |Z_B \\ Z_A|          (B retrieved, A did not)
@@ -237,26 +242,37 @@ def gold_for_query(
 # Rank helper
 # ---------------------------------------------------------------------------
 
-def rank_of_gold_link(links: list[str], gold_links: list[str], top_k: int) -> int:
-    """Return 1-based rank of the first gold link found in `links[:top_k]`.
+# Sentinel rank used for "gold link not found among the returned links".
+# A model's adaptive k (its number of returned links) varies per query, so a
+# fixed top_k+1 cannot be used as the "not retrieved" marker. INF_RANK is
+# chosen large enough to never collide with a real (adaptive) rank.
+INF_RANK = 1_000_000
 
-    Returns top_k + 1 (treated as ∞) if none of the gold links appears
-    within the first top_k positions.
+
+def rank_of_gold_link(links: list[str], gold_links: list[str]) -> int:
+    """Return 1-based rank of the first gold link found in `links`.
+
+    The full (adaptive) list of unique returned links is searched -- k is
+    however many links were actually returned for this query, not a fixed
+    top-k cutoff.
+
+    Returns INF_RANK (treated as ∞) if none of the gold links appears
+    among the returned links.
     """
     gold_ids = set(unique_source_ids(gold_links))
     if not gold_ids:
-        return top_k + 1
-    for rank, sid in enumerate(unique_source_ids(links)[:top_k], start=1):
+        return INF_RANK
+    for rank, sid in enumerate(unique_source_ids(links), start=1):
         if sid in gold_ids:
             return rank
-    return top_k + 1
+    return INF_RANK
 
 
 # ---------------------------------------------------------------------------
 # Goodman-Kruskal gamma
 # ---------------------------------------------------------------------------
 
-def compute_gamma(rank_pairs: list[tuple[int, int]], top_k: int) -> GammaResult:
+def compute_gamma(rank_pairs: list[tuple[int, int]]) -> GammaResult:
     """Compute Goodman-Kruskal gamma from (rank_A, rank_B) pairs.
 
     gamma = (C - D) / (C + D)
@@ -285,14 +301,18 @@ def compute_gamma(rank_pairs: list[tuple[int, int]], top_k: int) -> GammaResult:
     gamma = None if denom == 0 else (concordant - discordant) / denom
 
     n = len(rank_pairs)
-    classes = [str(i) for i in range(1, top_k + 1)] + ["inf"]
+    max_rank = max(
+        (r for pair in rank_pairs for r in pair if r != INF_RANK),
+        default=0,
+    )
+    classes = [str(i) for i in range(1, max_rank + 1)] + ["inf"]
     counts: dict[str, dict[str, int]] = {
         row_label: {col_label: 0 for col_label in classes}
         for row_label in classes
     }
     for a_rank, b_rank in rank_pairs:
-        a_label = "inf" if a_rank > top_k else str(a_rank)
-        b_label = "inf" if b_rank > top_k else str(b_rank)
+        a_label = "inf" if a_rank == INF_RANK else str(a_rank)
+        b_label = "inf" if b_rank == INF_RANK else str(b_rank)
         counts[a_label][b_label] += 1
 
     return GammaResult(
@@ -317,7 +337,8 @@ def kappa_for_sets(
 ) -> tuple[float, float, float, dict[str, int]]:
     """Compute the kappa coefficient of agreement for a single query.
 
-    U(q) = Z_A_top-k ∪ Z_B_top-k
+    U(q) = Z_A(q) ∪ Z_B(q), where Z_A(q)/Z_B(q) are the (adaptive) sets of
+    unique links returned by model A/B for this query.
 
     Contingency table (rows = Z_B membership, cols = Z_A membership):
 
@@ -447,21 +468,12 @@ def main() -> None:
         ),
     )
     parser.add_argument(
-        "--top-k",
-        type=int,
-        default=5,
-        help="Top-k returned links to consider (default: 5).",
-    )
-    parser.add_argument(
         "--output-dir",
         type=Path,
         default=Path("src/evaluation/results/link_agreement"),
     )
     args = parser.parse_args()
 
-    if args.top_k < 1:
-        print("ERROR: --top-k must be >= 1", file=sys.stderr)
-        sys.exit(1)
     for label, path in [("Model A", args.model_a_csv), ("Model B", args.model_b_csv)]:
         if not path.exists():
             print(f"ERROR: {label} CSV not found: {path}", file=sys.stderr)
@@ -487,22 +499,23 @@ def main() -> None:
         if gold_links:
             queries_with_gold += 1
 
-        # Ranks for Goodman-Kruskal gamma
-        rank_a = rank_of_gold_link(row_a.links, gold_links, args.top_k)
-        rank_b = rank_of_gold_link(row_b.links, gold_links, args.top_k)
+        # Ranks for Goodman-Kruskal gamma (adaptive k = number of links
+        # actually returned per model for this query)
+        rank_a = rank_of_gold_link(row_a.links, gold_links)
+        rank_b = rank_of_gold_link(row_b.links, gold_links)
         rank_pairs.append((rank_a, rank_b))
 
-        # Top-k source-id sets for kappa: U(q) = Z_A_topk ∪ Z_B_topk
-        set_a = set(unique_source_ids(row_a.links)[: args.top_k])
-        set_b = set(unique_source_ids(row_b.links)[: args.top_k])
+        # Adaptive source-id sets for kappa: U(q) = Z_A(q) ∪ Z_B(q)
+        set_a = set(unique_source_ids(row_a.links))
+        set_b = set(unique_source_ids(row_b.links))
         relevant = set(unique_source_ids(gold_links))
 
         kappa_val, p_o, p_e, counts = kappa_for_sets(set_a, set_b)
         per_query.append(
             {
                 "pytanie": query,
-                "rank_A": "inf" if rank_a > args.top_k else rank_a,
-                "rank_B": "inf" if rank_b > args.top_k else rank_b,
+                "rank_A": "inf" if rank_a == INF_RANK else rank_a,
+                "rank_B": "inf" if rank_b == INF_RANK else rank_b,
                 "gold_links_count": len(relevant),
                 "links_A_count": len(set_a),
                 "links_B_count": len(set_b),
@@ -513,7 +526,7 @@ def main() -> None:
             }
         )
 
-    gamma_result = compute_gamma(rank_pairs, args.top_k)
+    gamma_result = compute_gamma(rank_pairs)
     kappa_result = compute_kappa(per_query)
 
     ts = datetime.now().strftime("%Y%m%dT%H%M%S")
@@ -529,7 +542,7 @@ def main() -> None:
         "model_a_csv": str(args.model_a_csv),
         "model_b_csv": str(args.model_b_csv),
         "gold_csv": str(args.gold_csv) if args.gold_csv else None,
-        "top_k": args.top_k,
+        "k": "adaptive (per-query, per-model count of returned links)",
         "n_model_a_queries": len(answers_a),
         "n_model_b_queries": len(answers_b),
         "n_common_queries": len(common_queries),
@@ -561,7 +574,7 @@ def main() -> None:
         f"Model A: `{args.model_a_name}` (`{args.model_a_csv}`)",
         f"Model B: `{args.model_b_name}` (`{args.model_b_csv}`)",
         f"Gold CSV: `{args.gold_csv}`",
-        f"Top-k: `{args.top_k}`",
+        "k: adaptive (per-query, per-model number of returned links)",
         "",
         "## Dataset",
         "",
