@@ -18,7 +18,7 @@ This folder contains two main evaluation paths:
 | `benchmark_v1.py` | Legacy simpler benchmark. |
 | `benchmark_hier.py` | Older/alternate hierarchical benchmark utilities. |
 | `text_metrics.py` | Text-generation metrics: BLEU, ROUGE-{1,2,L,W,S}, METEOR, and BERTScore variants. Compares generated answers with reference answers. |
-| `statistical_comparison.py` | CLI for comparing two benchmark CSVs with one selected statistical test: Wilcoxon, Goodman-Kruskal gamma, or kappa mode. Kappa helper exists, but the CLI integration is currently incomplete. |
+| `statistical_comparison.py` | CLI for comparing two benchmark CSVs with multiple statistical tests: Wilcoxon, Goodman-Kruskal gamma, Kappa, permutation test, and paired t-test. Supports text metrics, retrieval metrics, and LLM Judge metrics (usefulness, accuracy, conciseness). |
 | `generate_golden_answers.py` | Generates `golden_answers.csv` with OpenRouter supermodels, without RAG context. |
 | `prepare_data.py` | Legacy CSV loading helpers used by older tests/pipeline pieces. |
 | `metrics.py` | Legacy placeholder class. `bert_score()` and `perplexity()` are currently not implemented here; use `text_metrics.py` for active text metrics. |
@@ -208,16 +208,26 @@ Outputs:
 
 ## Statistical Comparison
 
-`statistical_comparison.py` compares two `eval_per_query_<ts>.csv` files for one selected metric at a time.
+`statistical_comparison.py` compares two per-query CSV files using multiple statistical tests.
 
 ```bash
 export PYTHONPATH=src
 
+# Compare text/retrieval metrics
 python -m evaluation.statistical_comparison \
-  --model_a_csv src/evaluation/results/model_a/eval_per_query_20260515T100000.csv \
-  --model_b_csv src/evaluation/results/model_b/eval_per_query_20260515T110000.csv \
-  --metric mrr@10 \
-  --test-type wilcoxon \
+  --model_a_text_csv src/evaluation/results/model_a/text_metrics.csv \
+  --model_b_text_csv src/evaluation/results/model_b/text_metrics.csv \
+  --metric bertscore_f1_base \
+  --test wilcoxon permutation ttest \
+  --alpha 0.05 \
+  --output_dir src/evaluation/data
+
+# Compare LLM Judge metrics
+python -m evaluation.statistical_comparison \
+  --model_a_llm_judge_csv src/evaluation/data/stat_test/200/llm_judge_metrics_gemini.csv \
+  --model_b_llm_judge_csv src/evaluation/data/stat_test/200/llm_judge_metrics_gpt.csv \
+  --metric all \
+  --test all \
   --alpha 0.05 \
   --output_dir src/evaluation/data
 ```
@@ -226,25 +236,43 @@ python -m evaluation.statistical_comparison \
 
 | Flag | Default | Description |
 |---|---|---|
-| `--model_a_csv` | required | Path to model A per-query CSV. |
-| `--model_b_csv` | required | Path to model B per-query CSV. |
-| `--metric` | `mrr@10` | Single metric column to compare, e.g. `hit@10`, `mrr@10`, `ndcg@10`, `hit_adaptive`, `mrr_adaptive`. |
-| `--test-type` | `wilcoxon` | One of `wilcoxon`, `gamma`, `kappa`. |
-| `--alpha` | `0.05` | Significance level for Wilcoxon. |
-| `--use-adaptive-k` | off | Converts fixed-k metric names like `mrr@10` to `mrr_adaptive`. The adaptive column must already exist in the CSV. |
-| `--output_dir` | `src/evaluation/data` | Output directory. Note the underscore in the flag name. |
+| `--model_a_csv` | - | Per-query CSV for model A (text metrics) — backward-compatible alias. |
+| `--model_b_csv` | - | Per-query CSV for model B (text metrics) — backward-compatible alias. |
+| `--model_a_text_csv` | - | Per-query text-metrics CSV for model A. |
+| `--model_b_text_csv` | - | Per-query text-metrics CSV for model B. |
+| `--model_a_retrieval_csv` | - | Per-query retrieval-metrics CSV for model A. |
+| `--model_b_retrieval_csv` | - | Per-query retrieval-metrics CSV for model B. |
+| `--model_a_llm_judge_csv` | - | Per-query LLM Judge metrics CSV for model A (usefulness, accuracy, conciseness). |
+| `--model_b_llm_judge_csv` | - | Per-query LLM Judge metrics CSV for model B. |
+| `--metric` | `bertscore_f1_base` | Metric column(s) to compare: single name, multiple space-separated, or `all` for auto-detection. |
+| `--test` | `wilcoxon` | Test(s) to run: `wilcoxon`, `permutation`, `gamma`, `kappa`, `ttest`, or `all`. |
+| `--alpha` | `0.05` | Significance level. |
+| `--alternative` | `two-sided` | Hypothesis type: `two-sided`, `greater`, or `less`. |
+| `--n_permutations` | `10000` | Number of permutations for permutation test. |
+| `--output_dir` | `results` | Output directory for JSON results. |
+| `--list_metrics` | - | List all available metric names and exit. |
 
-Important current limitations:
+### Available Metrics
 
-- The CLI accepts one metric via `--metric`, not a comma-separated `--metrics` list.
-- `--use-adaptive-k` does not recompute adaptive metrics from old CSVs; it expects adaptive columns already written by `benchmark.py`.
-- The kappa helper is implemented, but `test-type=kappa` is not fully wired into the CSV comparison flow yet.
+### Available Metrics
+
+**Text Metrics:** `bleu`, `bleu_1`, `bleu_2`, `bleu_3`, `bleu_4`, `rouge_1_r`, `rouge_1_p`, `rouge_1_f`, `rouge_2_r`, `rouge_2_p`, `rouge_2_f`, `rouge_l_r`, `rouge_l_p`, `rouge_l_f`, `rouge_w_r`, `rouge_w_p`, `rouge_w_f`, `rouge_s_r`, `rouge_s_p`, `rouge_s_f`, `meteor`, `bertscore_precision_base`, `bertscore_recall_base`, `bertscore_f1_base`
+
+**Retrieval Metrics:** `retrieved_count`, `missing_answer`, `hit_adaptive`, `mrr_adaptive`, `mrrw_adaptive`, `recall_adaptive`, `precision_adaptive`, `f1_adaptive`, `ndcg_adaptive`, `map_adaptive`, `r_prec_adaptive`
+
+**LLM Judge Metrics:** `usefulness`, `accuracy`, `conciseness` (1-5 scale ratings from LLM judge evaluation)
+
+### Available Tests
+
+- **Wilcoxon Signed-Rank Test** — Non-parametric comparison of paired metrics; detects shifts in median difference.
+- **Permutation Test** — Non-parametric resampling-based test; no assumptions about distribution.
+- **Goodman-Kruskal γ (gamma)** — Ordinal association coefficient; measures concordance between two ranking systems.
+- **Kappa Coefficient** — Agreement between two categorical/ordinal assignments; reports mean κ across queries.
+- **Paired T-Test** — Parametric test assuming normal distribution of differences; includes confidence intervals.
+
+Use `--test all` to run all five tests; use `--list_metrics` to see available metrics.
 
 Output:
-
-`statistical_comparison_<ts>.json`, plus a human-readable terminal summary.
-
-For mathematical background, see `STATISTICAL_TESTS.md`, `STATISTICAL_TESTING.md`, and `STATISTICAL_QUICK_REFERENCE.py`. Treat command examples in the Markdown notes as background material if they differ from the CLI above.
 
 ## LLM-as-a-Judge A/B Evaluation
 
@@ -387,3 +415,41 @@ Notes:
 
 - BERTScore tests may require model downloads and can be skipped if optional dependencies are unavailable.
 - `tests/evaluation_test.py` is legacy and expects `metrics.py` to implement `bert_score()`. That class is currently a placeholder, so prefer the newer tests around `text_metrics.py`.
+
+## GitHub Actions Workflows
+
+Automated evaluation workflows are available in `.github/workflows/`:
+
+### `llm_judge_evaluation.yml`
+
+Batch evaluation of pre-computed model answers using LLM-as-a-Judge. Generates per-query LLM Judge metrics (usefulness, accuracy, conciseness) for comparison with `statistical_comparison.py`.
+
+**Inputs:**
+- `model_a_csv` — Path to Model A answers CSV
+- `model_b_csv` — Path to Model B answers CSV
+- `judge_model` — LLM Judge model (via OpenRouter, e.g., `anthropic/claude-opus-4.7`)
+- `language` — Language for evaluation (e.g., `pl`, `en`)
+- `limit` — Optional: limit number of questions (empty = all)
+
+**Outputs:**
+- `llm_judge_metrics_model_a.csv` — Per-query usefulness/accuracy/conciseness scores for Model A
+- `llm_judge_metrics_model_b.csv` — Per-query usefulness/accuracy/conciseness scores for Model B
+- `llm_judge_results.json` — Detailed results with pairwise comparison, per-answer reasons, and summary statistics
+
+**Setup:**
+Add secret `OPENROUTER_API_KEY` to GitHub repository settings.
+
+### `statistical_comparison_llm_judge.yml`
+
+Runs statistical comparison tests on LLM Judge metrics from two models.
+
+**Inputs:**
+- `model_a_llm_judge_csv` — Path to Model A LLM Judge metrics CSV
+- `model_b_llm_judge_csv` — Path to Model B LLM Judge metrics CSV
+- `metrics` — Space-separated metric names or `all`: `usefulness`, `accuracy`, `conciseness`
+- `tests` — Space-separated test names or `all`: `wilcoxon`, `permutation`, `gamma`, `kappa`, `ttest`
+- `alpha` — Significance level (default: 0.05)
+- `alternative` — Hypothesis type (default: `two-sided`)
+
+**Outputs:**
+- `stats_<timestamp>.json` — JSON with all test results, p-values, and effect sizes

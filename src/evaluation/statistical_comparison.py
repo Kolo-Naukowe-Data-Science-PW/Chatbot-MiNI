@@ -1,12 +1,22 @@
 """
 Statistical tests for comparing two model variants (model A vs model B).
 
+Aligns with thesis definitions (Chapter: Statistical testing and pairwise comparison).
+
 Implements:
-  1. Wilcoxon Signed-Rank Test  — non-parametric comparison of paired metrics
-  2. Goodman–Kruskal γ (gamma)  — ordinal association between score-based ranks
-  3. Kappa Coefficient           — stability / agreement between two score vectors
-  4. Paired Permutation Test     — non-parametric permutation test
-  5. Paired T-Test               — parametric comparison of paired metrics
+  1. Paired T-Test               — parametric comparison (assumes normality)
+  2. Paired Permutation Test     — non-parametric resampling-based test
+  3. Wilcoxon Signed-Rank Test  — non-parametric comparison using rank information
+  4. Goodman–Kruskal γ (gamma)  — ordinal association between score-based ranks
+  5. Kappa Coefficient           — stability / agreement between two score vectors
+
+For each query q ∈ Q, paired difference is computed as:
+  d_q = score_A(q) - score_B(q)
+
+Hypotheses (same for all tests):
+  - Two-tailed: H0: E[d_q] = 0,  H1: E[d_q] ≠ 0
+  - Upper-tailed (greater): H0: E[d_q] ≤ 0,  H1: E[d_q] > 0  (Model A > Model B)
+  - Lower-tailed (less): H0: E[d_q] ≥ 0,  H1: E[d_q] < 0  (Model A < Model B)
 
 Text CSV format (per query):
   pytanie, odpowiedz_wygenerowana, odpowiedz_ref,
@@ -81,7 +91,13 @@ RETRIEVAL_METRICS: list[str] = [
     "r_prec_adaptive",
 ]
 
-AVAILABLE_METRICS: list[str] = TEXT_METRICS + RETRIEVAL_METRICS
+LLM_JUDGE_METRICS: list[str] = [
+    "usefulness",
+    "accuracy",
+    "conciseness",
+]
+
+AVAILABLE_METRICS: list[str] = TEXT_METRICS + RETRIEVAL_METRICS + LLM_JUDGE_METRICS
 
 ALL_TESTS = ["wilcoxon", "permutation", "gamma", "kappa", "ttest"]
 
@@ -308,15 +324,24 @@ def wilcoxon_signed_rank_test(
     alternative: str = "two-sided",
 ) -> WilcoxonResult:
     r"""
-    Wilcoxon Signed-Rank Test.
+    Wilcoxon Signed-Rank Test (non-parametric).
 
-      1. d_q = score_A(q) − score_B(q)
-      2. Remove zeros; n = |{q : d_q ≠ 0}|
-      3. Rank |d_q| with tie-averaging
-      4. W⁺ = Σ_{d_q>0} rank(|d_q|),  W⁻ = Σ_{d_q<0} rank(|d_q|)
-      5. W  = min(W⁺, W⁻)
-      6. n < 25  → exact distribution (scipy)
-         n ≥ 25  → normal approximation
+    Per thesis definition (Chapter Statistical testing):
+    1. d_q = score_A(q) − score_B(q)
+    2. Remove zeros; n = |{q : d_q ≠ 0}|
+    3. Rank |d_q| with tie-averaging
+    4. W⁺ = Σ_{d_q>0} rank(|d_q|),  W⁻ = Σ_{d_q<0} rank(|d_q|)
+
+    For n < 25: use exact critical value tables (via scipy)
+    For n ≥ 25: normal approximation using:
+      E[W⁺] = n(n+1)/4
+      Var(W⁺) = n(n+1)(2n+1)/24
+      Z = (W* - E[W⁺]) / √(Var(W⁺))
+
+    where W* is selected based on alternative hypothesis:
+    - Two-tailed: W* = min(W⁺, W⁻)  → two-tailed p-value
+    - Upper-tailed (greater, A > B): W* = W⁺  → P(Z ≥ z_obs)
+    - Lower-tailed (less, A < B): W* = W⁻  → P(Z ≤ z_obs)
     """
     nonzero = differences[differences != 0]
     n = len(nonzero)
@@ -343,23 +368,39 @@ def wilcoxon_signed_rank_test(
             n=n, W_plus=W_plus, W_minus=W_minus, W=W,
             expected_W=None, variance_W=None, z_score=None,
             p_value=float(p_value), is_significant=float(p_value) <= alpha,
-            method=f"Exact (n={n} < 25)",
+            method=f"Exact distribution (n={n} < 25)",
         )
 
-    E_W   = n * (n + 1) / 4.0
-    Var_W = n * (n + 1) * (2 * n + 1) / 24.0
-    z     = (W - E_W) / np.sqrt(Var_W)
+    # For n >= 25: normal approximation
+    E_W_plus = n * (n + 1) / 4.0
+    Var_W_plus = n * (n + 1) * (2 * n + 1) / 24.0
 
+    # Select W* based on alternative hypothesis
     if alternative == "two-sided":
+        W_star = W  # min(W+, W-)
+    elif alternative == "greater":
+        # H1: E[d] > 0 => Model A > Model B => most d_q > 0 => W+ large
+        W_star = W_plus
+    else:  # "less"
+        # H1: E[d] < 0 => Model A < Model B => most d_q < 0 => W- large
+        W_star = W_minus
+
+    z = (W_star - E_W_plus) / np.sqrt(Var_W_plus)
+
+    # Compute p-value based on alternative hypothesis
+    if alternative == "two-sided":
+        # p = P(|Z| >= |z_obs|)
         p_value = 2.0 * (1.0 - stats.norm.cdf(abs(z)))
     elif alternative == "greater":
+        # p = P(Z >= z_obs) = 1 - CDF(z)
         p_value = 1.0 - stats.norm.cdf(z)
-    else:
+    else:  # "less"
+        # p = P(Z <= z_obs) = CDF(z)
         p_value = stats.norm.cdf(z)
 
     return WilcoxonResult(
         n=n, W_plus=W_plus, W_minus=W_minus, W=W,
-        expected_W=E_W, variance_W=Var_W, z_score=float(z),
+        expected_W=E_W_plus, variance_W=Var_W_plus, z_score=float(z),
         p_value=float(p_value), is_significant=float(p_value) <= alpha,
         method=f"Normal approximation (n={n} ≥ 25)",
     )
@@ -374,11 +415,29 @@ def paired_permutation_test(
     alternative: str = "two-sided",
 ) -> PermutationResult:
     r"""
-    Paired Permutation Test.
+    Paired Permutation Test (non-parametric).
 
-      1. d_q = score_A(q) − score_B(q);  obs = mean(d)
-      2. For b = 1…B: randomly flip signs of d_q, compute mean(d')
-      3. p = |{perm stats ≥ |obs|}| / B  (two-sided)
+    Per thesis definition (Chapter Statistical testing, Section Permutation test):
+
+    For paired samples score_A and score_B, test whether E[d_q] differs from 0,
+    where d_q = score_A(q) - score_B(q).
+
+    Hypotheses:
+    - Two-tailed: H0: E[d_q] = 0,  H1: E[d_q] ≠ 0
+    - Upper-tailed: H0: E[d_q] = 0,  H1: E[d_q] > 0  (Model A > Model B)
+    - Lower-tailed: H0: E[d_q] = 0,  H1: E[d_q] < 0  (Model A < Model B)
+
+    Test statistic: T_0 = (1/n) Σ d_q = mean(d)
+
+    For each of N permutations, draw random signs c_{q,j} ∈ {-1, +1} with
+    equal probability and compute: T_j = (1/n) Σ c_{q,j} * d_q
+
+    P-value computation:
+    - Two-tailed: ASL = (# permutations where |T_j| ≥ |T_0|) / N
+    - Upper-tailed: ASL = (# permutations where T_j ≥ T_0) / N
+    - Lower-tailed: ASL = (# permutations where T_j ≤ T_0) / N
+
+    Reject H0 if ASL ≤ α.
     """
     rng = np.random.default_rng(seed)
     diffs = scores_A - scores_B
@@ -390,10 +449,13 @@ def paired_permutation_test(
     ])
 
     if alternative == "two-sided":
+        # p = (# |T_j| >= |T_0|) / N
         p_value = float(np.mean(np.abs(perm_stats) >= abs(obs)))
     elif alternative == "greater":
+        # p = (# T_j >= T_0) / N
         p_value = float(np.mean(perm_stats >= obs))
-    else:
+    else:  # "less"
+        # p = (# T_j <= T_0) / N
         p_value = float(np.mean(perm_stats <= obs))
 
     return PermutationResult(
@@ -510,23 +572,30 @@ def paired_ttest(
     r"""
     Paired T-Test (parametric).
 
-    Assumes the differences d_q = score_A(q) − score_B(q) are approximately
-    normally distributed (central limit theorem typically holds for n ≥ 30).
+    Per thesis definition (Chapter Statistical testing, Section Pairwise t-test):
 
-      H0: mean(d) = 0
-      t  = mean(d) / (std(d) / sqrt(n))
-      df = n − 1
+    Hypotheses:
+    - Two-tailed: H0: E[d_q] = 0,  H1: E[d_q] ≠ 0
+    - Upper-tailed: H0: E[d_q] = 0,  H1: E[d_q] > 0  (Model A > Model B)
+    - Lower-tailed: H0: E[d_q] = 0,  H1: E[d_q] < 0  (Model A < Model B)
+
+    For each query q, paired difference:
+      d_q = score_A(q) - score_B(q)
+
+    Test statistic:
+      t = (mean_diff * √n) / s_d
+      where mean_diff = (1/n) Σ d_q,  s_d² = (1/(n-1)) Σ(d_q - mean_diff)²
+
+    Degrees of freedom: df = n - 1
+
+    Validity assumption: differences should be approximately normally distributed
+    (typically satisfied for n ≥ 30 by Central Limit Theorem). Non-normality is
+    acceptable if skewness and excess kurtosis remain in [-3, 3].
 
     Also reports:
-      - Standard deviation of each model's scores independently (std_A, std_B)
-      - Standard deviation of the paired differences (std_diff)
-      - 95% confidence interval for the mean difference
-
-    Parameters
-    ----------
-    scores_A, scores_B : aligned per-query score arrays (same length, no NaNs)
-    alpha              : significance level (default 0.05)
-    alternative        : "two-sided" | "greater" | "less"
+      - Standard deviation of each model's scores (std_A, std_B)
+      - Standard deviation of paired differences (std_diff)
+      - 95% confidence interval for mean difference
     """
     n = len(scores_A)
     diffs = scores_A - scores_B
@@ -538,6 +607,7 @@ def paired_ttest(
     mean_diff = float(np.mean(diffs))
     std_diff  = float(np.std(diffs, ddof=1))
 
+    # t = (mean_diff * sqrt(n)) / s_d
     se = std_diff / np.sqrt(n)
     t_stat = mean_diff / se if se > 0 else 0.0
     df = n - 1
@@ -822,6 +892,10 @@ def main() -> None:
                         help="Per-query retrieval-metrics CSV for model A.")
     parser.add_argument("--model_b_retrieval_csv", type=Path,
                         help="Per-query retrieval-metrics CSV for model B.")
+    parser.add_argument("--model_a_llm_judge_csv", type=Path,
+                        help="Per-query LLM judge metrics CSV for model A (usefulness, accuracy, conciseness).")
+    parser.add_argument("--model_b_llm_judge_csv", type=Path,
+                        help="Per-query LLM judge metrics CSV for model B (usefulness, accuracy, conciseness).")
     parser.add_argument(
         "--metric", nargs="+", default=["bertscore_f1_base"],
         metavar="METRIC",
@@ -869,14 +943,17 @@ def main() -> None:
         print("\nAvailable retrieval metrics:")
         for m in RETRIEVAL_METRICS:
             print(f"  {m}")
+        print("\nAvailable LLM Judge metrics:")
+        for m in LLM_JUDGE_METRICS:
+            print(f"  {m}")
         sys.exit(0)
 
     model_a_csvs = [
-        p for p in [args.model_a_text_csv or args.model_a_csv, args.model_a_retrieval_csv]
+        p for p in [args.model_a_text_csv or args.model_a_csv, args.model_a_retrieval_csv, args.model_a_llm_judge_csv]
         if p is not None
     ]
     model_b_csvs = [
-        p for p in [args.model_b_text_csv or args.model_b_csv, args.model_b_retrieval_csv]
+        p for p in [args.model_b_text_csv or args.model_b_csv, args.model_b_retrieval_csv, args.model_b_llm_judge_csv]
         if p is not None
     ]
 
