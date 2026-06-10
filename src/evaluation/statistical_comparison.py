@@ -8,7 +8,6 @@ Implements:
   2. Paired Permutation Test     — non-parametric resampling-based test
   3. Wilcoxon Signed-Rank Test  — non-parametric comparison using rank information
   4. Goodman–Kruskal γ (gamma)  — ordinal association between score-based ranks
-  5. Kappa Coefficient           — stability / agreement between two score vectors
 
 For each query q ∈ Q, paired difference is computed as:
   d_q = score_A(q) - score_B(q)
@@ -36,7 +35,7 @@ Usage:
         --model_a_csv eval_A.csv \\
         --model_b_csv eval_B.csv \\
         --metric bertscore_f1_base \\
-        --test wilcoxon permutation gamma kappa ttest \\
+        --test wilcoxon permutation gamma ttest \\
         --output_dir results/
 
     # Run all tests on multiple metrics:
@@ -99,7 +98,7 @@ LLM_JUDGE_METRICS: list[str] = [
 
 AVAILABLE_METRICS: list[str] = TEXT_METRICS + RETRIEVAL_METRICS + LLM_JUDGE_METRICS
 
-ALL_TESTS = ["wilcoxon", "permutation", "gamma", "kappa", "ttest"]
+ALL_TESTS = ["wilcoxon", "permutation", "gamma", "ttest"]
 
 
 # ---------------------------------------------------------------------------
@@ -140,14 +139,6 @@ class GammaResult:
 
 
 @dataclass
-class KappaResult:
-    n_queries: int
-    kappa_mean: float
-    kappa_min: float
-    kappa_max: float
-
-
-@dataclass
 class TTestResult:
     n: int
     mean_A: float
@@ -176,7 +167,6 @@ class MetricComparison:
     wilcoxon: WilcoxonResult | None = None
     permutation: PermutationResult | None = None
     gamma: GammaResult | None = None
-    kappa: KappaResult | None = None
     ttest: TTestResult | None = None
 
 
@@ -335,8 +325,13 @@ def wilcoxon_signed_rank_test(
     For n < 25: use exact critical value tables (via scipy)
     For n ≥ 25: normal approximation using:
       E[W⁺] = n(n+1)/4
-      Var(W⁺) = n(n+1)(2n+1)/24
+      Var(W⁺) = (1/24) n(n+1)(2n+1) - (1/48) Σ_j t_j(t_j+1)(t_j-1)
       Z = (W* - E[W⁺]) / √(Var(W⁺))
+
+    The variance term is corrected for ties in |d_q|: ranks of tied absolute
+    differences are averaged, t_j is the number of values tied at the j-th of
+    the m unique assigned ranks (Lehmann 1975). When there are no ties, m = n
+    and t_j = 1 for all j, reducing to Var(W⁺) = n(n+1)(2n+1)/24.
 
     where W* is selected based on alternative hypothesis:
     - Two-tailed: W* = min(W⁺, W⁻)  → two-tailed p-value
@@ -373,7 +368,13 @@ def wilcoxon_signed_rank_test(
 
     # For n >= 25: normal approximation
     E_W_plus = n * (n + 1) / 4.0
-    Var_W_plus = n * (n + 1) * (2 * n + 1) / 24.0
+
+    # Tie-corrected variance (Lehmann 1975):
+    #   V = (1/24) n(n+1)(2n+1) - (1/48) sum_j t_j(t_j+1)(t_j-1)
+    # where t_j is the size of the j-th group of tied |d_q| values.
+    _, tie_counts = np.unique(abs_diffs, return_counts=True)
+    tie_correction = float(np.sum(tie_counts * (tie_counts + 1) * (tie_counts - 1)))
+    Var_W_plus = (n * (n + 1) * (2 * n + 1)) / 24.0 - tie_correction / 48.0
 
     # Select W* based on alternative hypothesis
     if alternative == "two-sided":
@@ -516,53 +517,6 @@ def goodman_kruskal_gamma(
     )
 
 
-def kappa_coefficient(
-    scores_A: np.ndarray,
-    scores_B: np.ndarray,
-    n_bins: int = 5,
-) -> KappaResult:
-    r"""
-    Kappa Coefficient of Agreement.
-
-      For each query q, treat the ordinal-rank assignments by model A and B
-      as two "retrievers" over a shared universe of rank classes {1,…,n_bins+1}.
-
-      κ = (p_o − p_e) / (1 − p_e)
-
-    The mean κ across all queries is reported.
-    """
-    ranks_A = _scores_to_ordinal_ranks(scores_A, n_bins)
-    ranks_B = _scores_to_ordinal_ranks(scores_B, n_bins)
-
-    universe_size = n_bins + 1
-    kappas: list[float] = []
-
-    for rA, rB in zip(ranks_A, ranks_B):
-        agree = int(rA == rB)
-        a = agree
-        b = 1 - agree
-        c = 1 - agree
-        d = universe_size - a - b - c
-
-        p_o = (a + d) / universe_size
-        p_A     = (a + b) / universe_size
-        p_B     = (a + c) / universe_size
-        p_not_A = (c + d) / universe_size
-        p_not_B = (b + d) / universe_size
-
-        p_e = p_A * p_B + p_not_A * p_not_B
-
-        kappa = (p_o - p_e) / (1.0 - p_e) if p_e < 1.0 else (1.0 if p_o == 1.0 else 0.0)
-        kappas.append(kappa)
-
-    return KappaResult(
-        n_queries=len(kappas),
-        kappa_mean=float(np.mean(kappas)),
-        kappa_min=float(np.min(kappas)),
-        kappa_max=float(np.max(kappas)),
-    )
-
-
 def paired_ttest(
     scores_A: np.ndarray,
     scores_B: np.ndarray,
@@ -653,7 +607,6 @@ def compare_models(
     n_permutations: int = 10_000,
     perm_seed: int = 67,
     gamma_bins: int = 5,
-    kappa_bins: int = 5,
 ) -> list[MetricComparison]:
     """
     Load both CSVs and run selected tests for each metric.
@@ -701,9 +654,6 @@ def compare_models(
 
         if "gamma" in tests:
             comparison.gamma = goodman_kruskal_gamma(arr_A, arr_B, gamma_bins)
-
-        if "kappa" in tests:
-            comparison.kappa = kappa_coefficient(arr_A, arr_B, kappa_bins)
 
         if "ttest" in tests:
             comparison.ttest = paired_ttest(arr_A, arr_B, alpha, alternative)
@@ -778,16 +728,6 @@ def format_comparison(c: MetricComparison, alpha: float = 0.05) -> str:
             f"  Interpretation:  {g.interpretation}",
         ]
 
-    if c.kappa:
-        k = c.kappa
-        lines += [
-            "",
-            "  ── Kappa Coefficient ──────────────────────────────────────────",
-            f"  κ mean:          {k.kappa_mean:.4f}",
-            f"  κ min:           {k.kappa_min:.4f}",
-            f"  κ max:           {k.kappa_max:.4f}",
-        ]
-
     if c.ttest:
         t = c.ttest
         lines += [
@@ -841,13 +781,6 @@ def _result_to_dict(c: MetricComparison) -> dict:
         d["gamma"] = {
             "n_pairs": g.n_pairs, "C": g.C, "D": g.D,
             "gamma": g.gamma, "interpretation": g.interpretation,
-        }
-    if c.kappa:
-        k = c.kappa
-        d["kappa"] = {
-            "kappa_mean": k.kappa_mean,
-            "kappa_min": k.kappa_min,
-            "kappa_max": k.kappa_max,
         }
     if c.ttest:
         t = c.ttest
@@ -927,8 +860,6 @@ def main() -> None:
                         help="Random seed for permutation test (default 67).")
     parser.add_argument("--gamma_bins", type=int, default=5,
                         help="Number of ordinal bins for gamma (default 5).")
-    parser.add_argument("--kappa_bins", type=int, default=5,
-                        help="Number of ordinal bins for kappa (default 5).")
     parser.add_argument("--output_dir", type=Path, default=Path("results"),
                         help="Directory for JSON output (default: results/).")
     parser.add_argument("--list_metrics", action="store_true",
@@ -1019,7 +950,6 @@ def main() -> None:
         n_permutations=args.n_permutations,
         perm_seed=args.perm_seed,
         gamma_bins=args.gamma_bins,
-        kappa_bins=args.kappa_bins,
     )
 
     for c in comparisons:

@@ -9,9 +9,7 @@ each model's returned list. If gold links are not present in the answer CSVs,
 pass --gold-csv (default: src/evaluation/data/questions_with_links.csv).
 
 Kappa is computed over top-k returned-link sets for each query:
-    U(q) = relevant(q) ∪ Z_A_topk(q) ∪ Z_B_topk(q)
-If no gold links are available for a query, U(q) falls back to the union of
-the two returned-link sets.
+    U(q) = Z_A_topk(q) ∪ Z_B_topk(q)
 
 Contingency table for kappa (per the paper):
 
@@ -22,7 +20,13 @@ U\\Z^(B)_top-k    c                d
   a = |Z_A ∩ Z_B|          (both retrieved it)
   b = |Z_B \\ Z_A|          (B retrieved, A did not)
   c = |Z_A \\ Z_B|          (A retrieved, B did not)
-  d = |U \\ (Z_A ∪ Z_B)|   (neither retrieved)
+  d = |U \\ (Z_A ∪ Z_B)| = 0
+
+Since U is defined as the union of the two retrieved sets, d is always 0,
+which gives:
+    p_o = a / |U|
+    p_e = (a^2 + a*c + a*b + 2*b*c) / |U|^2
+    kappa = (p_o - p_e) / (1 - p_e)
 """
 
 from __future__ import annotations
@@ -310,9 +314,10 @@ def compute_gamma(rank_pairs: list[tuple[int, int]], top_k: int) -> GammaResult:
 def kappa_for_sets(
     set_a: set[str],
     set_b: set[str],
-    relevant: set[str],
 ) -> tuple[float, float, float, dict[str, int]]:
-    """Compute Cohen's kappa for a single query.
+    """Compute the kappa coefficient of agreement for a single query.
+
+    U(q) = Z_A_top-k ∪ Z_B_top-k
 
     Contingency table (rows = Z_B membership, cols = Z_A membership):
 
@@ -323,36 +328,29 @@ def kappa_for_sets(
       a = |Z_A ∩ Z_B|          (both retrieved)
       b = |Z_B \\ Z_A|          (B retrieved, A did not)
       c = |Z_A \\ Z_B|          (A retrieved, B did not)
-      d = |U \\ (Z_A ∪ Z_B)|   (neither retrieved)
+      d = |U \\ (Z_A ∪ Z_B)| = 0   (since U is defined as Z_A ∪ Z_B)
 
-    p_o = (a + d) / |U|
-    p_e = [(a+c)/|U| · (a+b)/|U|] + [(b+d)/|U| · (c+d)/|U|]
+    p_o = (a + d) / |U| = a / |U|
+    p_e = (a^2 + a*c + a*b + 2*b*c) / |U|^2
     κ   = (p_o - p_e) / (1 - p_e)
     """
-    universe = relevant | set_a | set_b
-    if not universe:
+    universe = set_a | set_b
+    n = len(universe)
+    if n == 0:
         counts = {"a": 0, "b": 0, "c": 0, "d": 0, "universe": 0}
         return 1.0, 1.0, 1.0, counts
 
     # Cell counts — IMPORTANT: b and c follow the paper's table orientation.
-    a = len(set_a & set_b)            # both retrieved
-    b = len(set_b - set_a)            # B retrieved, A did not  (row Z_B, col U\Z_A)
-    c = len(set_a - set_b)            # A retrieved, B did not  (row U\Z_B, col Z_A)
-    d = len(universe - (set_a | set_b))  # neither retrieved
+    a = len(set_a & set_b)   # both retrieved
+    b = len(set_b - set_a)   # B retrieved, A did not  (row Z_B, col U\Z_A)
+    c = len(set_a - set_b)   # A retrieved, B did not  (row U\Z_B, col Z_A)
+    d = 0                    # neither retrieved -- always 0 since U = Z_A ∪ Z_B
 
-    n = len(universe)  # = a + b + c + d
+    p_o = a / n
+    p_e = (a * a + a * c + a * b + 2 * b * c) / (n * n)
 
-    p_o = (a + d) / n
-
-    # Marginals:
-    #   p(A retrieved) = (a + c) / n   [column Z_A sum]
-    #   p(B retrieved) = (a + b) / n   [row Z_B sum]
-    #   p(A not retrieved) = (b + d) / n
-    #   p(B not retrieved) = (c + d) / n
-    p_e = ((a + c) / n) * ((a + b) / n) + ((b + d) / n) * ((c + d) / n)
-
-    if p_e == 1.0 and p_o == 1.0:
-        kappa = 1.0
+    if p_e == 1.0:
+        kappa = 1.0 if p_o == 1.0 else 0.0
     else:
         kappa = (p_o - p_e) / (1.0 - p_e)
 
@@ -494,12 +492,12 @@ def main() -> None:
         rank_b = rank_of_gold_link(row_b.links, gold_links, args.top_k)
         rank_pairs.append((rank_a, rank_b))
 
-        # Top-k source-id sets for kappa
+        # Top-k source-id sets for kappa: U(q) = Z_A_topk ∪ Z_B_topk
         set_a = set(unique_source_ids(row_a.links)[: args.top_k])
         set_b = set(unique_source_ids(row_b.links)[: args.top_k])
         relevant = set(unique_source_ids(gold_links))
 
-        kappa_val, p_o, p_e, counts = kappa_for_sets(set_a, set_b, relevant)
+        kappa_val, p_o, p_e, counts = kappa_for_sets(set_a, set_b)
         per_query.append(
             {
                 "pytanie": query,
