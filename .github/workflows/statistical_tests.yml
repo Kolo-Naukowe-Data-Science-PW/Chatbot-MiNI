@@ -42,7 +42,6 @@ on:
           - "all"
           - "wilcoxon"
           - "permutation"
-          - "gamma"
           - "ttest"
       alpha:
         description: "Significance level"

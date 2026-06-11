@@ -6,13 +6,6 @@ Outputs:
   - llm_judge_metrics_model_b.csv: Per-query metrics for Model B
   - llm_judge_results.json: Detailed results with better_variant, reasons, and summary
 
-Usage:
-    python -m src.evaluation.llm_judge.batch_evaluator \
-        --model-a answers_model_a.csv \
-        --model-b answers_model_b.csv \
-        --judge-model anthropic/claude-opus-4.7 \
-        --language pl \
-        --output-dir ./results
 """
 
 import argparse
@@ -72,7 +65,7 @@ def evaluate_pair(
     max_retries: int = 2,
 ) -> Optional[dict]:
     """
-    Evaluate two answers using LLM judge.
+    Evaluate two answers using LLM as a judge.
     
     Returns:
         Dict with scores or None if evaluation fails
@@ -139,10 +132,10 @@ def save_results(
     
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    # Create output dataframes
     df_results = pd.DataFrame(results)
-    
-    # 1. CSV for Model A metrics (compatible with statistical_comparison.py)
+    # Creating CSV files compatible with statistical_comparison.py
+
+    # CSV for Model A metrics 
     df_a_metrics = df_results[
         ["pytanie", "a_usefulness", "a_accuracy", "a_conciseness"]
     ].copy()
@@ -152,7 +145,7 @@ def save_results(
     df_a_metrics.to_csv(csv_a_path, index=False, encoding="utf-8")
     logger.info(f"✓ Saved Model A metrics: {csv_a_path}")
     
-    # 2. CSV for Model B metrics
+    # CSV for Model B metrics
     df_b_metrics = df_results[
         ["pytanie", "b_usefulness", "b_accuracy", "b_conciseness"]
     ].copy()
@@ -162,8 +155,7 @@ def save_results(
     df_b_metrics.to_csv(csv_b_path, index=False, encoding="utf-8")
     logger.info(f"✓ Saved Model B metrics: {csv_b_path}")
     
-    # 3. JSON with detailed results and summary
-    # Calculate summary statistics
+    # JSON with detailed results and summary
     summary = {
         "evaluation_metadata": {
             "timestamp": datetime.now(UTC).isoformat(),

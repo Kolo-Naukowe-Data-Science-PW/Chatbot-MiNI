@@ -32,6 +32,8 @@ which gives:
     p_o = a / |U|
     p_e = (a^2 + a*c + a*b + 2*b*c) / |U|^2
     kappa = (p_o - p_e) / (1 - p_e)
+
+Developed collaboratively within the Chatbot MiNI project (WUT Data Science Club).
 """
 
 from __future__ import annotations
@@ -361,7 +363,6 @@ def kappa_for_sets(
         counts = {"a": 0, "b": 0, "c": 0, "d": 0, "universe": 0}
         return 1.0, 1.0, 1.0, counts
 
-    # Cell counts — IMPORTANT: b and c follow the paper's table orientation.
     a = len(set_a & set_b)   # both retrieved
     b = len(set_b - set_a)   # B retrieved, A did not  (row Z_B, col U\Z_A)
     c = len(set_a - set_b)   # A retrieved, B did not  (row U\Z_B, col Z_A)

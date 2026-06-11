@@ -7,7 +7,6 @@ Implements:
   1. Paired T-Test               — parametric comparison (assumes normality)
   2. Paired Permutation Test     — non-parametric resampling-based test
   3. Wilcoxon Signed-Rank Test  — non-parametric comparison using rank information
-  4. Goodman–Kruskal γ (gamma)  — ordinal association between score-based ranks
 
 For each query q ∈ Q, paired difference is computed as:
   d_q = score_A(q) - score_B(q)
@@ -35,7 +34,7 @@ Usage:
         --model_a_csv eval_A.csv \\
         --model_b_csv eval_B.csv \\
         --metric bertscore_f1_base \\
-        --test wilcoxon permutation gamma ttest \\
+        --test wilcoxon permutation ttest \\
         --output_dir results/
 
     # Run all tests on multiple metrics:
@@ -98,7 +97,7 @@ LLM_JUDGE_METRICS: list[str] = [
 
 AVAILABLE_METRICS: list[str] = TEXT_METRICS + RETRIEVAL_METRICS + LLM_JUDGE_METRICS
 
-ALL_TESTS = ["wilcoxon", "permutation", "gamma", "ttest"]
+ALL_TESTS = ["wilcoxon", "permutation", "ttest"]
 
 
 # ---------------------------------------------------------------------------
@@ -129,16 +128,6 @@ class PermutationResult:
 
 
 @dataclass
-class GammaResult:
-    n_queries: int
-    n_pairs: int
-    C: int
-    D: int
-    gamma: float
-    interpretation: str
-
-
-@dataclass
 class TTestResult:
     n: int
     mean_A: float
@@ -166,7 +155,6 @@ class MetricComparison:
     std_diff: float
     wilcoxon: WilcoxonResult | None = None
     permutation: PermutationResult | None = None
-    gamma: GammaResult | None = None
     ttest: TTestResult | None = None
 
 
@@ -250,35 +238,6 @@ def available_metric_columns(csv_paths: list[Path]) -> set[str]:
             reader = csv.DictReader(f)
             columns.update((reader.fieldnames or []))
     return columns & set(AVAILABLE_METRICS)
-
-
-def _scores_to_ordinal_ranks(scores: np.ndarray, n_bins: int = 5) -> np.ndarray:
-    """
-    Convert continuous scores in [0, 1] into ordinal rank labels {1, …, n_bins}.
-
-    The mapping mirrors the retrieval convention used in the thesis:
-      rank 1 = best (score closest to 1), rank n_bins = worst.
-    Scores of exactly 0 are treated as "not retrieved" and mapped to n_bins+1
-    (analogous to ∞ in the retrieval setting).
-
-    This enables the Goodman-Kruskal γ test (designed for ordinal data) to be
-    applied to continuous text-similarity metrics.
-    """
-    ranks = np.empty(len(scores), dtype=float)
-    zero_mask = scores == 0.0
-    non_zero = scores[~zero_mask]
-
-    if len(non_zero) > 0:
-        percentiles = np.linspace(0, 100, n_bins + 1)
-        breakpoints = np.percentile(non_zero, percentiles)
-        breakpoints = np.unique(breakpoints)
-        bin_labels = np.digitize(non_zero, breakpoints[1:-1], right=False) + 1
-        bin_labels = n_bins + 1 - bin_labels
-        bin_labels = np.clip(bin_labels, 1, n_bins)
-        ranks[~zero_mask] = bin_labels.astype(float)
-
-    ranks[zero_mask] = float(n_bins + 1)
-    return ranks
 
 
 # ---------------------------------------------------------------------------
@@ -468,55 +427,6 @@ def paired_permutation_test(
     )
 
 
-def goodman_kruskal_gamma(
-    scores_A: np.ndarray,
-    scores_B: np.ndarray,
-    n_bins: int = 5,
-) -> GammaResult:
-    r"""
-    Goodman–Kruskal γ coefficient.
-
-      For each pair (q_i, q_j):
-        concordant  if (a_i − a_j)(b_i − b_j) > 0
-        discordant  if (a_i − a_j)(b_i − b_j) < 0
-
-      γ = (C − D) / (C + D)
-    """
-    ranks_A = _scores_to_ordinal_ranks(scores_A, n_bins)
-    ranks_B = _scores_to_ordinal_ranks(scores_B, n_bins)
-
-    n = len(ranks_A)
-    C = D = 0
-
-    for i in range(n):
-        for j in range(i + 1, n):
-            product = (ranks_A[i] - ranks_A[j]) * (ranks_B[i] - ranks_B[j])
-            if product > 0:
-                C += 1
-            elif product < 0:
-                D += 1
-
-    n_pairs = n * (n - 1) // 2
-
-    if C + D == 0:
-        gamma = 0.0
-        interp = "No association (C = D = 0)"
-    else:
-        gamma = (C - D) / (C + D)
-        strength = "Weak" if abs(gamma) < 0.3 else ("Moderate" if abs(gamma) < 0.7 else "Strong")
-        direction = " (opposite direction)" if gamma < 0 else ""
-        interp = f"{strength} association{direction}"
-
-    return GammaResult(
-        n_queries=n,
-        n_pairs=n_pairs,
-        C=C,
-        D=D,
-        gamma=float(gamma),
-        interpretation=interp,
-    )
-
-
 def paired_ttest(
     scores_A: np.ndarray,
     scores_B: np.ndarray,
@@ -606,7 +516,6 @@ def compare_models(
     alternative: str = "two-sided",
     n_permutations: int = 10_000,
     perm_seed: int = 67,
-    gamma_bins: int = 5,
 ) -> list[MetricComparison]:
     """
     Load both CSVs and run selected tests for each metric.
@@ -651,9 +560,6 @@ def compare_models(
             comparison.permutation = paired_permutation_test(
                 arr_A, arr_B, n_permutations, perm_seed, alpha, alternative
             )
-
-        if "gamma" in tests:
-            comparison.gamma = goodman_kruskal_gamma(arr_A, arr_B, gamma_bins)
 
         if "ttest" in tests:
             comparison.ttest = paired_ttest(arr_A, arr_B, alpha, alternative)
@@ -716,18 +622,6 @@ def format_comparison(c: MetricComparison, alpha: float = 0.05) -> str:
             f"  p-value:         {p.p_value:.6f}{_sig(p.is_significant, alpha)}",
         ]
 
-    if c.gamma:
-        g = c.gamma
-        lines += [
-            "",
-            "  ── Goodman–Kruskal γ ──────────────────────────────────────────",
-            f"  Query pairs:     {g.n_pairs}",
-            f"  Concordant C:    {g.C}",
-            f"  Discordant D:    {g.D}",
-            f"  γ = (C−D)/(C+D): {g.gamma:+.4f}",
-            f"  Interpretation:  {g.interpretation}",
-        ]
-
     if c.ttest:
         t = c.ttest
         lines += [
@@ -775,12 +669,6 @@ def _result_to_dict(c: MetricComparison) -> dict:
             "observed_diff": p.observed_diff, "p_value": p.p_value,
             "n_permutations": p.n_permutations, "alternative": p.alternative,
             "is_significant": p.is_significant,
-        }
-    if c.gamma:
-        g = c.gamma
-        d["gamma"] = {
-            "n_pairs": g.n_pairs, "C": g.C, "D": g.D,
-            "gamma": g.gamma, "interpretation": g.interpretation,
         }
     if c.ttest:
         t = c.ttest
@@ -858,8 +746,6 @@ def main() -> None:
                         help="Number of permutations (default 10000).")
     parser.add_argument("--perm_seed", type=int, default=67,
                         help="Random seed for permutation test (default 67).")
-    parser.add_argument("--gamma_bins", type=int, default=5,
-                        help="Number of ordinal bins for gamma (default 5).")
     parser.add_argument("--output_dir", type=Path, default=Path("results"),
                         help="Directory for JSON output (default: results/).")
     parser.add_argument("--list_metrics", action="store_true",
@@ -949,7 +835,6 @@ def main() -> None:
         alternative=args.alternative,
         n_permutations=args.n_permutations,
         perm_seed=args.perm_seed,
-        gamma_bins=args.gamma_bins,
     )
 
     for c in comparisons:
