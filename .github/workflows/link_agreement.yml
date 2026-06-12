@@ -23,6 +23,14 @@ on:
         description: "Path to gold links CSV (optional)"
         required: false
         default: "src/evaluation/data/final_notebooklm_QA_stat_test.csv"
+      metrics_a_csv:
+        description: "Path to model A per-query retrieval metrics CSV with a Hit column (optional, enables 'no inf' report)"
+        required: false
+        default: ""
+      metrics_b_csv:
+        description: "Path to model B per-query retrieval metrics CSV with a Hit column (optional, enables 'no inf' report)"
+        required: false
+        default: ""
   push:
     paths:
       - "src/evaluation/link_agreement_tests.py"
@@ -48,14 +56,24 @@ jobs:
           # No third-party dependencies required — stdlib only.
 
       - name: Run link agreement script
+        env:
+          METRICS_A_CSV: ${{ github.event.inputs.metrics_a_csv }}
+          METRICS_B_CSV: ${{ github.event.inputs.metrics_b_csv }}
         run: |
-          python src/evaluation/link_agreement_tests.py \
-            "${{ github.event.inputs.model_a_csv || 'src/evaluation/data/stat_test/200/answers_google_gemini-3.5-flash_t0.2_p2_200.csv' }}" \
-            "${{ github.event.inputs.model_b_csv || 'src/evaluation/data/stat_test/200/answers_openai_gpt-oss-120b_free_t0.2_p2_200.csv' }}" \
-            --model-a-name "${{ github.event.inputs.model_a_name || 'Model A' }}" \
-            --model-b-name "${{ github.event.inputs.model_b_name || 'Model B' }}" \
-            --gold-csv "${{ github.event.inputs.gold_csv || 'src/evaluation/data/final_notebooklm_QA_stat_test.csv' }}" \
+          ARGS=(
+            "${{ github.event.inputs.model_a_csv || 'src/evaluation/data/stat_test/200/answers_google_gemini-3.5-flash_t0.2_p2_200.csv' }}"
+            "${{ github.event.inputs.model_b_csv || 'src/evaluation/data/stat_test/200/answers_openai_gpt-oss-120b_free_t0.2_p2_200.csv' }}"
+            --model-a-name "${{ github.event.inputs.model_a_name || 'Model A' }}"
+            --model-b-name "${{ github.event.inputs.model_b_name || 'Model B' }}"
+            --gold-csv "${{ github.event.inputs.gold_csv || 'src/evaluation/data/final_notebooklm_QA_stat_test.csv' }}"
             --output-dir src/evaluation/results/link_agreement
+          )
+
+          if [[ -n "$METRICS_A_CSV" && -n "$METRICS_B_CSV" ]]; then
+            ARGS+=(--metrics-a-csv "$METRICS_A_CSV" --metrics-b-csv "$METRICS_B_CSV")
+          fi
+
+          python src/evaluation/link_agreement_tests.py "${ARGS[@]}"
 
       - name: Upload results as artifact
         uses: actions/upload-artifact@v4
@@ -69,3 +87,12 @@ jobs:
           echo "### Link Agreement Results" >> $GITHUB_STEP_SUMMARY
           REPORT=$(ls src/evaluation/results/link_agreement/link_agreement_report_*.md | tail -1)
           cat "$REPORT" >> $GITHUB_STEP_SUMMARY
+
+          NO_INF_JSON=$(ls src/evaluation/results/link_agreement/link_agreement_no_inf_*.json 2>/dev/null | tail -1 || true)
+          if [[ -n "$NO_INF_JSON" ]]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Link Agreement (Hit==1 for both models, no inf)" >> $GITHUB_STEP_SUMMARY
+            echo '```json' >> $GITHUB_STEP_SUMMARY
+            cat "$NO_INF_JSON" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi

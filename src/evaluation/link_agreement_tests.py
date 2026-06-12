@@ -33,7 +33,6 @@ which gives:
     p_e = (a^2 + a*c + a*b + 2*b*c) / |U|^2
     kappa = (p_o - p_e) / (1 - p_e)
 
-Developed collaboratively within the Chatbot MiNI project (WUT Data Science Club).
 """
 
 from __future__ import annotations
@@ -229,6 +228,101 @@ def read_gold(path: Path | None) -> dict[str, list[str]]:
             if query and links:
                 gold[query] = links
     return gold
+
+
+HIT_COLUMNS = ("hit", "hit@k", "hit_at_k", "hit_rate")
+
+
+def extract_hit(row: dict[str, str]) -> float | None:
+    for column in HIT_COLUMNS:
+        value = row.get(column.strip().lower())
+        if value not in (None, ""):
+            try:
+                return float(value)
+            except ValueError:
+                continue
+    return None
+
+
+def read_hit_metrics(path: Path) -> dict[str, float]:
+    """Read per-query retrieval metrics CSV and return {query: Hit value}."""
+    with path.open(encoding="utf-8-sig", newline="") as f:
+        reader = csv.DictReader(f)
+        result: dict[str, float] = {}
+        for raw in reader:
+            row = normalized_row(raw)
+            query = extract_query(row)
+            if not query:
+                continue
+            hit = extract_hit(row)
+            if hit is not None:
+                result[query] = hit
+    return result
+
+
+def filter_queries_by_hit(
+    queries: list[str],
+    hits_a: dict[str, float],
+    hits_b: dict[str, float],
+) -> list[str]:
+    """Keep only queries where Hit == 1 for both model A and model B."""
+    return [q for q in queries if hits_a.get(q) == 1 and hits_b.get(q) == 1]
+
+
+def compute_link_agreement_without_inf(
+    queries: list[str],
+    answers_a: dict[str, AnswerRow],
+    answers_b: dict[str, AnswerRow],
+    gold: dict[str, list[str]],
+    hits_a: dict[str, float],
+    hits_b: dict[str, float],
+) -> tuple[GammaResult, KappaResult, list[dict[str, object]], list[str]]:
+    """Compute gamma/kappa agreement restricted to queries where Hit == 1
+    for both models (read from two per-query retrieval-metrics CSVs).
+
+    Restricting to Hit == 1 for both models guarantees the gold link was
+    found in each model's returned list, so rank_A and rank_B are never
+    INF_RANK -- the "inf" class is removed from the gamma contingency table.
+
+    Returns (gamma_result, kappa_result, per_query_rows, filtered_queries).
+    """
+    filtered_queries = filter_queries_by_hit(queries, hits_a, hits_b)
+
+    per_query: list[dict[str, object]] = []
+    rank_pairs: list[tuple[int, int]] = []
+
+    for query in filtered_queries:
+        row_a = answers_a[query]
+        row_b = answers_b[query]
+        gold_links = gold_for_query(query, row_a, row_b, gold)
+
+        rank_a = rank_of_gold_link(row_a.links, gold_links)
+        rank_b = rank_of_gold_link(row_b.links, gold_links)
+        rank_pairs.append((rank_a, rank_b))
+
+        set_a = set(unique_source_ids(row_a.links))
+        set_b = set(unique_source_ids(row_b.links))
+        relevant = set(unique_source_ids(gold_links))
+
+        kappa_val, p_o, p_e, counts = kappa_for_sets(set_a, set_b)
+        per_query.append(
+            {
+                "pytanie": query,
+                "rank_A": "inf" if rank_a == INF_RANK else rank_a,
+                "rank_B": "inf" if rank_b == INF_RANK else rank_b,
+                "gold_links_count": len(relevant),
+                "links_A_count": len(set_a),
+                "links_B_count": len(set_b),
+                "kappa": kappa_val,
+                "observed_agreement": p_o,
+                "expected_agreement": p_e,
+                **counts,
+            }
+        )
+
+    gamma_result = compute_gamma(rank_pairs)
+    kappa_result = compute_kappa(per_query)
+    return gamma_result, kappa_result, per_query, filtered_queries
 
 
 def gold_for_query(
@@ -473,6 +567,23 @@ def main() -> None:
         type=Path,
         default=Path("src/evaluation/results/link_agreement"),
     )
+    parser.add_argument(
+        "--metrics-a-csv",
+        type=Path,
+        default=None,
+        help=(
+            "Per-query retrieval-metrics CSV for model A (must contain a "
+            "'Hit' column plus 'pytanie'/'query'). If given together with "
+            "--metrics-b-csv, an additional 'without inf' agreement report "
+            "is computed over queries where Hit == 1 for both models."
+        ),
+    )
+    parser.add_argument(
+        "--metrics-b-csv",
+        type=Path,
+        default=None,
+        help="Per-query retrieval-metrics CSV for model B (see --metrics-a-csv).",
+    )
     args = parser.parse_args()
 
     for label, path in [("Model A", args.model_a_csv), ("Model B", args.model_b_csv)]:
@@ -625,6 +736,57 @@ def main() -> None:
 
     print(report_text)
     print(f"Results saved -> {args.output_dir}")
+
+    # -----------------------------------------------------------------
+    # Optional "without inf" agreement: restrict to queries where Hit == 1
+    # for both models (requires per-query retrieval-metrics CSVs).
+    # -----------------------------------------------------------------
+    if args.metrics_a_csv and args.metrics_b_csv:
+        for label, path in [
+            ("Model A metrics", args.metrics_a_csv),
+            ("Model B metrics", args.metrics_b_csv),
+        ]:
+            if not path.exists():
+                print(f"ERROR: {label} CSV not found: {path}", file=sys.stderr)
+                sys.exit(1)
+
+        hits_a = read_hit_metrics(args.metrics_a_csv)
+        hits_b = read_hit_metrics(args.metrics_b_csv)
+
+        gamma_ni, kappa_ni, per_query_ni, filtered_queries = compute_link_agreement_without_inf(
+            common_queries, answers_a, answers_b, gold, hits_a, hits_b
+        )
+
+        out_json_ni = args.output_dir / f"link_agreement_no_inf_{ts}.json"
+        out_csv_ni = args.output_dir / f"link_agreement_no_inf_per_query_{ts}.csv"
+
+        payload_ni = {
+            "timestamp": ts,
+            "model_a_name": args.model_a_name,
+            "model_b_name": args.model_b_name,
+            "model_a_csv": str(args.model_a_csv),
+            "model_b_csv": str(args.model_b_csv),
+            "metrics_a_csv": str(args.metrics_a_csv),
+            "metrics_b_csv": str(args.metrics_b_csv),
+            "gold_csv": str(args.gold_csv) if args.gold_csv else None,
+            "filter": "Hit == 1 for both Model A and Model B",
+            "n_common_queries": len(common_queries),
+            "n_queries_no_inf": len(filtered_queries),
+            "goodman_kruskal_gamma": result_to_jsonable(gamma_ni),
+            "kappa": result_to_jsonable(kappa_ni),
+        }
+        with out_json_ni.open("w", encoding="utf-8") as f:
+            json.dump(payload_ni, f, indent=2, ensure_ascii=False)
+
+        write_per_query(out_csv_ni, per_query_ni)
+
+        print(
+            f"\n[no-inf] Queries with Hit==1 for both models: "
+            f"{len(filtered_queries)} / {len(common_queries)}"
+        )
+        print(f"[no-inf] Gamma: {format_float(gamma_ni.gamma)}")
+        print(f"[no-inf] Mean kappa: {format_float(kappa_ni.kappa_mean)}")
+        print(f"[no-inf] Results saved -> {out_json_ni}, {out_csv_ni}")
 
 
 if __name__ == "__main__":
