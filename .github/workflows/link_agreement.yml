@@ -26,11 +26,11 @@ on:
       metrics_a_csv:
         description: "Path to model A per-query retrieval metrics CSV with a Hit column (optional, enables 'no inf' report)"
         required: false
-        default: ""
+        default: "src/evaluation/data/stat_test/200/retrieval_metrics_per_query_answers_google_gemini-3.5-flash_t0.2_p2_200.csv"
       metrics_b_csv:
         description: "Path to model B per-query retrieval metrics CSV with a Hit column (optional, enables 'no inf' report)"
         required: false
-        default: ""
+        default: "src/evaluation/data/stat_test/200/retrieval_metrics_per_query_answers_openai_gpt-oss-120b_free_t0.2_p2_200.csv"
   push:
     paths:
       - "src/evaluation/link_agreement_tests.py"
