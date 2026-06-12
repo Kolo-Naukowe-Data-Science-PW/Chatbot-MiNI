@@ -230,7 +230,14 @@ def read_gold(path: Path | None) -> dict[str, list[str]]:
     return gold
 
 
-HIT_COLUMNS = ("hit", "hit@k", "hit_at_k", "hit_rate")
+HIT_COLUMNS = (
+    "hit",
+    "hit@k",
+    "hit_at_k",
+    "hit_rate",
+    "hit_adaptive",
+    "hitw_adaptive",
+)
 
 
 def extract_hit(row: dict[str, str]) -> float | None:
