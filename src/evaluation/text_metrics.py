@@ -110,9 +110,11 @@ def _read_csv_with_wide_rows(path: Path, sep: str) -> pd.DataFrame:
         header.append(f"extra_{len(header) + 1}")
 
     padded_rows = [
-        [*row, *([""] * (len(header) - len(row)))]
-        if len(row) < len(header)
-        else row[: len(header)]
+        (
+            [*row, *([""] * (len(header) - len(row)))]
+            if len(row) < len(header)
+            else row[: len(header)]
+        )
         for row in data_rows
     ]
     logger.warning(
@@ -171,8 +173,7 @@ def _bleu_from_pairs(
                     max_ref_counts[ngram] = max(max_ref_counts[ngram], count)
 
             clipped_totals[n - 1] += sum(
-                min(count, max_ref_counts[ngram])
-                for ngram, count in hyp_counts.items()
+                min(count, max_ref_counts[ngram]) for ngram, count in hyp_counts.items()
             )
 
     precisions = [
@@ -554,7 +555,9 @@ def _bertscore(
 
 
 def _ensure_bertscore_tokenizer_compat(scorer: object) -> None:
-    tokenizer = getattr(scorer, "_tokenizer", None) or getattr(scorer, "tokenizer", None)
+    tokenizer = getattr(scorer, "_tokenizer", None) or getattr(
+        scorer, "tokenizer", None
+    )
     if tokenizer is None or hasattr(tokenizer, "build_inputs_with_special_tokens"):
         return
 
@@ -668,7 +671,9 @@ def _assert_per_query_consistency(
         if metric == "meteor" or metric.startswith(mean_based_prefixes)
     ]
 
-    missing = [metric for metric in mean_based_metrics if metric not in per_q_df.columns]
+    missing = [
+        metric for metric in mean_based_metrics if metric not in per_q_df.columns
+    ]
     if missing:
         raise ValueError(
             "Per-query CSV is missing metrics that are present in summary: "
@@ -757,7 +762,9 @@ def evaluate(
     ref_df = _read_table(reference_csv)
 
     if QUESTION_COL not in gen_df.columns or GENERATED_COL not in gen_df.columns:
-        raise ValueError("--generated-csv must have 'pytanie' and 'odpowiedz_wygenerowana' columns")
+        raise ValueError(
+            "--generated-csv must have 'pytanie' and 'odpowiedz_wygenerowana' columns"
+        )
     if QUESTION_COL not in ref_df.columns or REFERENCE_COL not in ref_df.columns:
         raise ValueError("--reference-csv must have 'pytanie' and 'odpowiedz' columns")
 
