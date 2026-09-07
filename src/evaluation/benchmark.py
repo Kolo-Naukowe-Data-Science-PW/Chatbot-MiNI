@@ -293,7 +293,9 @@ def load_gold(path: str) -> list[EvalRow]:
                     continue
                 record = json.loads(line)
                 row = normalize_row({str(k): str(v) for k, v in record.items()})
-                query = row.get("pytanie") or row.get("query") or row.get("question", "")
+                query = (
+                    row.get("pytanie") or row.get("query") or row.get("question", "")
+                )
                 raw_url = row.get("źródła") or row.get("zrodla") or ""
                 raw_url = raw_url.splitlines()[0] if raw_url else ""
                 target_url = normalize_url(raw_url.split("|")[0])
@@ -327,7 +329,9 @@ def load_gold(path: str) -> list[EvalRow]:
             if eval_row:
                 rows.append(eval_row)
             else:
-                query = row.get("query") or row.get("pytanie") or row.get("question", "")
+                query = (
+                    row.get("query") or row.get("pytanie") or row.get("question", "")
+                )
                 if query:
                     unresolved_queries.append(query)
 
