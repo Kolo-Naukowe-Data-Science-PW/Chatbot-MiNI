@@ -9,23 +9,24 @@ Outputs:
 """
 
 import argparse
-import csv
 import json
 import logging
 import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 import pandas as pd
 
 from src.evaluation.llm_judge.judge import judge_pair
 
+
 # For catching OpenRouter rate limit errors
 class TokenLimitError(Exception):
     """Raised when API token limit is exceeded"""
+
     pass
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -38,7 +39,7 @@ def load_answers_csv(filepath: str) -> pd.DataFrame:
     """Load answers CSV and normalize column names."""
     df = pd.read_csv(filepath, encoding="utf-8")
     df.columns = df.columns.str.strip()
-    
+
     # Try common column name variations
     if "pytanie" not in df.columns:
         # Try English variants
@@ -46,13 +47,13 @@ def load_answers_csv(filepath: str) -> pd.DataFrame:
             if col.lower() in ["query", "question", "q"]:
                 df = df.rename(columns={col: "pytanie"})
                 break
-    
+
     if "odpowiedz_wygenerowana" not in df.columns:
         for col in df.columns:
             if "answer" in col.lower() or "odpowiedz" in col.lower():
                 df = df.rename(columns={col: "odpowiedz_wygenerowana"})
                 break
-    
+
     return df
 
 
@@ -63,13 +64,13 @@ def evaluate_pair(
     judge_model: str,
     language: str = "pl",
     max_retries: int = 2,
-) -> Optional[dict]:
+) -> dict | None:
     """
     Evaluate two answers using LLM as a judge.
-    
+
     Returns:
         Dict with scores or None if evaluation fails
-        
+
     Raises:
         TokenLimitError: If API rate limit or token limit is exceeded
     """
@@ -97,14 +98,15 @@ def evaluate_pair(
     except Exception as e:
         error_str = str(e).lower()
         # Detect token limit or rate limit errors
-        if any(x in error_str for x in ["rate_limit", "token", "quota", "limit", "429", "503"]):
+        if any(
+            x in error_str
+            for x in ["rate_limit", "token", "quota", "limit", "429", "503"]
+        ):
             logger.error(f"Token/Rate limit error: {str(e)[:100]}")
             raise TokenLimitError(f"API limit exceeded: {str(e)}") from e
         else:
             logger.error(f"Error evaluating pair: {str(e)[:100]}")
             return None
-
-
 
 
 def save_results(
@@ -117,7 +119,7 @@ def save_results(
 ) -> None:
     """
     Save evaluation results to CSV and JSON files.
-    
+
     Args:
         results: List of successful evaluation results
         failed_count: Number of failed evaluations
@@ -129,32 +131,32 @@ def save_results(
     if not results:
         logger.warning("No results to save - all evaluations failed")
         return
-    
+
     output_dir.mkdir(parents=True, exist_ok=True)
-    
+
     df_results = pd.DataFrame(results)
     # Creating CSV files compatible with statistical_comparison.py
 
-    # CSV for Model A metrics 
+    # CSV for Model A metrics
     df_a_metrics = df_results[
         ["pytanie", "a_usefulness", "a_accuracy", "a_conciseness"]
     ].copy()
     df_a_metrics.columns = ["pytanie", "usefulness", "accuracy", "conciseness"]
-    
+
     csv_a_path = output_dir / "llm_judge_metrics_model_a.csv"
     df_a_metrics.to_csv(csv_a_path, index=False, encoding="utf-8")
     logger.info(f"✓ Saved Model A metrics: {csv_a_path}")
-    
+
     # CSV for Model B metrics
     df_b_metrics = df_results[
         ["pytanie", "b_usefulness", "b_accuracy", "b_conciseness"]
     ].copy()
     df_b_metrics.columns = ["pytanie", "usefulness", "accuracy", "conciseness"]
-    
+
     csv_b_path = output_dir / "llm_judge_metrics_model_b.csv"
     df_b_metrics.to_csv(csv_b_path, index=False, encoding="utf-8")
     logger.info(f"✓ Saved Model B metrics: {csv_b_path}")
-    
+
     # JSON with detailed results and summary
     summary = {
         "evaluation_metadata": {
@@ -164,11 +166,15 @@ def save_results(
             "total_evaluated": len(results),
             "total_failed": failed_count,
             "total_attempted": len(results) + failed_count,
-            "success_rate": f"{100 * len(results) / (len(results) + failed_count):.1f}%"
-            if (len(results) + failed_count) > 0
-            else "0%",
+            "success_rate": (
+                f"{100 * len(results) / (len(results) + failed_count):.1f}%"
+                if (len(results) + failed_count) > 0
+                else "0%"
+            ),
             "is_incomplete": is_incomplete,
-            "incomplete_reason": "API rate/token limit exceeded" if is_incomplete else None,
+            "incomplete_reason": (
+                "API rate/token limit exceeded" if is_incomplete else None
+            ),
         },
         "model_a_stats": {
             "usefulness": {
@@ -241,21 +247,33 @@ def save_results(
             for _, row in df_results.iterrows()
         ],
     }
-    
+
     json_path = output_dir / "llm_judge_results.json"
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2, ensure_ascii=False)
     logger.info(f"✓ Saved detailed results: {json_path}")
-    
+
     logger.info("\n" + "=" * 80)
     logger.info("SUMMARY")
     logger.info("=" * 80)
-    logger.info(f"Model A - Usefulness: μ={summary['model_a_stats']['usefulness']['mean']:.3f}")
-    logger.info(f"Model A - Accuracy: μ={summary['model_a_stats']['accuracy']['mean']:.3f}")
-    logger.info(f"Model A - Conciseness: μ={summary['model_a_stats']['conciseness']['mean']:.3f}")
-    logger.info(f"\nModel B - Usefulness: μ={summary['model_b_stats']['usefulness']['mean']:.3f}")
-    logger.info(f"Model B - Accuracy: μ={summary['model_b_stats']['accuracy']['mean']:.3f}")
-    logger.info(f"Model B - Conciseness: μ={summary['model_b_stats']['conciseness']['mean']:.3f}")
+    logger.info(
+        f"Model A - Usefulness: μ={summary['model_a_stats']['usefulness']['mean']:.3f}"
+    )
+    logger.info(
+        f"Model A - Accuracy: μ={summary['model_a_stats']['accuracy']['mean']:.3f}"
+    )
+    logger.info(
+        f"Model A - Conciseness: μ={summary['model_a_stats']['conciseness']['mean']:.3f}"
+    )
+    logger.info(
+        f"\nModel B - Usefulness: μ={summary['model_b_stats']['usefulness']['mean']:.3f}"
+    )
+    logger.info(
+        f"Model B - Accuracy: μ={summary['model_b_stats']['accuracy']['mean']:.3f}"
+    )
+    logger.info(
+        f"Model B - Conciseness: μ={summary['model_b_stats']['conciseness']['mean']:.3f}"
+    )
     logger.info(
         f"\nModel A wins: {summary['pairwise_comparison']['model_a_wins']} "
         f"({summary['pairwise_comparison']['model_a_win_rate']})"
@@ -264,15 +282,16 @@ def save_results(
         f"Model B wins: {summary['pairwise_comparison']['model_b_wins']} "
         f"({summary['pairwise_comparison']['model_b_win_rate']})"
     )
-    
+
     if is_incomplete:
         logger.warning("\n⚠️  EVALUATION INCOMPLETE")
-        logger.warning(f"Completed: {len(results)}/{summary['evaluation_metadata']['total_attempted']}")
+        logger.warning(
+            f"Completed: {len(results)}/{summary['evaluation_metadata']['total_attempted']}"
+        )
         logger.warning("Reason: API rate/token limit exceeded")
         logger.warning("Run script again to continue from where it stopped")
-    
-    logger.info("\n✓ All outputs saved to: " + str(output_dir))
 
+    logger.info("\n✓ All outputs saved to: " + str(output_dir))
 
     parser = argparse.ArgumentParser(
         description="Batch LLM-as-Judge evaluation for pre-computed CSV answers"
@@ -366,7 +385,7 @@ def save_results(
     try:
         for idx, row in merged.iterrows():
             total_attempted = idx + 1
-            
+
             if (idx + 1) % 10 == 0:
                 logger.info(
                     f"Progress: {idx + 1}/{len(merged)} evaluated | Failed: {failed_count}"
