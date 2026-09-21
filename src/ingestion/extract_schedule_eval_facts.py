@@ -28,7 +28,9 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.ingestion.common import MODEL_WORKER, get_llm_client
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 SCHEDULE_SYSTEM_PROMPT = """
@@ -145,8 +147,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Extract schedule facts from Firecrawl-scraped USOS schedule files."
     )
-    parser.add_argument("--scraped-dir", required=True, help="Directory with .txt schedule files.")
-    parser.add_argument("--output-dir", required=True, help="Directory to write *_facts.json files.")
-    parser.add_argument("--force", action="store_true", help="Re-extract even if output already exists.")
+    parser.add_argument(
+        "--scraped-dir", required=True, help="Directory with .txt schedule files."
+    )
+    parser.add_argument(
+        "--output-dir", required=True, help="Directory to write *_facts.json files."
+    )
+    parser.add_argument(
+        "--force", action="store_true", help="Re-extract even if output already exists."
+    )
     args = parser.parse_args()
     main(args.scraped_dir, args.output_dir, force=args.force)
