@@ -27,7 +27,12 @@ SCHEDULE_PATTERN = "pokazPlanGrupyPrzedmiotow"
 REQUEST_TIMEOUT = 30
 REQUEST_DELAY = 1.2
 
-_SEMESTER_LABELS = {"2025Z": "zimowy 2025/2026", "2026L": "letni 2025/2026"}
+_SEMESTER_LABELS = {
+    "2025Z": "zimowy 2025/2026",
+    "2026L": "letni 2025/2026",
+    "2026Z": "zimowy 2026/2027",
+    "2027L": "letni 2026/2027",
+}
 _PROGRAM_LABELS = {
     "INSIISA": "Informatyka i Systemy Informacyjne (inżynierski, ang. Computer Science and Information Systems)",
     "INSIISP": "Informatyka i Systemy Informacyjne (inżynierski)",
