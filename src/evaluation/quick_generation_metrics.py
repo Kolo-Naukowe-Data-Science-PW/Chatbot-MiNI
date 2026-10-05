@@ -7,7 +7,6 @@ Simpler than run_experiment.py - just text metrics without full RAG evaluation.
 import argparse
 import json
 import logging
-import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -36,9 +35,9 @@ def query_chatbot(api_url: str, question: str, timeout: int = 60) -> str:
 
 def compute_metrics(hypotheses: list[str], references: list[str]) -> dict:
     """Compute BLEU, ROUGE, METEOR metrics."""
+    import nltk
     import sacrebleu
     from nltk.translate import meteor_score
-    import nltk
     from rouge import Rouge
 
     # Ensure NLTK data
@@ -74,7 +73,9 @@ def compute_metrics(hypotheses: list[str], references: list[str]) -> dict:
             meteor_score.single_meteor_score(ref, hyp)
             for hyp, ref in zip(hypotheses, references)
         ]
-        metrics["meteor"] = sum(meteor_scores) / len(meteor_scores) if meteor_scores else 0.0
+        metrics["meteor"] = (
+            sum(meteor_scores) / len(meteor_scores) if meteor_scores else 0.0
+        )
     except Exception as e:
         logger.warning(f"METEOR computation failed: {e}")
         metrics["meteor"] = 0.0
