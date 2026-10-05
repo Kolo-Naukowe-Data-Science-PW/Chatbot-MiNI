@@ -53,26 +53,41 @@ import argparse
 import csv
 import json
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
 import numpy as np
 from scipy import stats
 
-
 # ---------------------------------------------------------------------------
 # Known metric columns in the CSV
 # ---------------------------------------------------------------------------
 TEXT_METRICS: list[str] = [
-    "bleu", "bleu_1", "bleu_2", "bleu_3", "bleu_4",
-    "rouge_1_r", "rouge_1_p", "rouge_1_f",
-    "rouge_2_r", "rouge_2_p", "rouge_2_f",
-    "rouge_l_r", "rouge_l_p", "rouge_l_f",
-    "rouge_w_r", "rouge_w_p", "rouge_w_f",
-    "rouge_s_r", "rouge_s_p", "rouge_s_f",
+    "bleu",
+    "bleu_1",
+    "bleu_2",
+    "bleu_3",
+    "bleu_4",
+    "rouge_1_r",
+    "rouge_1_p",
+    "rouge_1_f",
+    "rouge_2_r",
+    "rouge_2_p",
+    "rouge_2_f",
+    "rouge_l_r",
+    "rouge_l_p",
+    "rouge_l_f",
+    "rouge_w_r",
+    "rouge_w_p",
+    "rouge_w_f",
+    "rouge_s_r",
+    "rouge_s_p",
+    "rouge_s_f",
     "meteor",
-    "bertscore_precision_base", "bertscore_recall_base", "bertscore_f1_base",
+    "bertscore_precision_base",
+    "bertscore_recall_base",
+    "bertscore_f1_base",
 ]
 
 RETRIEVAL_METRICS: list[str] = [
@@ -103,6 +118,7 @@ ALL_TESTS = ["wilcoxon", "permutation", "ttest"]
 # ---------------------------------------------------------------------------
 # Data containers
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class WilcoxonResult:
@@ -161,6 +177,7 @@ class MetricComparison:
 # ---------------------------------------------------------------------------
 # I/O helpers
 # ---------------------------------------------------------------------------
+
 
 def load_metrics(csv_path: Path, metric_cols: list[str]) -> dict[str, list[float]]:
     """
@@ -236,13 +253,14 @@ def available_metric_columns(csv_paths: list[Path]) -> set[str]:
     for csv_path in csv_paths:
         with open(csv_path, encoding="utf-8") as f:
             reader = csv.DictReader(f)
-            columns.update((reader.fieldnames or []))
+            columns.update(reader.fieldnames or [])
     return columns & set(AVAILABLE_METRICS)
 
 
 # ---------------------------------------------------------------------------
 # Statistical tests
 # ---------------------------------------------------------------------------
+
 
 def _rank_with_ties(values: np.ndarray) -> np.ndarray:
     """
@@ -302,26 +320,39 @@ def wilcoxon_signed_rank_test(
 
     if n < 1:
         return WilcoxonResult(
-            n=0, W_plus=0.0, W_minus=0.0, W=0.0,
-            expected_W=None, variance_W=None, z_score=None,
-            p_value=1.0, is_significant=False,
+            n=0,
+            W_plus=0.0,
+            W_minus=0.0,
+            W=0.0,
+            expected_W=None,
+            variance_W=None,
+            z_score=None,
+            p_value=1.0,
+            is_significant=False,
             method="N/A (no non-zero differences)",
         )
 
     abs_diffs = np.abs(nonzero)
     ranks = _rank_with_ties(abs_diffs)
 
-    W_plus  = float(np.sum(ranks[nonzero > 0]))
+    W_plus = float(np.sum(ranks[nonzero > 0]))
     W_minus = float(np.sum(ranks[nonzero < 0]))
     W = min(W_plus, W_minus)
 
     if n < 25:
         from scipy.stats import wilcoxon as _scipy_wilcoxon
+
         _, p_value = _scipy_wilcoxon(nonzero, alternative=alternative)
         return WilcoxonResult(
-            n=n, W_plus=W_plus, W_minus=W_minus, W=W,
-            expected_W=None, variance_W=None, z_score=None,
-            p_value=float(p_value), is_significant=float(p_value) <= alpha,
+            n=n,
+            W_plus=W_plus,
+            W_minus=W_minus,
+            W=W,
+            expected_W=None,
+            variance_W=None,
+            z_score=None,
+            p_value=float(p_value),
+            is_significant=float(p_value) <= alpha,
             method=f"Exact distribution (n={n} < 25)",
         )
 
@@ -359,9 +390,15 @@ def wilcoxon_signed_rank_test(
         p_value = stats.norm.cdf(z)
 
     return WilcoxonResult(
-        n=n, W_plus=W_plus, W_minus=W_minus, W=W,
-        expected_W=E_W_plus, variance_W=Var_W_plus, z_score=float(z),
-        p_value=float(p_value), is_significant=float(p_value) <= alpha,
+        n=n,
+        W_plus=W_plus,
+        W_minus=W_minus,
+        W=W,
+        expected_W=E_W_plus,
+        variance_W=Var_W_plus,
+        z_score=float(z),
+        p_value=float(p_value),
+        is_significant=float(p_value) <= alpha,
         method=f"Normal approximation (n={n} ≥ 25)",
     )
 
@@ -401,12 +438,14 @@ def paired_permutation_test(
     """
     rng = np.random.default_rng(seed)
     diffs = scores_A - scores_B
-    obs   = float(np.mean(diffs))
+    obs = float(np.mean(diffs))
 
-    perm_stats = np.array([
-        np.mean(rng.choice([-1.0, 1.0], size=len(diffs)) * diffs)
-        for _ in range(n_permutations)
-    ])
+    perm_stats = np.array(
+        [
+            np.mean(rng.choice([-1.0, 1.0], size=len(diffs)) * diffs)
+            for _ in range(n_permutations)
+        ]
+    )
 
     if alternative == "two-sided":
         # p = (# |T_j| >= |T_0|) / N
@@ -464,12 +503,12 @@ def paired_ttest(
     n = len(scores_A)
     diffs = scores_A - scores_B
 
-    mean_A   = float(np.mean(scores_A))
-    mean_B   = float(np.mean(scores_B))
-    std_A    = float(np.std(scores_A, ddof=1))
-    std_B    = float(np.std(scores_B, ddof=1))
+    mean_A = float(np.mean(scores_A))
+    mean_B = float(np.mean(scores_B))
+    std_A = float(np.std(scores_A, ddof=1))
+    std_B = float(np.std(scores_B, ddof=1))
     mean_diff = float(np.mean(diffs))
-    std_diff  = float(np.std(diffs, ddof=1))
+    std_diff = float(np.std(diffs, ddof=1))
 
     # t = (mean_diff * sqrt(n)) / s_d
     se = std_diff / np.sqrt(n)
@@ -506,6 +545,7 @@ def paired_ttest(
 # ---------------------------------------------------------------------------
 # Main comparison driver
 # ---------------------------------------------------------------------------
+
 
 def compare_models(
     csv_A: Path | list[Path],
@@ -572,6 +612,7 @@ def compare_models(
 # ---------------------------------------------------------------------------
 # Formatting
 # ---------------------------------------------------------------------------
+
 
 def _sig(flag: bool | None, alpha: float = 0.05) -> str:
     if flag is None:
@@ -645,6 +686,7 @@ def format_comparison(c: MetricComparison, alpha: float = 0.05) -> str:
 # JSON serialisation helpers
 # ---------------------------------------------------------------------------
 
+
 def _result_to_dict(c: MetricComparison) -> dict:
     d: dict = {
         "metric": c.metric,
@@ -657,17 +699,24 @@ def _result_to_dict(c: MetricComparison) -> dict:
     if c.wilcoxon:
         w = c.wilcoxon
         d["wilcoxon"] = {
-            "method": w.method, "n": w.n,
-            "W_plus": w.W_plus, "W_minus": w.W_minus, "W": w.W,
-            "expected_W": w.expected_W, "variance_W": w.variance_W,
-            "z_score": w.z_score, "p_value": w.p_value,
+            "method": w.method,
+            "n": w.n,
+            "W_plus": w.W_plus,
+            "W_minus": w.W_minus,
+            "W": w.W,
+            "expected_W": w.expected_W,
+            "variance_W": w.variance_W,
+            "z_score": w.z_score,
+            "p_value": w.p_value,
             "is_significant": w.is_significant,
         }
     if c.permutation:
         p = c.permutation
         d["permutation"] = {
-            "observed_diff": p.observed_diff, "p_value": p.p_value,
-            "n_permutations": p.n_permutations, "alternative": p.alternative,
+            "observed_diff": p.observed_diff,
+            "p_value": p.p_value,
+            "n_permutations": p.n_permutations,
+            "alternative": p.alternative,
             "is_significant": p.is_significant,
         }
     if c.ttest:
@@ -695,30 +744,53 @@ def _result_to_dict(c: MetricComparison) -> dict:
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Statistical comparison of two model variants.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
-    parser.add_argument("--model_a_csv", type=Path,
-                        help="Per-query CSV for model A (backward-compatible alias for text metrics).")
-    parser.add_argument("--model_b_csv", type=Path,
-                        help="Per-query CSV for model B (backward-compatible alias for text metrics).")
-    parser.add_argument("--model_a_text_csv", type=Path,
-                        help="Per-query text-metrics CSV for model A.")
-    parser.add_argument("--model_b_text_csv", type=Path,
-                        help="Per-query text-metrics CSV for model B.")
-    parser.add_argument("--model_a_retrieval_csv", type=Path,
-                        help="Per-query retrieval-metrics CSV for model A.")
-    parser.add_argument("--model_b_retrieval_csv", type=Path,
-                        help="Per-query retrieval-metrics CSV for model B.")
-    parser.add_argument("--model_a_llm_judge_csv", type=Path,
-                        help="Per-query LLM judge metrics CSV for model A (usefulness, accuracy, conciseness).")
-    parser.add_argument("--model_b_llm_judge_csv", type=Path,
-                        help="Per-query LLM judge metrics CSV for model B (usefulness, accuracy, conciseness).")
     parser.add_argument(
-        "--metric", nargs="+", default=["bertscore_f1_base"],
+        "--model_a_csv",
+        type=Path,
+        help="Per-query CSV for model A (backward-compatible alias for text metrics).",
+    )
+    parser.add_argument(
+        "--model_b_csv",
+        type=Path,
+        help="Per-query CSV for model B (backward-compatible alias for text metrics).",
+    )
+    parser.add_argument(
+        "--model_a_text_csv", type=Path, help="Per-query text-metrics CSV for model A."
+    )
+    parser.add_argument(
+        "--model_b_text_csv", type=Path, help="Per-query text-metrics CSV for model B."
+    )
+    parser.add_argument(
+        "--model_a_retrieval_csv",
+        type=Path,
+        help="Per-query retrieval-metrics CSV for model A.",
+    )
+    parser.add_argument(
+        "--model_b_retrieval_csv",
+        type=Path,
+        help="Per-query retrieval-metrics CSV for model B.",
+    )
+    parser.add_argument(
+        "--model_a_llm_judge_csv",
+        type=Path,
+        help="Per-query LLM judge metrics CSV for model A (usefulness, accuracy, conciseness).",
+    )
+    parser.add_argument(
+        "--model_b_llm_judge_csv",
+        type=Path,
+        help="Per-query LLM judge metrics CSV for model B (usefulness, accuracy, conciseness).",
+    )
+    parser.add_argument(
+        "--metric",
+        nargs="+",
+        default=["bertscore_f1_base"],
         metavar="METRIC",
         help=(
             "One or more metric column names to compare, or 'all'. "
@@ -727,29 +799,45 @@ def main() -> None:
         ),
     )
     parser.add_argument(
-        "--test", nargs="+", default=["wilcoxon"],
+        "--test",
+        nargs="+",
+        default=["wilcoxon"],
         choices=ALL_TESTS + ["all"],
         metavar="TEST",
-        help=(
-            f"Tests to run: {', '.join(ALL_TESTS)}, or 'all'. "
-            "Default: wilcoxon."
-        ),
+        help=(f"Tests to run: {', '.join(ALL_TESTS)}, or 'all'. " "Default: wilcoxon."),
     )
-    parser.add_argument("--alpha", type=float, default=0.05,
-                        help="Significance level (default 0.05).")
     parser.add_argument(
-        "--alternative", choices=["two-sided", "greater", "less"],
+        "--alpha", type=float, default=0.05, help="Significance level (default 0.05)."
+    )
+    parser.add_argument(
+        "--alternative",
+        choices=["two-sided", "greater", "less"],
         default="two-sided",
         help="Alternative hypothesis direction (default: two-sided).",
     )
-    parser.add_argument("--n_permutations", type=int, default=10_000,
-                        help="Number of permutations (default 10000).")
-    parser.add_argument("--perm_seed", type=int, default=67,
-                        help="Random seed for permutation test (default 67).")
-    parser.add_argument("--output_dir", type=Path, default=Path("results"),
-                        help="Directory for JSON output (default: results/).")
-    parser.add_argument("--list_metrics", action="store_true",
-                        help="Print all available metric names and exit.")
+    parser.add_argument(
+        "--n_permutations",
+        type=int,
+        default=10_000,
+        help="Number of permutations (default 10000).",
+    )
+    parser.add_argument(
+        "--perm_seed",
+        type=int,
+        default=67,
+        help="Random seed for permutation test (default 67).",
+    )
+    parser.add_argument(
+        "--output_dir",
+        type=Path,
+        default=Path("results"),
+        help="Directory for JSON output (default: results/).",
+    )
+    parser.add_argument(
+        "--list_metrics",
+        action="store_true",
+        help="Print all available metric names and exit.",
+    )
 
     args = parser.parse_args()
 
@@ -766,19 +854,35 @@ def main() -> None:
         sys.exit(0)
 
     model_a_csvs = [
-        p for p in [args.model_a_text_csv or args.model_a_csv, args.model_a_retrieval_csv, args.model_a_llm_judge_csv]
+        p
+        for p in [
+            args.model_a_text_csv or args.model_a_csv,
+            args.model_a_retrieval_csv,
+            args.model_a_llm_judge_csv,
+        ]
         if p is not None
     ]
     model_b_csvs = [
-        p for p in [args.model_b_text_csv or args.model_b_csv, args.model_b_retrieval_csv, args.model_b_llm_judge_csv]
+        p
+        for p in [
+            args.model_b_text_csv or args.model_b_csv,
+            args.model_b_retrieval_csv,
+            args.model_b_llm_judge_csv,
+        ]
         if p is not None
     ]
 
     if not model_a_csvs:
-        print("ERROR: Provide --model_a_csv or --model_a_text_csv/--model_a_retrieval_csv.", file=sys.stderr)
+        print(
+            "ERROR: Provide --model_a_csv or --model_a_text_csv/--model_a_retrieval_csv.",
+            file=sys.stderr,
+        )
         sys.exit(1)
     if not model_b_csvs:
-        print("ERROR: Provide --model_b_csv or --model_b_text_csv/--model_b_retrieval_csv.", file=sys.stderr)
+        print(
+            "ERROR: Provide --model_b_csv or --model_b_text_csv/--model_b_retrieval_csv.",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     for label, paths in [("Model A", model_a_csvs), ("Model B", model_b_csvs)]:
@@ -796,7 +900,10 @@ def main() -> None:
         metrics = list(dict.fromkeys(args.metric))
 
     if not metrics:
-        print("ERROR: No common supported metric columns found in the provided CSVs.", file=sys.stderr)
+        print(
+            "ERROR: No common supported metric columns found in the provided CSVs.",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     unknown_metrics = [m for m in metrics if m not in AVAILABLE_METRICS]
