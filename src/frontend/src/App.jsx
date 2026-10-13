@@ -1,6 +1,16 @@
 /* Author: Wiktoria Grodzka */
 import "./App.css";
 import { useState, useRef, useEffect } from "react";
+import {
+  translations,
+  HTML_LANG,
+  DATE_LOCALE,
+  USER_TYPES,
+  BACHELOR_MAJORS,
+  MASTER_MAJORS,
+  RATING_KEYS,
+  majorForApi,
+} from "./i18n";
 
 // ============ API CONFIG ============
 // const API_URL = "http://127.0.0.1:8000/chat"; //
@@ -10,7 +20,13 @@ import { useState, useRef, useEffect } from "react";
 const API_URL = "/api/chat";
 const STREAM_API_URL = "/api/chat/stream";
 const FEEDBACK_API_URL = "/api/feedback";
-const ERROR_API_URL = "/api/errors";
+// Comments on answers are stored by the backend's existing /errors endpoint
+// (free text + message_id, which links a comment to its row in the feedback CSV).
+const COMMENT_API_URL = "/api/errors";
+
+// Below this width the sidebar is an off-canvas drawer (keep in sync with App.css).
+const MOBILE_QUERY = "(max-width: 768px)";
+const isMobileViewport = () => window.matchMedia(MOBILE_QUERY).matches;
 
 
 // Fallback used while /experiment-config is loading (mirrors .env defaults)
@@ -82,144 +98,44 @@ const buildVariantPair = (cfg) => {
   ];
 };
 
-// ============ TRANSLATION ============
-const translations = {
-  PL: {
-    newChat: "Nowy czat",
-    login: "logowanie",
-    greeting: "Cześć! 👋",
-    roleSubtitle: "Zanim zaczniemy rozmowę, powiedz mi, kim jesteś — dzięki temu będę mógł lepiej dopasować odpowiedzi.",
-    subtitle: "Świetnie! Teraz wybierz proszę swój kierunek studiów — dzięki temu będę mógł udzielać odpowiedzi dopasowanych do Twojego programu.",
-    semesterGreeting: "Świetnie, dzięki! 😊",
-    semesterSubtitle: "Teraz wybierz proszę, na którym semestrze jesteś.",
-    semesterSubtitlePhd: "Teraz wybierz proszę, na którym roku studiów doktoranckich jesteś.",
-    chatGreeting: "Co mogę dzisiaj dla Ciebie zrobić?",
-    placeholder: "Najpierw podaj kierunek i semestr",
-    disclaimer: "Chatbot MiNI może popełniać błędy, także dokładnie sprawdzaj odpowiedzi.",
-    thinking: "Szukam informacji...",
-    sources: "Źródła",
-    choose: "Wybierz",
-    error: "Przepraszam, wystąpił błąd. Spróbuj ponownie.",
-    errorReport: "Opisz błąd",
-    errorPlaceholder: "Opisz, co poszło nie tak...",
-    errorSent: "Dziękujemy za zgłoszenie!",
-    bachelorMajors: [
-      "Informatyka i Systemy Informacyjne",
-      "Inżynieria i Analiza Danych",
-      "Computer Science",
-      "Matematyka",
-      "Matematyka i Analiza Danych",
-    ],
-    masterMajors: [
-      "Informatyka i Systemy Informacyjne",
-      "Data Science",
-      "Indywidualne Studia Matematyczne",
-      "Matematyka w Cyberbezpieczeństwie",
-      "Probabilistyka i Modelowanie",
-      "Statystyka Matematyczna i Analiza Danych",
-    ],
-    versions: {
-      production: "Użytkowa",
-      test: "Testowa",
-      testPro: "Testowa Pro"
-    }
-  },
-  EN: {
-    newChat: "New chat",
-    login: "login",
-    greeting: "Hello! 👋",
-    roleSubtitle: "Before we start the conversation, tell me who you are — this will help me tailor my answers better.",
-    subtitle: "Great! Now please select your field of study — this way I can provide answers tailored to your program.",
-    semesterGreeting: "Great, thanks! 😊",
-    semesterSubtitle: "Now please select which semester you are in.",
-    semesterSubtitlePhd: "Now please select which year of your doctoral studies you are in.",
-    chatGreeting: "What can I do for you today?",
-    placeholder: "First, provide your major and semester",
-    disclaimer: "Chatbot MiNI may make mistakes, so please double-check responses.",
-    thinking: "Searching for information...",
-    sources: "Sources",
-    choose: "Choose",
-    error: "Sorry, an error occurred. Please try again.",
-    errorReport: "Report an issue",
-    errorPlaceholder: "Describe what went wrong...",
-    errorSent: "Thanks for reporting!",
-    bachelorMajors: [
-      "Computer Science and Information Systems",
-      "Data Engineering and Analysis",
-      "Computer Science",
-      "Mathematics",
-      "Mathematics and Data Analysis",
-    ],
-    masterMajors: [
-      "Computer Science and Information Systems",
-      "Data Science",
-      "Individual Mathematics Studies",
-      "Mathematics in Cybersecurity",
-      "Probability and Modeling",
-      "Mathematical Statistics and Data Analysis",
-    ],
-    versions: {
-      production: "Production",
-      test: "Test",
-      testPro: "Test Pro"
-    }
-  },
-  UA: {
-    newChat: "Новий чат",
-    login: "вхід",
-    greeting: "Привіт! 👋",
-    roleSubtitle: "Перш ніж почати розмову, скажіть мені, хто ви — це допоможе мені краще адаптувати відповіді.",
-    subtitle: "Чудово! Тепер виберіть свою спеціальність — так я зможу надавати відповіді, адаптовані до вашої програми.",
-    semesterGreeting: "Чудово, дякую! 😊",
-    semesterSubtitle: "Тепер виберіть, будь ласка, на якому семестрі ви навчаєтесь.",
-    semesterSubtitlePhd: "Тепер оберіть, будь ласка, на якому курсі аспірантури ви навчаєтесь.",
-    chatGreeting: "Що я можу для вас зробити сьогодні?",
-    placeholder: "Спочатку вкажіть спеціальність і семестр",
-    disclaimer: "Chatbot MiNI може помилятися, тому перевіряйте відповіді.",
-    thinking: "Шукаю інформацію...",
-    sources: "Джерела",
-    choose: "Обрати",
-    error: "Вибачте, сталася помилка. Спробуйте ще раз.",
-    errorReport: "Повідомити про помилку",
-    errorPlaceholder: "Опишіть, що пішло не так...",
-    errorSent: "Дякуємо за повідомлення!",
-    bachelorMajors: [
-      "Інформатика та інформаційні системи",
-      "Інженерія та аналіз даних",
-      "Computer Science",
-      "Математика",
-      "Математика та аналіз даних",
-    ],
-    masterMajors: [
-      "Інформатика та інформаційні системи",
-      "Data Science",
-      "Індивідуальні математичні студії",
-      "Математика в кібербезпеці",
-      "Ймовірність і моделювання",
-      "Математична статистика та аналіз даних",
-    ],
-    versions: {
-      production: "Робоча",
-      test: "Тестова",
-      testPro: "Тестова Pro"
-    }
-  }
-};
-
 // ============ SIDEBAR COMPONENT ============
 function Sidebar({ language, setLanguage, version, setVersion, chats, currentChatId, onNewChat, onChatSelect }) {
   const [showVersionMenu, setShowVersionMenu] = useState(false);
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  // On phones the sidebar is a drawer over the chat, so it starts closed.
+  const [isCollapsed, setIsCollapsed] = useState(isMobileViewport);
   const t = translations[language];
+
+  const closeOnMobile = () => {
+    if (isMobileViewport()) setIsCollapsed(true);
+  };
+
+  useEffect(() => {
+    if (isCollapsed) return;
+    const onKeyDown = (e) => {
+      if (e.key === "Escape" && isMobileViewport()) setIsCollapsed(true);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isCollapsed]);
 
   return (
     <>
       {isCollapsed && (
-        <button className="sidebar-toggle collapsed" onClick={() => setIsCollapsed(false)}>
+        <button
+          className="sidebar-toggle collapsed"
+          onClick={() => setIsCollapsed(false)}
+          aria-label={t.openMenu}
+          title={t.openMenu}
+        >
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M4 6H20M4 12H20M4 18H20" stroke="#C0D1C8" strokeWidth="2" strokeLinecap="round"/>
           </svg>
         </button>
+      )}
+
+      {/* Dimmed backdrop behind the drawer; only visible on phones (see App.css) */}
+      {!isCollapsed && (
+        <div className="sidebar-backdrop" onClick={() => setIsCollapsed(true)} />
       )}
 
       <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
@@ -240,7 +156,12 @@ function Sidebar({ language, setLanguage, version, setVersion, chats, currentCha
             <div className="header-content">
               <h2 className="logo-text">Chatbot MiNI</h2>
 
-              <button className="sidebar-toggle-btn" onClick={() => setIsCollapsed(true)}>
+              <button
+                className="sidebar-toggle-btn"
+                onClick={() => setIsCollapsed(true)}
+                aria-label={t.closeMenu}
+                title={t.closeMenu}
+              >
                 <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
 <path d="M15 17H16" stroke="#C0D1C8" strokeWidth="1.5" strokeLinecap="round"/>
 <path d="M15 20H16" stroke="#C0D1C8" strokeWidth="1.5" strokeLinecap="round"/>
@@ -317,7 +238,7 @@ function Sidebar({ language, setLanguage, version, setVersion, chats, currentCha
             </button>
           </div>
 
-          <button className="new-chat-btn" onClick={onNewChat}>
+          <button className="new-chat-btn" onClick={() => { onNewChat(); closeOnMobile(); }}>
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
 <path d="M5.83341 4.16667C4.45271 4.16667 3.33341 5.28596 3.33341 6.66667V13.3333C3.33341 14.7141 4.45271 15.8333 5.83341 15.8333H14.1667C15.5475 15.8333 16.6667 14.7141 16.6667 13.3333V10.4167C16.6667 9.95642 17.0398 9.58333 17.5001 9.58333C17.9603 9.58333 18.3334 9.95642 18.3334 10.4167V13.3333C18.3334 15.6345 16.4679 17.5 14.1667 17.5H5.83341C3.53223 17.5 1.66675 15.6345 1.66675 13.3333V6.66667C1.66675 4.36548 3.53223 2.5 5.83341 2.5H8.75008C9.21033 2.5 9.58341 2.8731 9.58341 3.33333C9.58341 3.79357 9.21033 4.16667 8.75008 4.16667H5.83341Z" fill="#C0D1C8"/>
 <path fillRule="evenodd" clipRule="evenodd" d="M15.7025 2.98816C15.0516 2.33728 13.9963 2.33728 13.3455 2.98816L9.73372 6.59993L9.17889 9.95458C9.07631 10.5747 9.61406 11.1118 10.2341 11.0083L13.5841 10.4495L17.1955 6.83818C17.8464 6.18731 17.8464 5.13203 17.1955 4.48116L15.7025 2.98816ZM10.9943 9.19183L11.2906 7.39996L14.524 4.16666L16.017 5.65967L12.7832 8.89342L10.9943 9.19183Z" fill="#C0D1C8"/>
@@ -331,59 +252,21 @@ function Sidebar({ language, setLanguage, version, setVersion, chats, currentCha
               <button
                 key={chat.id}
                 className={`chat-history-item ${currentChatId === chat.id ? 'active' : ''}`}
-                onClick={() => onChatSelect(chat.id)}
+                onClick={() => { onChatSelect(chat.id); closeOnMobile(); }}
               >
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <path d="M14 10.6667C14 11.0203 13.8595 11.3594 13.6095 11.6095C13.3594 11.8595 13.0203 12 12.6667 12H4.66667L2 14.6667V3.33333C2 2.97971 2.14048 2.64057 2.39052 2.39052C2.64057 2.14048 2.97971 2 3.33333 2H12.6667C13.0203 2 13.3594 2.14048 13.6095 2.39052C13.8595 2.64057 14 2.97971 14 3.33333V10.6667Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
                 <div className="chat-info">
-                  <span className="chat-title">{chat.title}</span>
-                  <span className="chat-date">{chat.date}</span>
+                  {/* Title and date are rendered per language instead of being frozen at creation */}
+                  <span className="chat-title">{chat.title ?? t.newChat}</span>
+                  <span className="chat-date">
+                    {new Date(chat.id).toLocaleDateString(DATE_LOCALE[language], { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                  </span>
                 </div>
               </button>
             ))}
           </div>
-        </div>
-
-        <div className="sidebar-bottom">
-          <button className="login-btn">
-            <svg width="120" height="41" viewBox="0 0 120 41" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path d="M106.9 14.0757C110.625 15.7299 110.839 15.6954 112.577 16.4777C114.428 17.3103 118.345 18.9142 118.345 22.9855C118.345 27.0569 115.076 30.0488 110.264 30.0488C106.103 30.0488 103.879 28.5029 103.115 27.6065L102.458 28.4883C103.321 29.2467 105.424 30.3879 110.264 30.3879C117.512 30.3879 119.615 26.909 119.98 22.893C120.344 18.8773 116.063 16.2927 112.917 15.1205C109.771 13.9484 107.488 12.7762 106.748 12.3755" fill="#C0D1C8"/>
-<path d="M103.496 4.61382C104.439 2.11958 107.168 0.586983 109.854 0.490109C113.278 0.36669 115.653 0.767664 116.702 3.97518H118.737C118.737 3.97518 118.49 -0.373688 109.854 0.119851C105.683 0.358073 103.613 1.96364 102.587 3.55989" fill="#C0D1C8"/>
-<path d="M79.085 3.89451H81.1204C81.1204 3.89451 80.8739 -0.4545 72.2378 0.0390393C63.6014 0.532578 63.9717 6.88632 63.9717 6.88632C63.9717 6.88632 63.3624 11.0578 68.5981 13.7336C73.0701 15.739 73.1936 15.6459 75.0442 16.4788C76.8951 17.3115 80.812 18.9153 80.812 22.9867C80.812 27.058 77.5428 30.05 72.731 30.05C68.5699 30.05 66.3464 28.504 65.5818 27.6077L64.9246 28.4895C65.7882 29.248 67.8915 30.3891 72.7311 30.3891C79.9794 30.3891 82.0826 26.9102 82.4468 22.8942C82.8115 18.8784 78.5297 16.2937 75.3838 15.1217C72.2378 13.9496 69.9553 12.7774 69.2149 12.3765C68.4748 11.9756 65.7672 10.5993 65.5446 6.79375C65.3218 2.98846 68.8138 0.532717 72.2378 0.409159C75.6613 0.285878 78.0362 0.686575 79.085 3.89451Z" fill="#C0D1C8"/>
-<path d="M46.5608 0.108154H48.0231V20.7084C48.0231 20.7084 48.0878 28.8963 56.7309 28.8963C65.374 28.8963 65.6016 20.7084 65.6016 20.7084V12.8776L67.015 14.015V20.1399C67.015 21.5857 66.7225 30.448 56.7309 30.448C46.7395 30.448 46.5608 21.2607 46.5608 20.1886V0.108154Z" fill="#C0D1C8"/>
-<path d="M81.1917 15.643L81.3446 17.7339C80.4636 16.6616 79.2205 16.0388 79.2205 16.0388C78.9485 5.99447 85.381 0.139404 92.6968 0.139404C100.868 0.139404 106.163 6.53874 106.163 16.0388C106.163 18.9086 104.15 30.487 92.6968 30.487C87.5838 30.487 84.387 27.8899 82.5528 25.5736L83.1867 23.4589C84.6041 25.747 87.694 29.216 92.7042 29.216C100.341 29.216 104.171 21.6795 104.171 16.1378C104.171 9.70511 100.918 1.34566 92.7053 1.34566C84.8376 1.3458 81.1917 9.90331 81.1917 15.643Z" fill="#C0D1C8"/>
-<path d="M28.3531 36.1104H31.11L31.1054 40.9238L28.3486 40.4776L28.3531 36.1104Z" fill="#C0D1C8"/>
-<path d="M31.4727 36.1074H32.2232L32.2244 40.7252L31.4728 40.9229L31.4727 36.1074Z" fill="#C0D1C8"/>
-<path d="M28.3395 1.58775L31.1185 0.122559L31.1011 35.3246H28.3376L28.3395 1.58775Z" fill="#C0D1C8"/>
-<path d="M38.2033 1.80418L35.8753 2.49911L32.2278 1.53677V35.3216H31.4771L31.4727 0.0661621L38.2033 1.80418Z" fill="#C0D1C8"/>
-<path d="M27.7863 5.16626V6.50595L0 13.6787V12.9838L27.7863 5.16626Z" fill="#C0D1C8"/>
-<path d="M32.6506 3.79843V5.29239L45.4482 2.00481V0.197998L32.6506 3.79843Z" fill="#C0D1C8"/>
-<path d="M45.4482 5.61792V7.00778L32.6506 9.76262V8.595L45.4482 5.61792Z" fill="#C0D1C8"/>
-<path d="M27.7863 9.72876V10.8122L5.42041 15.627V14.9321L27.7863 9.72876Z" fill="#C0D1C8"/>
-<path d="M45.4482 10.5291V11.8262L32.6506 13.9341V12.9045L45.4482 10.5291Z" fill="#C0D1C8"/>
-<path d="M27.7871 13.8066V14.7344L10.0078 17.6628V17.1069L27.7871 13.8066Z" fill="#C0D1C8"/>
-<path d="M27.7873 17.093V17.8756L14.8262 19.5948V19.0538L27.7873 17.093Z" fill="#C0D1C8"/>
-<path d="M27.788 20.0098V20.7375L21.4236 21.3108V20.7549L27.788 20.0098Z" fill="#C0D1C8"/>
-<path d="M27.7889 22.5078V23.2258L23.7229 23.503V22.8544L27.7889 22.5078Z" fill="#C0D1C8"/>
-<path d="M27.7843 24.9248V25.6536L25.8494 25.7266V25.0399L27.7843 24.9248Z" fill="#C0D1C8"/>
-<path d="M27.7843 27.3794V28.0989L25.8494 28.1356V27.4489L27.7843 27.3794Z" fill="#C0D1C8"/>
-<path d="M27.7862 29.51V30.29L24.9248 30.2641V29.5228L27.7862 29.51Z" fill="#C0D1C8"/>
-<path d="M32.6506 17.2312V16.3578L45.4482 14.4219V15.5338L32.6506 17.2312Z" fill="#C0D1C8"/>
-<path d="M32.6506 19.4396V20.2986L45.4482 19.1462V17.9417L32.6506 19.4396Z" fill="#C0D1C8"/>
-<path d="M32.6506 22.8916V22.0906L45.4482 20.999V22.0183L32.6506 22.8916Z" fill="#C0D1C8"/>
-<path d="M32.6506 24.6332V25.4674L45.7584 24.9835V23.8716L32.6506 24.6332Z" fill="#C0D1C8"/>
-<path d="M32.6506 28.0048V27.2029L47.9648 26.7437V27.763L32.6506 28.0048Z" fill="#C0D1C8"/>
-<path d="M32.6506 29.4914V30.3373L50.0496 30.4526V29.4336L32.6506 29.4914Z" fill="#C0D1C8"/>
-</svg>
-
-
-            <span>{t.login}</span>
-          </button>
-
-          {/* <div className="euos-logo">
-            <p style={{color: '#666', fontSize: '12px'}}>EUOS</p>
-          </div> */}
         </div>
       </aside>
     </>
@@ -437,9 +320,10 @@ function renderTextWithLinks(text) {
 function Message({ message, version, language, onFeedbackChange, isDisabled })  {
   const t = translations[language];
   const [showAllSources, setShowAllSources] = useState(false);
-  const [errorOpen, setErrorOpen] = useState(false);
-  const [errorText, setErrorText] = useState('');
-  const [errorSent, setErrorSent] = useState(false);
+  const [commentOpen, setCommentOpen] = useState(false);
+  const [commentText, setCommentText] = useState('');
+  // "idle" | "sending" | "sent" | "failed"
+  const [commentStatus, setCommentStatus] = useState('idle');
 
 
   const isUser = message.type === 'user';
@@ -546,22 +430,46 @@ if (ext === 'link') {
     onFeedbackChange(message.id, { selected: newSelected }, message.pairId);
   };
 
-  const handleErrorSubmit = () => {
-    if (!errorText.trim()) return;
-    fetch(ERROR_API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message_id: message.id,
-        response_text: message.text,
-        error_description: errorText,
-        created_at: new Date().toISOString()
-      })
-    }).catch(console.error);
-    setErrorSent(true);
-    setErrorText('');
-    setTimeout(() => { setErrorOpen(false); setErrorSent(false); }, 2000);
+  const handleCommentSubmit = async () => {
+    if (!commentText.trim() || commentStatus === 'sending') return;
+    setCommentStatus('sending');
+    try {
+      const resp = await fetch(COMMENT_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message_id: message.id,
+          response_text: message.text,
+          // Field name is fixed by the backend's /errors contract.
+          error_description: commentText,
+          created_at: new Date().toISOString()
+        })
+      });
+      if (!resp.ok) throw new Error(`Comment API Error (${resp.status})`);
+      setCommentStatus('sent');
+      setCommentText('');
+      setTimeout(() => { setCommentOpen(false); setCommentStatus('idle'); }, 2000);
+    } catch (error) {
+      // Keep the text so the user can retry instead of losing what they wrote.
+      console.error("Comment save failed:", error);
+      setCommentStatus('failed');
+    }
   };
+
+  // Available next to every kind of rating (thumbs, variant choice, stars).
+  const commentButton = (
+    <button
+      className={`thumb-btn-inline ${commentOpen ? 'active' : ''}`}
+      onClick={() => { setCommentOpen(v => !v); setCommentStatus('idle'); }}
+      title={t.commentAdd}
+      aria-label={t.commentAdd}
+    >
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M20 14.5C20 15.0304 19.7893 15.5391 19.4142 15.9142C19.0391 16.2893 18.5304 16.5 18 16.5H8L4 20.5V5.5C4 4.96957 4.21071 4.46086 4.58579 4.08579C4.96086 3.71071 5.46957 3.5 6 3.5H18C18.5304 3.5 19.0391 3.71071 19.4142 4.08579C19.7893 4.46086 20 4.96957 20 5.5V14.5Z" stroke="#C0D1C8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M8 8.5H16M8 12H13" stroke="#C0D1C8" strokeWidth="1.5" strokeLinecap="round"/>
+      </svg>
+    </button>
+  );
 
 
 
@@ -569,7 +477,7 @@ if (ext === 'link') {
     <div className={`message ${isUser ? 'user' : 'bot'}${isDisabled ? ' disabled' : ''}`}>
       <div className="message-bubble">
         {message.isVariant && (
-          <div className="variant-label">Wariant {message.variantLabel}</div>
+          <div className="variant-label">{t.variant} {message.variantLabel}</div>
         )}
         {!isUser && !message.text && !message.canRate ? (
           <span className="typing-indicator">
@@ -586,8 +494,8 @@ if (ext === 'link') {
               onClick={() => setShowAllSources((v) => !v)}
             >
               {showAllSources
-                ? "Zwiń źródła"
-                : `Pokaż źródła (${message.sources.length})`}
+                ? t.hideSources
+                : t.showSources(message.sources.length)}
             </button>
             {showAllSources && (
               <div className="sources-files">
@@ -629,6 +537,8 @@ if (ext === 'link') {
               <button
                 className={`thumb-btn-inline ${message.feedback?.rating === 'up' ? 'active' : ''}`}
                 onClick={() => onFeedbackChange(message.id, { rating: message.feedback?.rating === 'up' ? null : 'up' })}
+                title={t.rateUp}
+                aria-label={t.rateUp}
               >
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
 <path d="M12.9512 4.29782C13.5217 3.64005 14.4171 3.35921 15.2637 3.56832L15.3066 3.57907C16.8531 3.96127 17.5615 5.75008 16.6689 7.07321L14.998 9.54977H18.1875C19.6391 9.54977 20.7423 10.8655 20.4541 12.29L19.3672 17.6601C19.1498 18.734 18.198 19.5 17.1006 19.5H5C4.72386 19.5 4.5 19.2761 4.5 19V10.0498L4.50977 9.95211C4.52897 9.856 4.57615 9.76659 4.64648 9.69625C4.74024 9.60258 4.86746 9.54977 5 9.54977H8.39551L12.9512 4.29782ZM15.0234 4.53903C14.5387 4.41934 14.0285 4.58135 13.7061 4.95309L9.12305 10.2363V18.5H17.1006C17.7303 18.5 18.2663 18.0615 18.3877 17.4619L19.4746 12.0918C19.6345 11.3011 19.022 10.5498 18.1875 10.5498H14.0576C13.8729 10.5498 13.7031 10.4481 13.6162 10.2851C13.5295 10.1219 13.5393 9.92372 13.6426 9.77047L15.8398 6.51364C16.3367 5.77698 15.9504 4.76814 15.0664 4.54977L15.0234 4.53903ZM5.5 18.5H8.12305V10.5498H5.5V18.5Z" fill="#C0D1C8"/>
@@ -638,46 +548,14 @@ if (ext === 'link') {
               <button
                 className={`thumb-btn-inline ${message.feedback?.rating === 'down' ? 'active' : ''}`}
                 onClick={() => onFeedbackChange(message.id, { rating: message.feedback?.rating === 'down' ? null : 'down' })}
+                title={t.rateDown}
+                aria-label={t.rateDown}
               >
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
 <path d="M11.0489 19.7021C10.4784 20.3599 9.58304 20.6408 8.73643 20.4316L8.69346 20.4209C7.14703 20.0387 6.43857 18.2499 7.33115 16.9268L9.00205 14.4502L5.8126 14.4502C4.36096 14.4502 3.25784 13.1345 3.546 11.71L4.63291 6.33985C4.85028 5.26601 5.80212 4.5 6.89951 4.5L19.0001 4.5C19.2762 4.5 19.5001 4.72386 19.5001 5L19.5001 13.9502L19.4903 14.0479C19.4711 14.144 19.4239 14.2334 19.3536 14.3037C19.2599 14.3974 19.1326 14.4502 19.0001 14.4502H15.6046L11.0489 19.7021ZM8.97666 19.4609C9.46144 19.5806 9.97158 19.4186 10.294 19.0469L14.8771 13.7637L14.877 5.5L6.89951 5.5C6.26984 5.5 5.73378 5.93848 5.6124 6.53809L4.52549 11.9082C4.36562 12.6988 4.97812 13.4502 5.8126 13.4502L9.94248 13.4502C10.1272 13.4502 10.297 13.5518 10.3839 13.7148C10.4706 13.878 10.4608 14.0762 10.3575 14.2295L8.16025 17.4863C7.66343 18.223 8.04971 19.2318 8.93369 19.4502L8.97666 19.4609ZM18.5001 5.5L15.877 5.5L15.8771 13.4502H18.5001L18.5001 5.5Z" fill="#C0D1C8"/>
 </svg>
 
               </button>
-              <button
-                className={`thumb-btn-inline ${errorOpen ? 'active' : ''}`}
-                onClick={() => { setErrorOpen(v => !v); setErrorSent(false); }}
-                title={t.errorReport}
-              >
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <circle cx="12" cy="12" r="9" stroke="#C0D1C8" strokeWidth="1.5"/>
-                  <path d="M12 8v4M12 16h.01" stroke="#C0D1C8" strokeWidth="1.5" strokeLinecap="round"/>
-                </svg>
-              </button>
-            </div>
-          )}
-          {errorOpen && (
-            <div className="error-report-form">
-              {errorSent ? (
-                <span className="error-sent-msg">{t.errorSent}</span>
-              ) : (
-                <>
-                  <textarea
-                    className="error-report-textarea"
-                    value={errorText}
-                    onChange={(e) => setErrorText(e.target.value)}
-                    placeholder={t.errorPlaceholder}
-                    rows={2}
-                  />
-                  <button
-                    className="error-report-submit"
-                    onClick={handleErrorSubmit}
-                    disabled={!errorText.trim()}
-                  >
-                    {t.errorReport}
-                  </button>
-                </>
-              )}
             </div>
           )}
 
@@ -690,24 +568,45 @@ if (ext === 'link') {
               >
                 {t.choose} {message.variantLabel} {/* # dodane */}
               </button>
-              <button
-                className={`thumb-btn-inline ${errorOpen ? 'active' : ''}`}
-                onClick={() => { setErrorOpen(v => !v); setErrorSent(false); }}
-                title={t.errorReport}
-              >
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <circle cx="12" cy="12" r="9" stroke="#C0D1C8" strokeWidth="1.5"/>
-                  <path d="M12 8v4M12 16h.01" stroke="#C0D1C8" strokeWidth="1.5" strokeLinecap="round"/>
-                </svg>
-              </button>
+            </div>
+          )}
+
+          {commentButton}
+
+          {commentOpen && (
+            <div className="comment-form">
+              {commentStatus === 'sent' ? (
+                <span className="comment-status-msg">{t.commentSent}</span>
+              ) : (
+                <>
+                  <textarea
+                    className="comment-textarea"
+                    value={commentText}
+                    onChange={(e) => setCommentText(e.target.value)}
+                    placeholder={t.commentPlaceholder}
+                    aria-label={t.commentAdd}
+                    rows={2}
+                  />
+                  {commentStatus === 'failed' && (
+                    <span className="comment-status-msg failed">{t.commentFailed}</span>
+                  )}
+                  <button
+                    className="comment-submit"
+                    onClick={handleCommentSubmit}
+                    disabled={!commentText.trim() || commentStatus === 'sending'}
+                  >
+                    {t.commentSend}
+                  </button>
+                </>
+              )}
             </div>
           )}
 
           {version === "testPro" && message.isVariant && (
             <div className="mini-rating">
-              {["Usefulness", "Accuracy", "Conciseness"].map((label) => (
+              {RATING_KEYS.map((label) => (
                 <div key={label} className="star-rating-row">
-                  <span className="star-rating-label">{label}</span>
+                  <span className="star-rating-label">{t.ratingLabels[label]}</span>
                   {[1, 2, 3, 4, 5].map((star) => (
                     <button
                       key={star}
@@ -742,41 +641,8 @@ function SemesterCard({ semester, onClick }) {
 }
 
 // ============ MAIN CONTENT COMPONENT ============
-const USER_TYPES = {
-  PL: [
-    { key: "candidate", label: "Kandydat na studia", icon: "🏫" },
-    { key: "student_junior", label: "Student I roku", icon: "📝" },
-    { key: "student_senior", label: "Student II-IV roku", icon: "📚" },
-    { key: "master", label: "Student magisterskch", icon: "🎯" },
-    { key: "phd", label: "Doktorant", icon: "🔬" },
-    { key: "admin", label: "Pracownik administracji", icon: "🏛️" },
-    { key: "research_teaching", label: "Pracownik badawczo-dydaktyczny", icon: "📊" },
-  ],
-  EN: [
-    { key: "candidate", label: "Prospective student", icon: "🏫" },
-    { key: "student_junior", label: "1st year student", icon: "📝" },
-    { key: "student_senior", label: "2nd–4th year student", icon: "📚" },
-    { key: "master", label: "Master's student", icon: "🎯" },
-    { key: "phd", label: "PhD student", icon: "🔬" },
-    { key: "admin", label: "Faculty staff", icon: "🏛️" },
-    { key: "research_teaching", label: "Research & Teaching Staff", icon: "📊" },
-  ],
-  UA: [
-    { key: "candidate", label: "Абітурієнт", icon: "🏫" },
-    { key: "student_junior", label: "Студент 1 курсу", icon: "📝" },
-    { key: "student_senior", label: "Студент 2-4 курсу", icon: "📚" },
-    { key: "master", label: "Магістрант", icon: "🎯" },
-    { key: "phd", label: "Аспірант", icon: "🔬" },
-    { key: "admin", label: "Працівник факультету", icon: "🏛️" },
-    { key: "research_teaching", label: "Науково-педагогічний працівник", icon: "📊" },
-  ],
-};
-
 const USER_TYPE_NEEDS_MAJOR = ["student_junior", "student_senior", "master"];
 
-// Semester count per major index (mirrors the order in translations[lang].bachelorMajors)
-// Semester counts for bachelorMajors order: ISI, IAD, CS, Matematyka, MAD
-const MAJOR_SEMESTER_COUNTS = [7, 7, 7, 6, 6];
 const SEMESTER_ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII"];
 
 function MainContent({ language, version, userType, setUserType, selectedMajor, setSelectedMajor, selectedSemester, setSelectedSemester, messages, onSendMessage, isLoading, onFeedbackChange }) {
@@ -805,13 +671,17 @@ function MainContent({ language, version, userType, setUserType, selectedMajor, 
     }
   };
 
+  // Options are { value, label }: `value` is what gets stored and sent to the
+  // backend (language-independent), `label` is what the user sees.
   const getSemesterOptions = () => {
-    if (userType === "phd") return ["1. rok", "2. rok", "3. rok", "4.+ rok"];
-    if (userType === "master") return SEMESTER_ROMAN.slice(0, 4);
-    const majorIdx = t.bachelorMajors.indexOf(selectedMajor);
-    const count = MAJOR_SEMESTER_COUNTS[majorIdx] ?? 7;
-    if (userType === "student_junior") return SEMESTER_ROMAN.slice(0, 2);
-    return SEMESTER_ROMAN.slice(2, count); // student_senior: III through last semester of their program
+    if (userType === "phd") {
+      return translations.PL.phdYears.map((value, i) => ({ value, label: t.phdYears[i] }));
+    }
+    const roman = (items) => items.map((value) => ({ value, label: value }));
+    if (userType === "master") return roman(SEMESTER_ROMAN.slice(0, 4));
+    const count = BACHELOR_MAJORS.find((m) => m.key === selectedMajor)?.semesters ?? 7;
+    if (userType === "student_junior") return roman(SEMESTER_ROMAN.slice(0, 2));
+    return roman(SEMESTER_ROMAN.slice(2, count)); // student_senior: III through last semester of their program
   };
 
   const handleMajorSelect = (major) => {
@@ -844,7 +714,7 @@ function MainContent({ language, version, userType, setUserType, selectedMajor, 
         setAttachedFile({ name: filename, isPdf: false, text });
       } catch (err) {
         console.error("File extraction failed:", err);
-        alert("Nie udało się odczytać pliku. Obsługiwane formaty: .txt, .md, .csv, .pdf");
+        alert(t.fileError);
       }
     }
   };
@@ -853,7 +723,7 @@ function MainContent({ language, version, userType, setUserType, selectedMajor, 
     e.preventDefault();
     if ((inputValue.trim() || attachedFile) && !isLoading) {
       if (attachedFile?.isPdf) {
-        const textToSend = inputValue.trim() || `[Załącznik: ${attachedFile.name}]`;
+        const textToSend = inputValue.trim() || `[${t.attachment}: ${attachedFile.name}]`;
         onSendMessage(textToSend, [{
           filename: attachedFile.name,
           data: attachedFile.data,
@@ -861,7 +731,7 @@ function MainContent({ language, version, userType, setUserType, selectedMajor, 
         }]);
       } else {
         const textToSend = attachedFile
-          ? `${inputValue}\n\n[Załącznik: ${attachedFile.name}]\n${attachedFile.text}`
+          ? `${inputValue}\n\n[${t.attachment}: ${attachedFile.name}]\n${attachedFile.text}`
           : inputValue;
         onSendMessage(textToSend, []);
       }
@@ -895,14 +765,14 @@ function MainContent({ language, version, userType, setUserType, selectedMajor, 
             <p className="subtitle">{t.roleSubtitle}</p>
 
             <div className="cards">
-              {USER_TYPES[language].map((type) => (
+              {USER_TYPES.map((type) => (
                 <button
                   key={type.key}
                   className="card role-card"
                   onClick={() => handleUserTypeSelect(type.key)}
                 >
                   <span className="role-icon">{type.icon}</span>
-                  <span>{type.label}</span>
+                  <span>{t.userTypes[type.key]}</span>
                 </button>
               ))}
             </div>
@@ -932,13 +802,13 @@ function MainContent({ language, version, userType, setUserType, selectedMajor, 
             <p className="subtitle">{t.subtitle}</p>
 
             <div className="cards">
-              {(userType === "master" ? t.masterMajors : t.bachelorMajors).map((major, index) => (
+              {(userType === "master" ? MASTER_MAJORS : BACHELOR_MAJORS).map((major) => (
                 <Card
-                  key={index}
-                  title={major}
+                  key={major.key}
+                  title={t.majors[major.key]}
                   version={version}
                   language={language}
-                  onClick={() => handleMajorSelect(major)}
+                  onClick={() => handleMajorSelect(major.key)}
                 />
               ))}
             </div>
@@ -969,9 +839,9 @@ function MainContent({ language, version, userType, setUserType, selectedMajor, 
             <div className="semester-selection">
               {getSemesterOptions().map((sem) => (
                 <SemesterCard
-                  key={sem}
-                  semester={sem}
-                  onClick={() => handleSemesterSelect(sem)}
+                  key={sem.value}
+                  semester={sem.label}
+                  onClick={() => handleSemesterSelect(sem.value)}
                 />
               ))}
             </div>
@@ -1031,7 +901,7 @@ function MainContent({ language, version, userType, setUserType, selectedMajor, 
         {attachedFile && (
           <div className="attached-file-chip">
             <span>📎 {attachedFile.name}</span>
-            <button type="button" onClick={() => setAttachedFile(null)} className="remove-attachment">✕</button>
+            <button type="button" onClick={() => setAttachedFile(null)} className="remove-attachment" aria-label={t.removeAttachment} title={t.removeAttachment}>✕</button>
           </div>
         )}
         <form className="input-wrapper" onSubmit={handleSubmit}>
@@ -1042,7 +912,7 @@ function MainContent({ language, version, userType, setUserType, selectedMajor, 
             accept=".txt,.md,.csv,.pdf"
             onChange={handleFileChange}
           />
-          <button type="button" className="attach-btn" onClick={() => fileInputRef.current?.click()}>
+          <button type="button" className="attach-btn" aria-label={t.attachFile} title={t.attachFile} onClick={() => fileInputRef.current?.click()}>
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M13.25 9.5V14.25C13.25 15.2165 12.4665 16 11.5 16C10.5335 16 9.75 15.2165 9.75 14.25V8C9.75 6.067 11.317 4.5 13.25 4.5C15.183 4.5 16.75 6.067 16.75 8V14.25C16.75 17.1495 14.3995 19.5 11.5 19.5C8.60051 19.5 6.25 17.1495 6.25 14.25V9.5" stroke="#C0D1C8" strokeWidth="1.5" strokeLinecap="round"/>
             </svg>
@@ -1050,13 +920,13 @@ function MainContent({ language, version, userType, setUserType, selectedMajor, 
 
           <input
             type="text"
-            placeholder={userType && selectedMajor && selectedSemester ? t.placeholder.replace("Najpierw podaj kierunek i semestr", "Zadaj pytanie...") : t.placeholder}
+            placeholder={userType && selectedMajor && selectedSemester ? t.askPlaceholder : t.placeholder}
             disabled={!userType || !selectedMajor || !selectedSemester || isLoading}
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
           />
 
-          <button type="submit" className="send-btn" disabled={!userType || !selectedMajor || !selectedSemester || !inputValue.trim() || isLoading}>
+          <button type="submit" className="send-btn" aria-label={t.send} disabled={!userType || !selectedMajor || !selectedSemester || !inputValue.trim() || isLoading}>
             {isLoading ? (
               <div className="spinner"></div>
             ) : (
@@ -1098,13 +968,14 @@ export default function App() {
       .catch(() => {}); // silently keep the default on error
   }, []);
 
+  // Keep <html lang> in sync so screen readers and browser translation follow the UI language
+  useEffect(() => {
+    document.documentElement.lang = HTML_LANG[language];
+  }, [language]);
+
   const handleNewChat = () => {
-    const t = translations[language];
-    const newChat = {
-      id: Date.now(),
-      date: new Date().toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric' }),
-      title: t.newChat
-    };
+    // No stored title/date: the sidebar renders both in the current UI language (id is the creation time)
+    const newChat = { id: Date.now(), title: null };
     setChats([newChat, ...chats]);
     setCurrentChatId(newChat.id);
     setUserType(null);
@@ -1221,7 +1092,7 @@ export default function App() {
             query: messageText,
             language: language.toLowerCase(),
             user_type: userType ?? null,
-            major: selectedMajor ?? null,
+            major: selectedMajor ? majorForApi(selectedMajor) : null,
             semester: (selectedSemester && selectedSemester !== "—") ? String(selectedSemester) : null,
             conversation_history: conversationHistory,
             mode: currentVersion,
@@ -1311,7 +1182,7 @@ export default function App() {
             query: messageText,
             language: language.toLowerCase(),
             user_type: userType ?? null,
-            major: selectedMajor ?? null,
+            major: selectedMajor ? majorForApi(selectedMajor) : null,
             semester: (selectedSemester && selectedSemester !== "—") ? String(selectedSemester) : null,
             conversation_history: conversationHistory,
             mode: currentVersion,

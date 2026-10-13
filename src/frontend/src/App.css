@@ -93,31 +93,6 @@ body {
   background: rgba(255, 255, 255, 0.1);
 }
 
-.login-btn {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  padding: 12px 16px;
-  background: transparent;
-  border: none;
-  color: #C0D1C8;
-  font-size: 14px;
-  cursor: pointer;
-  transition: all 0.2s;
-  margin-bottom: 16px;
-}
-
-.login-btn:hover {
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 8px;
-}
-
-.euos-logo {
-  opacity: 0.5;
-  text-align: center;
-}
-
 /* ============ MAIN CONTENT ============ */
 .main {
   flex: 1;
@@ -179,6 +154,12 @@ h1 {
   gap: 10px;
   width: 100%;
   max-width: 760px;
+}
+
+/* Role cards are <button>s: without an explicit colour they use the system
+   button text colour, which is black when the OS is in light mode. */
+.role-card {
+  color: white;
 }
 
 /* center a lone last card in a 3-column grid */
@@ -978,77 +959,6 @@ input::placeholder {
   }
 }
 
-/* ============ RESPONSIVE ============ */
-@media (max-width: 768px) {
-  .input-section {
-    left: 70px; /* Szerokość wąskiego sidebaru na mobile */
-    padding: 20px 15px;
-  }
-
-  .sidebar.collapsed ~ .main .input-section,
-  .sidebar.collapsed ~ .input-section {
-    left: 0;
-  }
-
-  .sidebar {
-    width: 70px;
-  }
-
-  .logo-text,
-  .new-chat-btn span,
-  .login-btn span {
-    display: none;
-  }
-
-  .cards {
-    grid-template-columns: 1fr;
-  }
-
-  h1 {
-    font-size: 36px;
-  }
-
-  .message {
-    max-width: 85%;
-  }
-
-  .message-bubble {
-    padding: 10px 14px;
-  }
-
-  .chat-history {
-    max-height: 200px;
-  }
-
-  .sources-list a {
-    font-size: 12px;
-  }
-
-  .semester-selection {
-    gap: 12px;
-  }
-
-  .semester-card {
-    min-width: 80px;
-    padding: 16px;
-  }
-
-  .semester-card svg {
-    width: 40px;
-    height: 40px;
-  }
-
-  .version-badge {
-    font-size: 10px;
-    padding: 3px 8px;
-  }
-
-  .sidebar-toggle.collapsed {
-    left: 12px;
-    top: 12px;
-    padding: 10px;
-  }
-}
 
 
 /* ============ MESSAGE FEEDBACK ============ */
@@ -1085,8 +995,9 @@ input::placeholder {
   cursor: not-allowed;
   pointer-events: none;
 }
-/* ============ ERROR REPORT FORM ============ */
-.error-report-form {
+
+/* ============ COMMENT FORM ============ */
+.comment-form {
   flex-basis: 100%;
   display: flex;
   flex-direction: column;
@@ -1095,7 +1006,7 @@ input::placeholder {
   max-width: 380px;
 }
 
-.error-report-textarea {
+.comment-textarea {
   width: 100%;
   padding: 8px 10px;
   background: rgba(44, 52, 64, 0.6);
@@ -1109,11 +1020,11 @@ input::placeholder {
   box-sizing: border-box;
 }
 
-.error-report-textarea::placeholder {
+.comment-textarea::placeholder {
   color: rgba(255, 255, 255, 0.4);
 }
 
-.error-report-submit {
+.comment-submit {
   align-self: flex-start;
   padding: 4px 12px;
   background: rgba(44, 52, 64, 0.6);
@@ -1125,18 +1036,323 @@ input::placeholder {
   transition: all 0.2s;
 }
 
-.error-report-submit:hover {
+.comment-submit:hover {
   background: rgba(44, 52, 64, 0.9);
 }
 
-.error-report-submit:disabled {
+.comment-submit:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
 
-.error-sent-msg {
+.comment-status-msg {
   font-size: 12px;
   color: #C0D1C8;
   opacity: 0.7;
   padding: 4px 0;
+}
+
+.comment-status-msg.failed {
+  color: #E63312;
+  opacity: 1;
+}
+
+/* ============ MOBILE DRAWER BACKDROP ============ */
+/* Rendered whenever the sidebar is open; only shown on phones (see below). */
+.sidebar-backdrop {
+  display: none;
+}
+
+/* ============ RESPONSIVE: PHONES ============ */
+/* Keep the breakpoint in sync with MOBILE_QUERY in App.jsx. */
+@media (max-width: 768px) {
+  /* --- page frame: exactly the visible viewport ---
+     index.css (Vite template) makes <body> a centring flex container with
+     min-height: 100vh. On a phone that breaks the frame in two ways:
+       - #root is a flex item, so it shrinks to its content: a screen with little
+         content (empty chat) ends up narrower than the display;
+       - 100vh is the viewport *without* the browser's address bar, so the body is
+         taller than what is visible and the app gets centred inside it, leaving a
+         strip of body background above it.
+     So on phones the frame is a plain block chain of 100% sizes, and the page
+     itself never scrolls (only the panels inside it do). */
+  html,
+  body,
+  #root {
+    width: 100%;
+    height: 100%;
+  }
+
+  html,
+  body {
+    overflow: hidden;
+  }
+
+  /* place-items must go too: current Chrome applies justify-items: center to
+     block children as well, which shrink-wraps and centres #root even once
+     the body is no longer a flex container. */
+  body {
+    display: block;
+    place-items: normal;
+    min-height: 0;
+  }
+
+  .layout {
+    width: 100%;
+    height: 100%;
+  }
+
+  .main {
+    min-height: 0;
+    padding: calc(68px + env(safe-area-inset-top)) 6px calc(140px + env(safe-area-inset-bottom));
+  }
+
+  /* Centre short content, but let tall content (e.g. the role list) scroll from its top:
+     plain justify-content: center would push the top of an overflowing list out of reach.
+     The side padding keeps cards clear of this panel's scrollbar. */
+  .center-content {
+    justify-content: flex-start;
+    padding: 0 10px 24px 10px;
+    margin-bottom: 0;
+  }
+
+  .center-content > :first-child {
+    margin-top: auto;
+  }
+
+  .center-content > :last-child {
+    margin-bottom: auto;
+  }
+
+  /* --- sidebar: off-canvas drawer above the chat --- */
+  .sidebar,
+  .sidebar.collapsed {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 1100;
+    width: min(86vw, 320px);
+    padding: calc(20px + env(safe-area-inset-top)) 16px calc(20px + env(safe-area-inset-bottom));
+    border-right: 1px solid rgba(255, 255, 255, 0.1);
+    overflow-y: auto;
+    box-shadow: 8px 0 32px rgba(0, 0, 0, 0.45);
+    transition: transform 0.25s ease, visibility 0s linear 0s;
+  }
+
+  .sidebar.collapsed {
+    transform: translateX(-100%);
+    visibility: hidden;
+    box-shadow: none;
+    transition: transform 0.25s ease, visibility 0s linear 0.25s;
+  }
+
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 1050;
+    background: rgba(0, 0, 0, 0.55);
+  }
+
+  .sidebar-toggle.collapsed {
+    left: calc(12px + env(safe-area-inset-left));
+    top: calc(12px + env(safe-area-inset-top));
+    padding: 10px;
+  }
+
+  .chat-history {
+    max-height: none;
+  }
+
+  .languages button,
+  .version-btn-new,
+  .new-chat-btn,
+  .chat-history-item {
+    min-height: 44px;
+  }
+
+  /* --- onboarding --- */
+  h1 {
+    font-size: 32px;
+    margin-bottom: 12px;
+  }
+
+  .hero-icon {
+    margin-bottom: 16px;
+  }
+
+  .subtitle {
+    font-size: 15px;
+    margin-bottom: 24px;
+  }
+
+  .cards {
+    grid-template-columns: 1fr;
+  }
+
+  /* undo the "centre the lone 7th card" rule, which assumes a 3-column grid */
+  .cards .role-card:last-child:nth-child(3n + 1) {
+    grid-column: auto;
+  }
+
+  .role-card {
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    min-height: 52px;
+    font-size: 15px;
+    text-align: left;
+  }
+
+  .card p {
+    font-size: 14px;
+  }
+
+  .semester-selection {
+    gap: 12px;
+  }
+
+  .semester-card {
+    min-width: 80px;
+    padding: 16px;
+  }
+
+  .version-badge {
+    font-size: 10px;
+    padding: 3px 8px;
+  }
+
+  .chat-welcome {
+    font-size: 20px;
+  }
+
+  /* --- messages --- */
+  /* side padding keeps bubbles clear of the list's own scrollbar */
+  .messages-list {
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+
+  .message {
+    max-width: 92%;
+  }
+
+  .message-bubble {
+    padding: 10px 14px;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .message-bubble p,
+  .file-name,
+  .model-info {
+    overflow-wrap: anywhere;
+  }
+
+  /* --- ratings and comment: finger-sized targets --- */
+  .thumb-btn-inline {
+    min-width: 44px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* the scaled-up active state gets clipped by the scrolling message list at this width */
+  .thumb-btn-inline.active {
+    transform: none;
+  }
+
+  .variant-select-btn {
+    min-height: 44px;
+    padding: 10px 16px;
+    font-size: 14px;
+  }
+
+  .mini-rating {
+    flex-direction: column;
+    gap: 6px;
+    width: 100%;
+  }
+
+  .star-rating-row {
+    flex-wrap: wrap;
+  }
+
+  .star-rating-label {
+    flex-basis: 100%;
+    text-align: left;
+    padding-left: 8px;
+  }
+
+  .star-btn {
+    padding: 8px;
+    display: inline-flex;
+  }
+
+  .comment-form {
+    max-width: none;
+    width: 100%;
+  }
+
+  /* 16px keeps iOS Safari from zooming the page when a field gets focus */
+  .comment-textarea {
+    font-size: 16px;
+  }
+
+  .comment-submit {
+    min-height: 40px;
+    padding: 8px 16px;
+    font-size: 14px;
+  }
+
+  /* --- input bar: full width, clear of the home indicator --- */
+  .input-section {
+    left: 0;
+    padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
+  }
+
+  .input-wrapper {
+    gap: 6px;
+    padding: 6px 8px;
+  }
+
+  .input-wrapper input {
+    font-size: 16px;
+    min-width: 0;
+    text-overflow: ellipsis;
+  }
+
+  /* a placeholder that does not fit ends in "…" instead of being cut mid-letter */
+  .input-wrapper input::placeholder {
+    text-overflow: ellipsis;
+  }
+
+  .attach-btn,
+  .send-btn {
+    min-width: 40px;
+    min-height: 40px;
+    flex-shrink: 0;
+  }
+
+  .disclaimer {
+    margin-top: 8px;
+  }
+
+  .disclaimer p {
+    font-size: 11px;
+  }
+}
+
+/* Touch screens keep :hover "stuck" after a tap, so drop the hover lift/scale there. */
+@media (hover: none) {
+  .card:hover,
+  .semester-card:hover,
+  .file-attachment:hover,
+  .sidebar-toggle.collapsed:hover,
+  .thumb-btn-inline:hover:not(.active),
+  .star-btn:hover:not(.active) {
+    transform: none;
+  }
 }
