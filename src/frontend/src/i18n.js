@@ -99,6 +99,14 @@ export const translations = {
       smad: "Statystyka Matematyczna i Analiza Danych",
     },
     phdYears: ["1. rok", "2. rok", "3. rok", "4.+ rok"],
+    // Must match the backend's _EXPERIMENT_PERSONAS (src/api/api.py) word for word:
+    // these Polish strings are what gets sent and inserted into the prompt.
+    personas: [
+      "Odpowiedz bardzo krótko i konkretnie. Bez owijania w bawełnę.",
+      "Odpowiedz luzno, prosto i przyjaźnie.",
+      "Odpowiedz formalnie i akademicko, pełnymi zdaniami.",
+      "Podaj wyczerpującą odpowiedź z detalami i przykładami.",
+    ],
     ratingLabels: {
       Usefulness: "Przydatność",
       Accuracy: "Poprawność",
@@ -166,6 +174,12 @@ export const translations = {
       smad: "Mathematical Statistics and Data Analysis",
     },
     phdYears: ["1st year", "2nd year", "3rd year", "4th year+"],
+    personas: [
+      "Answer very briefly and to the point.",
+      "Answer casually, simply and in a friendly way.",
+      "Answer formally and academically, in full sentences.",
+      "Give a thorough answer with details and examples.",
+    ],
     ratingLabels: {
       Usefulness: "Usefulness",
       Accuracy: "Accuracy",
@@ -233,6 +247,12 @@ export const translations = {
       smad: "Математична статистика та аналіз даних",
     },
     phdYears: ["1-й рік", "2-й рік", "3-й рік", "4-й рік і далі"],
+    personas: [
+      "Відповідай дуже коротко і по суті.",
+      "Відповідай невимушено, просто й дружньо.",
+      "Відповідай формально й академічно, повними реченнями.",
+      "Дай вичерпну відповідь з деталями та прикладами.",
+    ],
     ratingLabels: {
       Usefulness: "Корисність",
       Accuracy: "Точність",
@@ -249,3 +269,10 @@ export const translations = {
 // Canonical (Polish) values sent to the backend, independent of UI language.
 // The backend prompt is written in Polish and expects Polish major names.
 export const majorForApi = (majorKey) => translations.PL.majors[majorKey] ?? majorKey;
+
+// On-screen label for a style instruction. The instruction itself stays Polish
+// (it is part of the prompt); unknown wording from the backend is shown as-is.
+export const personaLabel = (instruction, lang) => {
+  const idx = translations.PL.personas.indexOf(instruction);
+  return idx >= 0 ? translations[lang].personas[idx] : instruction;
+};

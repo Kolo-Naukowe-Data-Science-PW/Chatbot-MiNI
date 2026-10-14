@@ -10,6 +10,7 @@ import {
   MASTER_MAJORS,
   RATING_KEYS,
   majorForApi,
+  personaLabel,
 } from "./i18n";
 
 // ============ API CONFIG ============
@@ -484,7 +485,8 @@ if (ext === 'link') {
             <span /><span /><span />
           </span>
         ) : (
-          <p>{renderTextWithLinks(message.text)}</p>
+          // The app's own error bubble follows the current UI language; model answers keep theirs.
+          <p>{renderTextWithLinks(message.isError ? t.error : message.text)}</p>
         )}
 
         {!isUser && message.sources && message.sources.length > 0 && (
@@ -524,7 +526,7 @@ if (ext === 'link') {
             {message.variantConfig.model?.split("/").pop() ?? "model"}
             {" · "}temp: {message.variantConfig.temperature}
             {message.variantConfig.styleInstruction && (
-              <> · <em>{message.variantConfig.styleInstruction}</em></>
+              <> · <em>{personaLabel(message.variantConfig.styleInstruction, language)}</em></>
             )}
           </div>
         )}
@@ -1152,7 +1154,7 @@ export default function App() {
         if (!gotToken) {
           setMessages(prev => prev.map(msg =>
             msg.id === botMessageId
-              ? { ...msg, text: translations[language].error, canRate: false }
+              ? { ...msg, text: translations[language].error, isError: true, canRate: false }
               : msg
           ));
         }
@@ -1246,7 +1248,7 @@ export default function App() {
         if (!receivedFirstToken) {
           setMessages(prev => prev.map(msg =>
             msg.id === botMessageId
-              ? { ...msg, text: translations[language].error, canRate: false }
+              ? { ...msg, text: translations[language].error, isError: true, canRate: false }
               : msg
           ));
         }
@@ -1299,6 +1301,7 @@ export default function App() {
         id: Date.now() + 1,
         type: 'bot',
         text: translations[language].error,
+        isError: true,
         timestamp: new Date(),
         canRate: false
       };
