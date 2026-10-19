@@ -71,11 +71,7 @@ def source_id(value: str) -> str:
         cleaned = txt_match.group(1)
     elif cleaned.startswith("Dokument "):
         cleaned = (
-            cleaned.removeprefix("Dokument ")
-            .strip()
-            .strip('"')
-            .strip("'")
-            .rstrip(".")
+            cleaned.removeprefix("Dokument ").strip().strip('"').strip("'").rstrip(".")
         )
     if cleaned.endswith(".txt"):
         cleaned = cleaned[:-4]
@@ -208,7 +204,9 @@ def ndcg_at_k(rel_scores: list[float], k: int) -> float:
     return 0.0 if ideal == 0.0 else dcg_at_k(rel_scores, k) / ideal
 
 
-def average_precision_at_k(rel_scores: list[float], k: int, total_rel: int = 1) -> float:
+def average_precision_at_k(
+    rel_scores: list[float], k: int, total_rel: int = 1
+) -> float:
     if total_rel == 0:
         return 0.0
     ap, hits = 0.0, 0
@@ -288,8 +286,12 @@ def read_reference(path: Path) -> list[ReferenceRow]:
                         ReferenceRow(
                             query=str(query).strip(),
                             target_id=str(target).split("|")[0].strip(),
-                            category=str(raw.get("Kategoria") or raw.get("kategoria") or "").strip(),
-                            reference_answer=str(raw.get("Odpowiedź") or raw.get("odpowiedz") or "").strip(),
+                            category=str(
+                                raw.get("Kategoria") or raw.get("kategoria") or ""
+                            ).strip(),
+                            reference_answer=str(
+                                raw.get("Odpowiedź") or raw.get("odpowiedz") or ""
+                            ).strip(),
                         )
                     )
         return rows
@@ -298,9 +300,20 @@ def read_reference(path: Path) -> list[ReferenceRow]:
         reader = csv.DictReader(f)
         rows: list[ReferenceRow] = []
         for raw in reader:
-            norm = {(key or "").strip().lower(): (value or "").strip() for key, value in raw.items()}
-            query = norm.get("pytanie") or norm.get("query") or norm.get("question") or ""
-            target = norm.get("link") or norm.get("strona") or norm.get("relevant_urls") or norm.get("url") or ""
+            norm = {
+                (key or "").strip().lower(): (value or "").strip()
+                for key, value in raw.items()
+            }
+            query = (
+                norm.get("pytanie") or norm.get("query") or norm.get("question") or ""
+            )
+            target = (
+                norm.get("link")
+                or norm.get("strona")
+                or norm.get("relevant_urls")
+                or norm.get("url")
+                or ""
+            )
             if query and target:
                 rows.append(
                     ReferenceRow(
@@ -340,8 +353,13 @@ def read_answers(path: Path) -> dict[str, AnswerRow]:
         reader = csv.DictReader(f)
         answers: dict[str, AnswerRow] = {}
         for raw in reader:
-            norm = {(key or "").strip().lower(): (value or "").strip() for key, value in raw.items()}
-            query = norm.get("pytanie") or norm.get("query") or norm.get("question") or ""
+            norm = {
+                (key or "").strip().lower(): (value or "").strip()
+                for key, value in raw.items()
+            }
+            query = (
+                norm.get("pytanie") or norm.get("query") or norm.get("question") or ""
+            )
             if not query:
                 continue
             answer = norm.get("odpowiedz_wygenerowana") or norm.get("answer") or ""
@@ -476,7 +494,11 @@ def evaluate_file(
         "reference_rows": len(reference_rows),
         "answer_rows": len(answers),
         "missing_answers": sum(1 for row in per_rows if row["missing_answer"]),
-        "mean_retrieved_count": mean([float(row["retrieved_count"]) for row in per_rows]) if per_rows else 0.0,
+        "mean_retrieved_count": (
+            mean([float(row["retrieved_count"]) for row in per_rows])
+            if per_rows
+            else 0.0
+        ),
         "per_query_csv": str(per_query_path),
     }
     for key in metric_columns:
@@ -490,7 +512,9 @@ def evaluate_file(
         writer.writerow(summary)
 
     summary_json = output_dir / f"retrieval_metrics_summary_{answers_csv.stem}.json"
-    summary_json.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+    summary_json.write_text(
+        json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     return summary
 
 
@@ -504,12 +528,34 @@ def resolve_answer_files(path: Path, pattern: str) -> list[Path]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--answers-csv", required=True, type=Path, help="Answer CSV file or directory with answer CSV files.")
-    parser.add_argument("--reference-csv", required=True, type=Path, help="Reference CSV with pytanie and link columns.")
-    parser.add_argument("--output-dir", default=Path("src/evaluation/results/retrieval_metrics"), type=Path)
-    parser.add_argument("--ks", default="3,5,7,10", help="Comma-separated rank cut-offs.")
-    parser.add_argument("--metric-mode", choices=["standard", "adaptive", "both"], default="both")
-    parser.add_argument("--pattern", default="*.csv", help="Glob pattern used when --answers-csv is a directory.")
+    parser.add_argument(
+        "--answers-csv",
+        required=True,
+        type=Path,
+        help="Answer CSV file or directory with answer CSV files.",
+    )
+    parser.add_argument(
+        "--reference-csv",
+        required=True,
+        type=Path,
+        help="Reference CSV with pytanie and link columns.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        default=Path("src/evaluation/results/retrieval_metrics"),
+        type=Path,
+    )
+    parser.add_argument(
+        "--ks", default="3,5,7,10", help="Comma-separated rank cut-offs."
+    )
+    parser.add_argument(
+        "--metric-mode", choices=["standard", "adaptive", "both"], default="both"
+    )
+    parser.add_argument(
+        "--pattern",
+        default="*.csv",
+        help="Glob pattern used when --answers-csv is a directory.",
+    )
     args = parser.parse_args(argv)
 
     ks = [int(value.strip()) for value in args.ks.split(",") if value.strip()]
@@ -522,7 +568,9 @@ def main(argv: list[str] | None = None) -> int:
 
     answer_files = resolve_answer_files(args.answers_csv, args.pattern)
     if not answer_files:
-        parser.error(f"No answer CSV files found in {args.answers_csv} matching {args.pattern}")
+        parser.error(
+            f"No answer CSV files found in {args.answers_csv} matching {args.pattern}"
+        )
 
     run_dir = args.output_dir / datetime.now().strftime("%Y%m%dT%H%M%S")
     summaries = [
