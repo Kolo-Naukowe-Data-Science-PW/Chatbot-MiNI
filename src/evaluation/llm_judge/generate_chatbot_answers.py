@@ -328,10 +328,7 @@ def _prepare_compact_output_for_resume(
         complete_rows.append({column: row.get(column, "") for column in fieldnames})
         complete_questions.add(question)
 
-    needs_rewrite = (
-        existing_fieldnames != fieldnames
-        or len(complete_rows) != len(rows)
-    )
+    needs_rewrite = existing_fieldnames != fieldnames or len(complete_rows) != len(rows)
     if needs_rewrite and rewrite_incomplete:
         with open(output_csv, "w", encoding="utf-8", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
@@ -592,16 +589,23 @@ def run(
                                 for i, src in enumerate(sources)
                             ]
                             row = {"pytanie": q["query"]}
-                            if output_format in ("simple", "polish", "answer_only", "answers_and_links"):
+                            if output_format in (
+                                "simple",
+                                "polish",
+                                "answer_only",
+                                "answers_and_links",
+                            ):
                                 row["odpowiedz_wygenerowana"] = answer
-                            if output_format in ("polish", "links_only", "answers_and_links"):
+                            if output_format in (
+                                "polish",
+                                "links_only",
+                                "answers_and_links",
+                            ):
                                 row["zwrocone_linki"] = json.dumps(
                                     sources_with_rank,
                                     ensure_ascii=False,
                                 )
-                            writer.writerow(
-                                row
-                            )
+                            writer.writerow(row)
                             existing_questions.add(q["query"])
                         else:
                             writer.writerow(
