@@ -41,18 +41,12 @@ def _bleu_score(hypotheses: list[str], references: list[str]) -> dict[str, float
     }
 
 
-def _rouge_scores(
-    hypotheses: list[str], references: list[str]
-) -> dict[str, float]:
+def _rouge_scores(hypotheses: list[str], references: list[str]) -> dict[str, float]:
     """Compute ROUGE-1, ROUGE-2, ROUGE-L scores."""
     from rouge import Rouge
 
     rouge = Rouge()
-    pairs = [
-        (h, r)
-        for h, r in zip(hypotheses, references)
-        if h.strip() and r.strip()
-    ]
+    pairs = [(h, r) for h, r in zip(hypotheses, references) if h.strip() and r.strip()]
     if not pairs:
         return {
             "rouge1_p": 0.0,
@@ -93,9 +87,7 @@ def _meteor_score(hypotheses: list[str], references: list[str]) -> dict[str, flo
             score = meteor_score.single_meteor_score(ref, hyp)
             meteor_scores.append(score)
 
-    avg_meteor = (
-        sum(meteor_scores) / len(meteor_scores) if meteor_scores else 0.0
-    )
+    avg_meteor = sum(meteor_scores) / len(meteor_scores) if meteor_scores else 0.0
     return {"meteor": avg_meteor}
 
 
@@ -131,9 +123,7 @@ def main():
     experiment_df = pd.read_csv(args.per_query_csv)
 
     if "generated_answer" not in experiment_df.columns:
-        logger.error(
-            "Column 'generated_answer' not found in %s", args.per_query_csv
-        )
+        logger.error("Column 'generated_answer' not found in %s", args.per_query_csv)
         sys.exit(1)
 
     if "query" not in experiment_df.columns:
@@ -147,9 +137,7 @@ def main():
     ref_df = ref_df.rename(columns=str.lower)
 
     if "pytanie" not in ref_df.columns or "odpowiedz" not in ref_df.columns:
-        logger.error(
-            "Reference CSV must have 'pytanie' and 'odpowiedz' columns"
-        )
+        logger.error("Reference CSV must have 'pytanie' and 'odpowiedz' columns")
         sys.exit(1)
 
     # Join on query
@@ -159,9 +147,7 @@ def main():
         columns={"pytanie": "query", "odpowiedz": "reference_answer"}
     )[["query", "reference_answer"]]
 
-    merged = experiment_df.merge(
-        ref_df_joined, on="query", how="inner"
-    )
+    merged = experiment_df.merge(ref_df_joined, on="query", how="inner")
 
     if len(merged) == 0:
         logger.warning(
