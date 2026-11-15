@@ -477,7 +477,8 @@ Via GitHub Actions: `text_metrics.yml` (workflow_dispatch, wymaga CSV z wygenero
 | `POST` | `/chat` | Non-streaming chat (returns full answer at once) |
 | `POST` | `/chat/stream` | Streaming chat via SSE — used by all frontend modes |
 | `POST` | `/feedback` | Submit user feedback (star rating + text) |
-| `POST` | `/extract-text` | Extract text from uploaded .txt/.md/.csv file (PDFs sent directly to model) |
+| `POST` | `/attachments` | Process an uploaded attachment (PDF, DOCX, XLSX, JPG/PNG/WEBP/GIF, TXT/MD/CSV/JSON) into prompt-ready text/images — see [src/api/ATTACHMENTS.md](src/api/ATTACHMENTS.md) |
+| `POST` | `/extract-text` | Legacy: returns only extracted text of an uploaded file |
 | `GET`  | `/experiment-config` | Current A/B experiment dimension + model pool |
 | `POST` | `/retrieval` | Direct retrieval endpoint — returns ranked URLs for a query |
 | `GET`  | `/db-urls` | Returns all unique source URLs indexed in Qdrant |

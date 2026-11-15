@@ -1,5 +1,4 @@
 import csv
-import io
 import json
 import logging
 import os
@@ -13,8 +12,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from src.api.attachments import (
+    MAX_FILE_BYTES,
+    MAX_FILES_PER_MESSAGE,
+    AttachmentError,
+    ensure_vision_model,
+    process_base64,
+    process_file,
+    validate_image_data_url,
+)
 from src.api.main import query_llm, query_llm_stream
-from src.api.models import Message
+from src.api.models import Attachment, Message
 from src.api.prompt_builder import build_messages
 from src.api.query_rewriter import rewrite_query
 from src.api.retrieval import get_top_k_chunks
@@ -28,6 +36,8 @@ logger = logging.getLogger(__name__)
 app = FastAPI()
 feedback_write_lock = Lock()
 feedback_file_path = Path(get_data_dir("feedback", "model_feedback.csv"))
+# read one byte more than allowed so oversized uploads are detected without loading them fully
+MAX_UPLOAD_READ_BYTES = MAX_FILE_BYTES + 1
 
 
 app.add_middleware(
@@ -39,12 +49,6 @@ app.add_middleware(
 )
 
 
-class FileAttachment(BaseModel):
-    filename: str
-    data: str  # base64-encoded file content
-    mime_type: str = "application/pdf"
-
-
 class QueryRequest(BaseModel):
     """
     Pydantic model representing the structure of a chat query request.
@@ -54,7 +58,8 @@ class QueryRequest(BaseModel):
                 - mode: Optional string indicating the frontend mode (e.g., "production", "testPro").
                 - variant: Optional string indicating the A/B test variant (e.g., "A", "B").
                 - modelConfig: Optional dictionary containing model parameters used for generating the response.
-                - attachments: Optional list of file attachments (e.g., PDFs) sent as base64 to the model.
+                - attachments: Optional list of attachments, preferably already processed by POST /attachments
+                               (text and/or image data URLs). Raw base64 files are still accepted.
     """
 
     query: str
@@ -66,7 +71,7 @@ class QueryRequest(BaseModel):
     user_type: str | None = None
     major: str | None = None
     semester: str | None = None
-    attachments: list[FileAttachment] = []
+    attachments: list[Attachment] = []
 
 
 class FeedbackRequest(BaseModel):
@@ -355,6 +360,46 @@ def experiment_config() -> dict:
     }
 
 
+DEFAULT_ATTACHMENT_QUERY = "Przeanalizuj załączone pliki i krótko podsumuj ich treść."
+
+
+def _prepare_attachments(raw_attachments: list[Attachment]) -> list[dict]:
+    """
+    Normalise attachments from a chat request into prompt-ready dicts.
+
+    - already processed attachments (from POST /attachments) are validated,
+    - legacy raw base64 attachments are processed with the same extractors.
+
+    Raises HTTPException with a user-facing (Polish) message on bad input.
+    """
+    if len(raw_attachments) > MAX_FILES_PER_MESSAGE:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Można dołączyć maksymalnie {MAX_FILES_PER_MESSAGE} plików do jednej wiadomości.",
+        )
+    prepared: list[dict] = []
+    for att in raw_attachments:
+        try:
+            if att.data and not att.text and not att.images:
+                processed = process_base64(att.filename, att.data).to_dict()
+            else:
+                processed = {
+                    "filename": att.filename,
+                    "kind": att.kind,
+                    "text": att.text,
+                    "images": [validate_image_data_url(u) for u in att.images],
+                    "note": att.note,
+                }
+        except AttachmentError as exc:
+            raise HTTPException(
+                status_code=exc.status_code, detail=f"{att.filename}: {exc}"
+            ) from exc
+        if not (processed.get("text") or "").strip() and not processed["images"]:
+            continue
+        prepared.append(processed)
+    return prepared
+
+
 @app.post("/chat")
 def chat_endpoint(request: QueryRequest) -> dict[str, Any]:
     """
@@ -369,8 +414,14 @@ def chat_endpoint(request: QueryRequest) -> dict[str, Any]:
     lang = request.language
     conversation_history = request.conversation_history
 
-    if not query:
+    attachments = _prepare_attachments(request.attachments)
+    if not query.strip() and not attachments:
         raise HTTPException(status_code=400, detail="Query cannot be empty")
+    if not query.strip():
+        query = DEFAULT_ATTACHMENT_QUERY
+    model_config = ensure_vision_model(
+        request.modelConfig, any(a["images"] for a in attachments)
+    )
 
     logger.info(
         f"Received query: {query} | Target lang: {lang} | History length: {len(conversation_history)}"
@@ -389,7 +440,7 @@ def chat_endpoint(request: QueryRequest) -> dict[str, Any]:
     )
     sorted_chunks = get_top_k_chunks(retrieval_query)
 
-    if not sorted_chunks:
+    if not sorted_chunks and not attachments:
         polish_msg = "Przepraszam, nie znalazłem w bazie informacji na ten temat."
         final_msg = translate_text(polish_msg, lang) if lang != "pl" else polish_msg
 
@@ -406,7 +457,7 @@ def chat_endpoint(request: QueryRequest) -> dict[str, Any]:
 
     text_only_chunks = [chunk["text_chunk"] for chunk in sorted_chunks]
 
-    style_instruction = (request.modelConfig or {}).get("styleInstruction")
+    style_instruction = (model_config or {}).get("styleInstruction")
     messages = build_messages(
         processing_query,
         text_only_chunks,
@@ -415,13 +466,10 @@ def chat_endpoint(request: QueryRequest) -> dict[str, Any]:
         semester=str(request.semester) if request.semester else None,
         conversation_history=conversation_history,
         style_instruction=style_instruction,
-        attachments=[
-            {"filename": a.filename, "data": a.data, "mime_type": a.mime_type}
-            for a in request.attachments
-        ],
+        attachments=attachments,
     )
 
-    polish_answer = query_llm(messages, request.modelConfig)
+    polish_answer = query_llm(messages, model_config)
     final_answer = polish_answer
     if lang != "pl":
         logger.info(f"Translating answer from PL to {lang}...")
@@ -461,8 +509,14 @@ def chat_stream_endpoint(request: QueryRequest):
     lang = request.language
     conversation_history = request.conversation_history
 
-    if not query:
+    attachments = _prepare_attachments(request.attachments)
+    if not query.strip() and not attachments:
         raise HTTPException(status_code=400, detail="Query cannot be empty")
+    if not query.strip():
+        query = DEFAULT_ATTACHMENT_QUERY
+    model_config = ensure_vision_model(
+        request.modelConfig, any(a["images"] for a in attachments)
+    )
 
     logger.info(f"[stream] query='{query}' lang={lang}")
 
@@ -485,7 +539,7 @@ def chat_stream_endpoint(request: QueryRequest):
             seen.add(url)
             sources.append(url)
 
-    if not sorted_chunks:
+    if not sorted_chunks and not attachments:
         polish_msg = "Przepraszam, nie znalazłem w bazie informacji na ten temat."
         final_msg = translate_text(polish_msg, lang) if lang != "pl" else polish_msg
 
@@ -496,7 +550,7 @@ def chat_stream_endpoint(request: QueryRequest):
         return StreamingResponse(_empty(), media_type="text/event-stream")
 
     text_only_chunks = [chunk["text_chunk"] for chunk in sorted_chunks]
-    style_instruction = (request.modelConfig or {}).get("styleInstruction")
+    style_instruction = (model_config or {}).get("styleInstruction")
     messages = build_messages(
         processing_query,
         text_only_chunks,
@@ -505,10 +559,7 @@ def chat_stream_endpoint(request: QueryRequest):
         semester=str(request.semester) if request.semester else None,
         conversation_history=conversation_history,
         style_instruction=style_instruction,
-        attachments=[
-            {"filename": a.filename, "data": a.data, "mime_type": a.mime_type}
-            for a in request.attachments
-        ],
+        attachments=attachments,
     )
 
     def _sse(text: str) -> str:
@@ -517,7 +568,7 @@ def chat_stream_endpoint(request: QueryRequest):
 
     def _generate():
         polish_tokens: list[str] = []
-        for token in query_llm_stream(messages, request.modelConfig):
+        for token in query_llm_stream(messages, model_config):
             polish_tokens.append(token)
             # Stream in the original language; if translation needed we accumulate
             # and translate only the final answer (translation requires full text).
@@ -565,39 +616,47 @@ def error_report_endpoint(payload: ErrorReportRequest) -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.post("/attachments")
+async def attachments_endpoint(
+    file: Annotated[UploadFile, File()],
+) -> dict[str, Any]:
+    """
+    Process one uploaded file for use as a chat attachment.
+
+    Supported: PDF, DOCX, XLSX, TXT/MD/CSV/JSON and JPEG/PNG/WEBP/GIF images.
+    Returns ``{filename, kind, text, images, truncated, pages, note}``; the
+    frontend sends this object back in ``attachments`` of ``/chat`` or
+    ``/chat/stream``. Errors are returned as HTTP 413/415/422 with a Polish
+    message in ``detail`` that can be shown to the user.
+    """
+    content = await file.read(MAX_UPLOAD_READ_BYTES)
+    try:
+        processed = process_file(file.filename or "plik", content)
+    except AttachmentError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    logger.info(
+        "Processed attachment '%s' kind=%s chars=%d images=%d",
+        processed.filename,
+        processed.kind,
+        len(processed.text or ""),
+        len(processed.images),
+    )
+    return processed.to_dict()
+
+
 @app.post("/extract-text")
 async def extract_text_endpoint(
     file: Annotated[UploadFile, File()],
 ) -> dict[str, str]:
-    """Extract plain text from an uploaded file (.txt, .md, .pdf). Used by the frontend to attach files to chat."""
-    content = await file.read()
-    filename = file.filename or ""
-    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-
-    if ext in ("txt", "md", "csv"):
-        try:
-            text = content.decode("utf-8")
-        except UnicodeDecodeError:
-            text = content.decode("latin-1", errors="replace")
-    elif ext == "pdf":
-        try:
-            from pypdf import PdfReader  # noqa: PLC0415
-
-            reader = PdfReader(io.BytesIO(content))
-            text = "\n".join(page.extract_text() or "" for page in reader.pages)
-        except Exception as exc:
-            raise HTTPException(
-                status_code=422, detail=f"PDF extraction failed: {exc}"
-            ) from exc
-    else:
-        raise HTTPException(status_code=415, detail=f"Unsupported file type: .{ext}")
-
-    if not text.strip():
-        raise HTTPException(
-            status_code=422, detail="File appears to be empty or unreadable."
-        )
-
-    return {"text": text, "filename": filename}
+    """Legacy endpoint kept for old frontends: returns only the extracted text."""
+    content = await file.read(MAX_UPLOAD_READ_BYTES)
+    try:
+        processed = process_file(file.filename or "plik", content)
+    except AttachmentError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    if not processed.text:
+        raise HTTPException(status_code=422, detail="Plik nie zawiera tekstu.")
+    return {"text": processed.text, "filename": processed.filename}
 
 
 @app.post("/feedback")

@@ -29,6 +29,9 @@ dependencies:
       - fastembed
       - pypdf
       - python-docx
+      - openpyxl
+      - pillow
+      - python-multipart
       - pdfminer.six
       - unstructured
       - unstructured-inference
