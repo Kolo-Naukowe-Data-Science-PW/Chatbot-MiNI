@@ -45,16 +45,21 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 QUESTIONS_FILE = PROJECT_ROOT / "src" / "evaluation" / "data" / "pytania_finall.jsonl"
-FILE_URL_MAP_PATH = PROJECT_ROOT / "src" / "evaluation" / "data" / "file_url_mapping.json"
+FILE_URL_MAP_PATH = (
+    PROJECT_ROOT / "src" / "evaluation" / "data" / "file_url_mapping.json"
+)
 
 
 # ---------------------------------------------------------------------------
 # Parsing helpers
 # ---------------------------------------------------------------------------
+
 
 def _parse_source_filename(zrodla: str) -> str | None:
     """Extract raw filename from Źródła field like 'Dokument "filename.txt".'"""
@@ -94,6 +99,7 @@ def _schedule_prefix(grupa_kod: str, cdyd_kod: str) -> str:
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main(
     facts_dir: str,
@@ -137,15 +143,29 @@ def main(
     unique_groups: set[tuple[str, str]] = {(g, c) for _, g, c in question_groups}
     logger.info(
         "Parsed %d/%d questions → %d unique (grupa_kod, cdyd_kod) pairs.",
-        len(question_groups), len(questions), len(unique_groups),
+        len(question_groups),
+        len(questions),
+        len(unique_groups),
     )
     if skipped:
         logger.warning("Skipped %d questions with unparseable sources.", skipped)
 
     # ── discover all schedule_* files on the volume ───────────────────────────
-    all_facts_files = [f for f in os.listdir(facts_dir) if f.startswith("schedule_") and f.endswith("_facts.json")]
-    all_txt_files   = [f for f in os.listdir(scraped_dir) if f.startswith("schedule_") and f.endswith(".txt")]
-    logger.info("Found %d schedule facts files, %d schedule txt files on volume.", len(all_facts_files), len(all_txt_files))
+    all_facts_files = [
+        f
+        for f in os.listdir(facts_dir)
+        if f.startswith("schedule_") and f.endswith("_facts.json")
+    ]
+    all_txt_files = [
+        f
+        for f in os.listdir(scraped_dir)
+        if f.startswith("schedule_") and f.endswith(".txt")
+    ]
+    logger.info(
+        "Found %d schedule facts files, %d schedule txt files on volume.",
+        len(all_facts_files),
+        len(all_txt_files),
+    )
 
     # ── copy matching files ───────────────────────────────────────────────────
     # For each (grupa_kod, cdyd_kod) find ALL matching files (there may be 2)
@@ -161,7 +181,13 @@ def main(
             dst = os.path.join(facts_subset_dir, fname)
             if not os.path.exists(dst):
                 shutil.copy2(src, dst)
-            logger.info("  facts: %s (%d match(es) for %s_%s)", fname, len(matching_facts), grp, cdyd)
+            logger.info(
+                "  facts: %s (%d match(es) for %s_%s)",
+                fname,
+                len(matching_facts),
+                grp,
+                cdyd,
+            )
 
         # txt
         matching_txt = [f for f in all_txt_files if f.startswith(prefix)]
@@ -210,7 +236,9 @@ def main(
         json.dump(merged, f, ensure_ascii=False, indent=2)
     logger.info(
         "Updated file_url_mapping.json: %d existing + %d new = %d total",
-        len(existing_map), len(file_url_map), len(merged),
+        len(existing_map),
+        len(file_url_map),
+        len(merged),
     )
 
     # ── write generated_subset.jsonl ──────────────────────────────────────────
@@ -223,13 +251,18 @@ def main(
             # Resolve stem → URL using the mapping built above
             zrodla = file_url_map.get(stem, stem)
             if not stem:
-                logger.warning("No matching .txt for (%s, %s) — gold URL will be empty.", grp, cdyd)
+                logger.warning(
+                    "No matching .txt for (%s, %s) — gold URL will be empty.", grp, cdyd
+                )
             elif zrodla == stem:
-                logger.warning("No URL found in mapping for stem %s — using stem as fallback.", stem)
+                logger.warning(
+                    "No URL found in mapping for stem %s — using stem as fallback.",
+                    stem,
+                )
             norm = {
-                "Pytanie":    rec.get("Pytanie",  "").strip(),
-                "Odpowiedź":  rec.get("Odpowiedź","").strip(),
-                "Źródła":     zrodla,
+                "Pytanie": rec.get("Pytanie", "").strip(),
+                "Odpowiedź": rec.get("Odpowiedź", "").strip(),
+                "Źródła": zrodla,
             }
             out_f.write(json.dumps(norm, ensure_ascii=False) + "\n")
             written += 1
@@ -239,7 +272,7 @@ def main(
 
     # summary
     facts_copied = len(os.listdir(facts_subset_dir))
-    txt_copied   = len(os.listdir(scraped_subset_dir))
+    txt_copied = len(os.listdir(scraped_subset_dir))
     logger.info("Subset: %d facts files, %d txt files.", facts_copied, txt_copied)
 
 
@@ -247,16 +280,31 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Prepare schedule-eval workspace using existing schedule_* files."
     )
-    parser.add_argument("--facts-dir",        default="/app/src/data/facts",
-                        help="Source dir with schedule_*_facts.json (Docker volume).")
-    parser.add_argument("--scraped-dir",      default="/app/src/data/scraped_raw",
-                        help="Source dir with schedule_*.txt (Docker volume).")
-    parser.add_argument("--facts-subset-dir",   default="/app/src/data/facts_schedule_eval_subset",
-                        help="Output dir for copied facts files.")
-    parser.add_argument("--scraped-subset-dir", default="/app/src/data/scraped_schedule_eval_subset",
-                        help="Output dir for copied .txt files.")
-    parser.add_argument("--workspace-dir",    default="/app/src/data/schedule_eval_workspace",
-                        help="Output dir for generated_subset.jsonl.")
+    parser.add_argument(
+        "--facts-dir",
+        default="/app/src/data/facts",
+        help="Source dir with schedule_*_facts.json (Docker volume).",
+    )
+    parser.add_argument(
+        "--scraped-dir",
+        default="/app/src/data/scraped_raw",
+        help="Source dir with schedule_*.txt (Docker volume).",
+    )
+    parser.add_argument(
+        "--facts-subset-dir",
+        default="/app/src/data/facts_schedule_eval_subset",
+        help="Output dir for copied facts files.",
+    )
+    parser.add_argument(
+        "--scraped-subset-dir",
+        default="/app/src/data/scraped_schedule_eval_subset",
+        help="Output dir for copied .txt files.",
+    )
+    parser.add_argument(
+        "--workspace-dir",
+        default="/app/src/data/schedule_eval_workspace",
+        help="Output dir for generated_subset.jsonl.",
+    )
     args = parser.parse_args()
     main(
         facts_dir=args.facts_dir,
