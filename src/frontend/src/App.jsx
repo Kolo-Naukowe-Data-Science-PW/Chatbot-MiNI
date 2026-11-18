@@ -21,13 +21,6 @@ import {
 // const FEEDBACK_API_URL = API_URL.replace("/chat", "/feedback");
 const API_URL = "/api/chat";
 const STREAM_API_URL = "/api/chat/stream";
-const ATTACHMENTS_API_URL = "/api/attachments";
-
-// Attachment limits — keep in sync with src/api/attachments.py
-const MAX_ATTACHMENTS = 5;
-const MAX_ATTACHMENT_MB = 10;
-const ATTACHMENT_ACCEPT =
-  ".pdf,.docx,.xlsx,.xlsm,.jpg,.jpeg,.png,.webp,.gif,.txt,.md,.csv,.tsv,.json";
 const FEEDBACK_API_URL = "/api/feedback";
 // Comments on answers are stored by the backend's existing /errors endpoint
 // (free text + message_id, which links a comment to its row in the feedback CSV).
@@ -496,16 +489,6 @@ if (ext === 'link') {
           <p>{renderTextWithLinks(message.isError ? (t[message.errorKey] || t.error) : message.text)}</p>
         )}
 
-        {isUser && message.attachments && message.attachments.length > 0 && (
-          <div className="message-attachments">
-            {message.attachments.map((att, i) => (
-              <span key={i} className="message-attachment-chip" title={att.note || att.filename}>
-                {att.kind === "image" ? "🖼️" : "📎"} {att.filename}
-              </span>
-            ))}
-          </div>
-        )}
-
         {!isUser && message.sources && message.sources.length > 0 && (
           <div className="message-sources">
             <button
@@ -667,8 +650,7 @@ const SEMESTER_ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII"];
 function MainContent({ language, version, userType, setUserType, selectedMajor, setSelectedMajor, selectedSemester, setSelectedSemester, messages, onSendMessage, isLoading, onFeedbackChange }) {
   const t = translations[language];
   const [inputValue, setInputValue] = useState('');
-  // [{ id, name, status: "uploading" | "ready" | "error", error?, data? }]
-  const [attachedFiles, setAttachedFiles] = useState([]);
+  const [attachedFile, setAttachedFile] = useState(null); // { name, text }
   const [lengthNotice, setLengthNotice] = useState(false);
   const fileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -713,78 +695,42 @@ function MainContent({ language, version, userType, setUserType, selectedMajor, 
     setSelectedSemester(semester);
   };
 
-  const uploadAttachment = async (file, id) => {
-    const update = (patch) =>
-      setAttachedFiles(prev => prev.map(f => (f.id === id ? { ...f, ...patch } : f)));
-
-    if (file.size > MAX_ATTACHMENT_MB * 1024 * 1024) {
-      update({ status: "error", error: t.fileTooLarge(MAX_ATTACHMENT_MB) });
-      return;
-    }
+  const handleFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    // The server reads the file (PDF, DOCX, XLSX, images, text) and returns
+    // {filename, kind, text, images, note}; see src/api/ATTACHMENTS.md.
     const formData = new FormData();
     formData.append("file", file);
     try {
-      const resp = await fetch(ATTACHMENTS_API_URL, { method: "POST", body: formData });
+      const resp = await fetch("/api/attachments", { method: "POST", body: formData });
       if (!resp.ok) {
-        // the API returns a Polish message in `detail` that can be shown as is
-        let detail = resp.status === 429 ? t.rateLimited : t.fileError;
+        let detail = t.fileError;
         try {
           const body = await resp.json();
-          if (resp.status !== 429 && typeof body?.detail === "string") detail = body.detail;
+          if (typeof body?.detail === "string") detail = body.detail;
         } catch { /* not JSON */ }
-        update({ status: "error", error: detail });
+        alert(resp.status === 429 ? t.rateLimited : detail);
         return;
       }
       const data = await resp.json();
-      update({ status: "ready", data, file: undefined });
+      setAttachedFile({ name: file.name, data });
     } catch (err) {
-      console.error("Attachment upload failed:", err);
-      update({ status: "error", error: t.fileUploadFailed });
+      console.error("File upload failed:", err);
+      alert(t.fileError);
     }
   };
-
-  const handleFileChange = (e) => {
-    const files = Array.from(e.target.files || []);
-    e.target.value = "";
-    if (!files.length) return;
-
-    const freeSlots = MAX_ATTACHMENTS - attachedFiles.length;
-    if (freeSlots <= 0) {
-      alert(t.tooManyFiles(MAX_ATTACHMENTS));
-      return;
-    }
-    if (files.length > freeSlots) {
-      alert(t.tooManyFiles(MAX_ATTACHMENTS));
-    }
-    const toAdd = files.slice(0, freeSlots).map((file, i) => ({
-      id: `${Date.now()}-${i}-${file.name}`,
-      name: file.name,
-      status: "uploading",
-      file,
-    }));
-    setAttachedFiles(prev => [...prev, ...toAdd]);
-    toAdd.forEach(item => uploadAttachment(item.file, item.id));
-  };
-
-  const removeAttachment = (id) => {
-    setAttachedFiles(prev => prev.filter(f => f.id !== id));
-  };
-
-  const readyAttachments = attachedFiles.filter(f => f.status === "ready");
-  const isUploading = attachedFiles.some(f => f.status === "uploading");
-  const canSend =
-    !!userType && !!selectedMajor && !!selectedSemester && !isLoading && !isUploading &&
-    (inputValue.trim().length > 0 || readyAttachments.length > 0);
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!canSend) return;
-    // attachments travel separately, so only the typed question is limited
-    const { text: textToSend, truncated } = limitQuery(inputValue.trim());
-    setLengthNotice(truncated);
-    onSendMessage(textToSend, readyAttachments.map(f => f.data));
-    setInputValue('');
-    setAttachedFiles([]);
+    if ((inputValue.trim() || attachedFile) && !isLoading) {
+      const { text: textToSend, truncated } = limitQuery(inputValue.trim());
+      setLengthNotice(truncated);
+      onSendMessage(textToSend, attachedFile ? [attachedFile.data] : []);
+      setInputValue('');
+      setAttachedFile(null);
+    }
   };
 
   return (
@@ -945,25 +891,10 @@ function MainContent({ language, version, userType, setUserType, selectedMajor, 
       </div>
 
       <div className="input-section">
-        {attachedFiles.length > 0 && (
-          <div className="attached-files">
-            {attachedFiles.map(f => (
-              <div
-                key={f.id}
-                className={`attached-file-chip ${f.status}`}
-                title={f.error || f.data?.note || f.name}
-              >
-                <span className="attached-file-name">
-                  {f.status === "uploading" ? "⏳" : f.status === "error" ? "⚠️" : "📎"} {f.name}
-                </span>
-                {f.status === "uploading" && <span className="attached-file-status">{t.fileUploading}</span>}
-                {f.status === "error" && <span className="attached-file-status">{f.error}</span>}
-                {f.status === "ready" && f.data?.note && (
-                  <span className="attached-file-status">{f.data.note}</span>
-                )}
-                <button type="button" onClick={() => removeAttachment(f.id)} className="remove-attachment" aria-label={t.removeAttachment} title={t.removeAttachment}>✕</button>
-              </div>
-            ))}
+        {attachedFile && (
+          <div className="attached-file-chip">
+            <span>📎 {attachedFile.name}</span>
+            <button type="button" onClick={() => setAttachedFile(null)} className="remove-attachment" aria-label={t.removeAttachment} title={t.removeAttachment}>✕</button>
           </div>
         )}
         {(lengthNotice || inputValue.length >= MAX_QUERY_CHARS * 0.8) && (
@@ -983,18 +914,10 @@ function MainContent({ language, version, userType, setUserType, selectedMajor, 
             type="file"
             ref={fileInputRef}
             style={{ display: "none" }}
-            accept={ATTACHMENT_ACCEPT}
-            multiple
+            accept=".pdf,.docx,.xlsx,.jpg,.jpeg,.png,.webp,.gif,.txt,.md,.csv,.json"
             onChange={handleFileChange}
           />
-          <button
-            type="button"
-            className="attach-btn"
-            aria-label={t.attachFile}
-            title={t.attachFileHint}
-            disabled={!userType || !selectedMajor || !selectedSemester || isLoading || attachedFiles.length >= MAX_ATTACHMENTS}
-            onClick={() => fileInputRef.current?.click()}
-          >
+          <button type="button" className="attach-btn" aria-label={t.attachFile} title={t.attachFile} onClick={() => fileInputRef.current?.click()}>
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M13.25 9.5V14.25C13.25 15.2165 12.4665 16 11.5 16C10.5335 16 9.75 15.2165 9.75 14.25V8C9.75 6.067 11.317 4.5 13.25 4.5C15.183 4.5 16.75 6.067 16.75 8V14.25C16.75 17.1495 14.3995 19.5 11.5 19.5C8.60051 19.5 6.25 17.1495 6.25 14.25V9.5" stroke="#C0D1C8" strokeWidth="1.5" strokeLinecap="round"/>
             </svg>
@@ -1012,7 +935,7 @@ function MainContent({ language, version, userType, setUserType, selectedMajor, 
             }}
           />
 
-          <button type="submit" className="send-btn" aria-label={t.send} disabled={!canSend}>
+          <button type="submit" className="send-btn" aria-label={t.send} disabled={!userType || !selectedMajor || !selectedSemester || (!inputValue.trim() && !attachedFile) || isLoading}>
             {isLoading ? (
               <div className="spinner"></div>
             ) : (
@@ -1151,29 +1074,16 @@ export default function App() {
   const handleSendMessage = async (messageText, attachments = []) => {
     if (!messageText.trim() && attachments.length === 0) return;
 
-    // Build conversation history from existing messages before adding the new one.
-    // Text of earlier attachments is replayed so follow-up questions about a file work;
-    // images are not re-sent (too large).
+    // Build conversation history from existing messages before adding the new one
     const conversationHistory = messages
-      .filter(m => (m.type === 'user' || m.type === 'bot') && (m.text || m.attachments?.length))
+      .filter(m => (m.type === 'user' || m.type === 'bot') && m.text)
       .slice(-20) // last 10 exchanges
-      .map(m => ({
-        role: m.type === 'user' ? 'user' : 'assistant',
-        content: m.text || "",
-        attachments: (m.type === 'user' && m.attachments)
-          ? m.attachments
-              .filter(a => a.text)
-              .map(a => ({ filename: a.filename, kind: a.kind, text: a.text, note: a.note }))
-          : [],
-      }));
+      .map(m => ({ role: m.type === 'user' ? 'user' : 'assistant', content: m.text }));
 
     const userMessage = {
       id: Date.now(),
       type: 'user',
       text: messageText,
-      attachments: attachments.map(a => ({
-        filename: a.filename, kind: a.kind, text: a.text, note: a.note,
-      })),
       timestamp: new Date()
     };
 

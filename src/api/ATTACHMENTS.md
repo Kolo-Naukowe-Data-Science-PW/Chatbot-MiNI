@@ -42,10 +42,14 @@ interfejs w `src/frontend/src/App.jsx`.
 - **Automatyczny wybór modelu z obsługą obrazów:** jeśli są obrazy, a wylosowany model
   ich nie obsługuje, backend na to jedno zapytanie przełącza model na
   `ATTACHMENT_VISION_MODEL` (domyślnie `openai/gpt-4o-mini`).
-- **Wiele plików** (do 5) w jednej wiadomości, każdy z własnym statusem
-  (wczytywanie / gotowe / błąd z opisem).
-- **Historia rozmowy:** tekst plików z poprzednich wiadomości jest dołączany
-  (skrócony do 8000 znaków na plik), więc można dopytywać o plik. Obrazów nie wysyłamy ponownie.
+- **Interfejs — wersja minimalna** (celowo, żeby nie kolidować z innymi zmianami w `App.jsx`):
+  jeden plik na wiadomość, jak wcześniej; plik wysyłany do `POST /attachments`, błąd pokazywany
+  w okienku (`alert`) z komunikatem z serwera; rozszerzona lista formatów w wyborze pliku.
+  Zmienione tylko: `handleFileChange`, `handleSubmit`, `accept`, warunek przycisku „Wyślij”
+  i pierwsza linia `handleSendMessage` w `App.jsx` oraz komunikat `fileError` w `i18n.js`.
+- **Serwer jest gotowy na więcej** (do 5 plików w wiadomości, pliki w historii rozmowy —
+  pole `attachments` w `conversation_history`), ale obecny interfejs z tego nie korzysta.
+  Bez tego model nie pamięta treści pliku w kolejnej wiadomości.
 - **Można wysłać sam plik bez pytania** — backend użyje pytania domyślnego
   „Przeanalizuj załączone pliki i krótko podsumuj ich treść.".
 - **Gdy w bazie wiedzy nic nie znaleziono, a jest załącznik**, model i tak odpowiada
@@ -64,7 +68,7 @@ Frontend                         Backend (FastAPI)                       OpenRou
 wybór plików ──multipart──▶ POST /attachments
                               detect_kind → extractor → limity
            ◀── {filename, kind, text, images, note, ...}
-(chip „gotowe")
+(plik wczytany)
 wyślij ───JSON──────────────▶ POST /chat/stream  {query, attachments:[...]}
                               _prepare_attachments (walidacja)
                               ensure_vision_model (jeśli obrazy)
@@ -121,8 +125,7 @@ W prompcie systemowym doszła **zasada 7 (Załączniki)** — patrz `PROMPT_ENGI
 | `ATTACHMENT_ALLOW_IMAGES` | `true` | `false` = obrazy i skany PDF odrzucane (nie da się ich zanonimizować) |
 | `ATTACHMENT_IMAGE_BUDGET_CHARS` | 4000 | ile „znaków” budżetu kosztuje jeden obraz |
 
-Limity na froncie (`MAX_ATTACHMENTS`, `MAX_ATTACHMENT_MB` w `App.jsx`) trzeba trzymać
-zgodnie z backendem. Teksty interfejsu (PL/EN/UA) są w `src/frontend/src/i18n.js`.
+Interfejs nie ma własnych limitów — za duży plik zwraca z serwera błąd 413 z komunikatem.
 
 Nowe zależności w `environment-linux.yml`: `openpyxl`, `pillow`, `python-multipart`.
 **Po wdrożeniu trzeba przebudować obraz Dockera API.**
