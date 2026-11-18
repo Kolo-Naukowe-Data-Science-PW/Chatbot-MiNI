@@ -27,7 +27,8 @@ request (/chat, /chat/stream, /retrieval)
   │     3. kto zostaje   — reguła tytułu („dr / prof. / mgr / inż. X”), lista pracowników,
   │                        patroni („sala im. X”, „twierdzenie X”)
   │
-  ├─ załączniki (.txt/.md/.csv, tekst z PDF) — regex, nazwa pliku usuwana
+  ├─ załączniki (PDF, DOCX, XLSX, TXT/MD/CSV/JSON — tekst z POST /attachments) — regex,
+  │                        nazwa pliku zamieniana na „plik N (.ext)”; obrazy bez zmian (patrz niżej)
   │
   ├─ historia rozmowy — wiadomości użytkownika jak wyżej (wyniki z cache)
   │
@@ -99,15 +100,24 @@ Model ładuje się w tle przy starcie API (`lifespan` w `api.py`), więc API sta
 
 ### Załączniki
 
-Frontend wkleja pliki .txt/.md/.csv do treści pytania w formacie `"<pytanie>\n\n[Załącznik: <nazwa>]\n<tekst>"`,
-ze słowem w języku interfejsu (`Załącznik` / `Attachment` / `Вкладення`).
-`request_privacy.py` oddziela pytanie od załącznika: pytanie idzie przez regex i model, treść załącznika przez
-regex, a nazwa pliku jest zastępowana przez `[Załącznik]`.
+Od uploadu plików w `chatbot_final` (opis: [ATTACHMENTS.md](ATTACHMENTS.md)) frontend nie wkleja już
+plików do pytania. Każdy plik jest wysyłany do `POST /attachments`, który wyciąga z niego tekst
+(PDF, DOCX, XLSX, TXT/MD/CSV/JSON) albo przygotowuje obraz, a potem wraca w polu `attachments`
+requestu `/chat` / `/chat/stream`. Tam `_prepare_attachments()` w `api.py` woła `mask_attachments()`
+z `request_privacy.py`:
 
-PDF-y nie są wysyłane do modelu jako base64. API wyciąga z nich tekst (`pypdf`), maskuje go regexem
-i dołącza do pytania (`build_messages()` dostaje `attachments=[]`). PDF bez warstwy tekstu (skan) albo
-uszkodzony jest odrzucany z kodem 422 i komunikatem, żeby wkleić treść jako tekst. Skanu nie da się
-zanonimizować bez OCR, więc nie jest wysyłany.
+- treść każdego załącznika przechodzi przez regex (`mask_identifiers`) — PESEL, telefon, e-mail itd.,
+- prawdziwa nazwa pliku nie trafia do modelu — zamieniana na „plik 1 (.pdf)”, „plik 2 (.docx)”…,
+- to samo dotyczy załączników z historii rozmowy (`mask_history_attachments()`).
+
+`anonymize_request()` dostaje request z `attachments=[]`, więc stara ścieżka dla PDF-ów w base64
+(`pdf_attachments_as_text`) nie jest już używana przez API, ale została w module (testy, zgodność).
+Stary format „pytanie + `[Załącznik: nazwa]` + tekst” nadal jest rozpoznawany przez `split_attachment()`.
+
+**Obrazy i skany PDF** nie dają się zamaskować regexem ani modelem NER. Domyślnie
+(`ATTACHMENT_ALLOW_IMAGES=true`) są wysyłane do modelu jako obrazy — to świadomy wyjątek, bo obsługa
+JPG/PNG była wymaganiem. Ustawienie `ATTACHMENT_ALLOW_IMAGES=false` przywraca wcześniejszą politykę:
+obrazy są odrzucane (HTTP 415), a skany PDF — HTTP 422 z prośbą o wklejenie tekstu.
 
 Treść załączników przechodzi tylko przez regex: identyfikatory są maskowane, nazwiska w dokumentach nie.
 
@@ -119,7 +129,8 @@ Treść załączników przechodzi tylko przez regex: identyfikatory są maskowan
 |-----|-------|------------------------------------------|
 | 503 | model niedostępny i `ANONYMIZER_FALLBACK=block` (np. przez kilkanaście sekund po starcie, przy pierwszym deployu 1–2 min na pobranie modelu) | „Filtr prywatności jest chwilowo niedostępny…” |
 | 413 | pytanie dłuższe niż ok. 12 000 znaków (`MAX_CHUNKS` × `CHUNK_CHARS` w `anonymizer.py`); załączniki się nie liczą. W `/chat` w praktyce nie występuje, bo `security.py` wcześniej skraca pytanie do `QUERY_MAX_CHARS` (1000 znaków) | „Wiadomość jest za długa…” |
-| 422 | PDF bez warstwy tekstu albo uszkodzony | „Nie udało się odczytać tekstu z pliku PDF…” |
+| 422 | uszkodzony plik albo (przy `ATTACHMENT_ALLOW_IMAGES=false`) skan PDF | komunikat z `attachments.py`, np. „Nie udało się odczytać pliku PDF…” |
+| 415 | nieobsługiwany format albo obraz przy `ATTACHMENT_ALLOW_IMAGES=false` | „Nieobsługiwany format pliku…” / „Obrazy nie są obecnie przyjmowane…” |
 
 Tryb awaryjny (`ANONYMIZER_FALLBACK`):
 - `block` (domyślnie) — prompt nie jest wysyłany, API zwraca 503. Imię i nazwisko razem z kierunkiem
@@ -147,7 +158,7 @@ Uruchomienie: [DEPLOYMENT.md](../../DEPLOYMENT.md).
 
 | Plik | Zmiana |
 |------|--------|
-| `api.py` | wywołania anonimizacji w `/chat`, `/chat/stream`, `/retrieval`; `lifespan`; `attachments=[]` |
+| `api.py` | wywołania anonimizacji w `/chat`, `/chat/stream`, `/retrieval`; `lifespan`; maskowanie załączników w `_prepare_attachments()` / `_start_chat()` |
 | `translator.py` | prompt tłumacza: tokeny w nawiasach kwadratowych (`[OSOBA]`, `[PESEL]`) pozostają bez zmian |
 | `docker-compose.yml` | zmienne `ANONYMIZER_FALLBACK`, `ANONYMIZER_CACHE_DIR` i wolumen `anonymizer_cache` w `api` |
 | `environment-linux.yml` | `gliner==0.2.30`, `sentencepiece`, `tiktoken` (numpy zostaje 1.26.4: CPU na VM nie obsługuje numpy ≥ 2.4) |
@@ -160,7 +171,7 @@ Uruchomienie: [DEPLOYMENT.md](../../DEPLOYMENT.md).
   Bot i tak nie miałby o niej informacji. W razie potrzeby można ją dopisać przez `ANONYMIZER_STAFF_FILE`.
 - Nazwiska pracowników pisane cyrylicą („Качмарського”) nie trafiają w listę (łacinka) i są maskowane.
 - Nazwiska w treści załączników nie są maskowane (tylko regex).
-- Skany PDF nie są obsługiwane.
+- Obrazy i skany PDF nie są anonimizowane (wysyłane jako obrazy, chyba że `ATTACHMENT_ALLOW_IMAGES=false`).
 - Samo imię („jestem Kasia”) zwykle nie jest maskowane.
 - Telefon zapisany słownie i login bez hasła („mój login to jkowalski04”) nie są wykrywane.
 - Student o takim samym nazwisku jak pracownik, podany bez imienia, jest traktowany jak pracownik.

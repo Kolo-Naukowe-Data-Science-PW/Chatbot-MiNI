@@ -7,6 +7,9 @@ Policy (see ANONYMIZATION.md):
 - the question typed by the user: regex + local model (names of private people),
 - attachments (.txt/.md/.csv pasted into the question, text extracted from PDFs):
   regex only (identifiers), file names are dropped,
+- attachments processed by POST /attachments (PDF, DOCX, XLSX, text; see
+  ATTACHMENTS.md): the same rule — regex on their text, file names replaced by
+  neutral labels (``mask_attachments`` / ``mask_history_attachments``),
 - PDFs are never sent to OpenRouter as base64, only their (masked) text;
   a PDF without a text layer (scan) is rejected with HTTP 422.
 If a frontend sends no attachments, the attachment code simply does nothing.
@@ -179,3 +182,49 @@ def anonymize_request(
             else f"{query}\n\n{pdf_text}"
         )
     return query, history, dict(found)
+
+
+def _neutral_name(index: int, filename: str | None) -> str:
+    """'Jan_Kowalski_CV.pdf' -> 'plik 1 (.pdf)': the name can contain personal data."""
+    name = filename or ""
+    ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+    ext = ext if ext.isalnum() and len(ext) <= 5 else ""
+    return f"plik {index}" + (f" (.{ext})" if ext else "")
+
+
+def mask_attachments(attachments: list[dict]) -> tuple[list[dict], Counter]:
+    """Processed attachments (dicts from attachments.py) -> regex-masked text, neutral names.
+
+    Images are passed through unchanged (they cannot be masked by regex; whether
+    they are accepted at all is decided by ATTACHMENT_ALLOW_IMAGES in attachments.py).
+    """
+    masked, found = [], Counter()
+    for index, att in enumerate(attachments, start=1):
+        item = dict(att)
+        item["filename"] = _neutral_name(index, att.get("filename"))
+        if att.get("text"):
+            result = mask_identifiers(att["text"])
+            found.update(result.found)
+            item["text"] = result.text
+        masked.append(item)
+    return masked, found
+
+
+def mask_history_attachments(history: list[Message]) -> list[Message]:
+    """Mask the text of attachments the frontend re-sends with earlier user messages."""
+    out = []
+    for msg in history:
+        if msg.role == "user" and msg.attachments:
+            items, _ = mask_attachments(
+                [a.model_dump(exclude={"images", "data"}) for a in msg.attachments]
+            )
+            msg = msg.model_copy(
+                update={
+                    "attachments": [
+                        a.model_copy(update=i)
+                        for a, i in zip(msg.attachments, items, strict=True)
+                    ]
+                }
+            )
+        out.append(msg)
+    return out

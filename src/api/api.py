@@ -1,5 +1,4 @@
 import csv
-import io
 import json
 import logging
 import os
@@ -16,11 +15,26 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from src.api.anonymizer import Anonymizer
+from src.api.attachments import (
+    IMAGE_BUDGET_CHARS,
+    MAX_FILE_BYTES,
+    MAX_FILES_PER_MESSAGE,
+    AttachmentError,
+    ensure_vision_model,
+    process_base64,
+    process_file,
+    validate_image_data_url,
+)
 from src.api.main import query_llm, query_llm_stream
-from src.api.models import Message
+from src.api.models import Attachment, Message
 from src.api.prompt_builder import build_messages
 from src.api.query_rewriter import rewrite_query
-from src.api.request_privacy import anonymize_request, anonymize_text_or_http_error
+from src.api.request_privacy import (
+    anonymize_request,
+    anonymize_text_or_http_error,
+    mask_attachments,
+    mask_history_attachments,
+)
 from src.api.retrieval import get_top_k_chunks
 from src.api.security import (
     DEFAULT_MAX_TOKENS,
@@ -74,6 +88,8 @@ app = FastAPI(
 )
 feedback_write_lock = Lock()
 feedback_file_path = Path(get_data_dir("feedback", "model_feedback.csv"))
+# read one byte more than allowed so oversized uploads are detected without loading them fully
+MAX_UPLOAD_READ_BYTES = MAX_FILE_BYTES + 1
 
 
 app.add_middleware(
@@ -122,9 +138,20 @@ def _reserve_or_429(
     query: str,
     history: list[Message],
     model_config: dict | None,
+    attachments: list[dict] | None = None,
 ):
-    """Reserve the worst-case cost of a chat request or raise HTTP 429."""
-    history_chars = sum(len(message.content) for message in history)
+    """Reserve the worst-case cost of a chat request or raise HTTP 429.
+
+    Attachment text (current message and history) and attached images count too,
+    otherwise a large file would bypass the budget.
+    """
+    history_chars = sum(
+        len(message.content) + sum(len(a.text or "") for a in message.attachments)
+        for message in history
+    )
+    for att in attachments or []:
+        history_chars += len(att.get("text") or "")
+        history_chars += IMAGE_BUDGET_CHARS * len(att.get("images") or [])
     max_tokens = (model_config or {}).get("max_tokens", DEFAULT_MAX_TOKENS)
     try:
         return guard.reserve(
@@ -147,12 +174,6 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-class FileAttachment(BaseModel):
-    filename: str
-    data: str  # base64-encoded file content
-    mime_type: str = "application/pdf"
-
-
 class QueryRequest(BaseModel):
     """
     Pydantic model representing the structure of a chat query request.
@@ -162,8 +183,10 @@ class QueryRequest(BaseModel):
                 - mode: Optional string indicating the frontend mode (e.g., "production", "testPro").
                 - variant: Optional string indicating the A/B test variant (e.g., "A", "B").
                 - modelConfig: Optional dictionary containing model parameters used for generating the response.
-                - attachments: Optional list of PDF attachments (base64). Only their text, with
-                  identifiers masked, is passed to the model (see ANONYMIZATION.md).
+                - attachments: Optional list of attachments, preferably already processed by
+                  POST /attachments (text and/or image data URLs). Raw base64 files are still
+                  accepted. Their text is masked (regex) before it reaches the model, see
+                  ATTACHMENTS.md and ANONYMIZATION.md.
     """
 
     query: str
@@ -175,7 +198,7 @@ class QueryRequest(BaseModel):
     user_type: str | None = None
     major: str | None = None
     semester: str | None = None
-    attachments: list[FileAttachment] = []
+    attachments: list[Attachment] = []
 
 
 class FeedbackRequest(BaseModel):
@@ -466,6 +489,81 @@ def experiment_config() -> dict:
     }
 
 
+DEFAULT_ATTACHMENT_QUERY = "Przeanalizuj załączone pliki i krótko podsumuj ich treść."
+
+
+def _prepare_attachments(raw_attachments: list[Attachment]) -> list[dict]:
+    """
+    Normalise attachments from a chat request into prompt-ready dicts.
+
+    - already processed attachments (from POST /attachments) are validated,
+    - legacy raw base64 attachments are processed with the same extractors,
+    - their text is then masked with the regex layer and file names are replaced
+      by neutral labels (``mask_attachments``), exactly like the policy for pasted
+      files in ANONYMIZATION.md.
+
+    Raises HTTPException with a user-facing (Polish) message on bad input.
+    """
+    if len(raw_attachments) > MAX_FILES_PER_MESSAGE:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Można dołączyć maksymalnie {MAX_FILES_PER_MESSAGE} plików do jednej wiadomości.",
+        )
+    prepared: list[dict] = []
+    for att in raw_attachments:
+        try:
+            if att.data and not att.text and not att.images:
+                processed = process_base64(att.filename, att.data).to_dict()
+            else:
+                processed = {
+                    "filename": att.filename,
+                    "kind": att.kind,
+                    "text": att.text,
+                    "images": [validate_image_data_url(u) for u in att.images],
+                    "note": att.note,
+                }
+        except AttachmentError as exc:
+            raise HTTPException(
+                status_code=exc.status_code, detail=f"{att.filename}: {exc}"
+            ) from exc
+        if not (processed.get("text") or "").strip() and not processed["images"]:
+            continue
+        prepared.append(processed)
+    masked, _ = mask_attachments(prepared)
+    return masked
+
+
+def _start_chat(request: "QueryRequest", client: ClientId, endpoint: str):
+    """
+    Shared prologue of /chat and /chat/stream: limits, attachments, anonymization,
+    model selection and budget reservation.
+
+    Returns (query, conversation_history, attachments, model_config, reservation).
+    """
+    query = guard.limit_query(request.query, client, endpoint)
+
+    attachments = _prepare_attachments(request.attachments)
+    if not query.strip() and not attachments:
+        raise HTTPException(status_code=400, detail="Query cannot be empty")
+    if not query.strip():
+        query = DEFAULT_ATTACHMENT_QUERY
+
+    # attachments are handled above, so the legacy PDF path in anonymize_request is skipped
+    query, conversation_history, _ = anonymize_request(
+        anonymizer, request.model_copy(update={"query": query, "attachments": []})
+    )
+    conversation_history = mask_history_attachments(conversation_history)
+
+    model_config = guard.sanitize_model_config(request.modelConfig, client, endpoint)
+    model_config = ensure_vision_model(
+        model_config, any(a["images"] for a in attachments)
+    )
+    reservation = _reserve_or_429(
+        client, endpoint, query, conversation_history, model_config, attachments
+    )
+    return query, conversation_history, attachments, model_config, reservation
+
+
 @app.post("/chat")
 def chat_endpoint(
     request: QueryRequest, client: Annotated[ClientId, Depends(chat_guard)]
@@ -481,19 +579,9 @@ def chat_endpoint(
     6. Queries the LLM to generate an answer.
     7. Returns the answer along with source URLs and updated conversation history.
     """
-    query = guard.limit_query(request.query, client, "/chat")
     lang = request.language
-
-    if not query:
-        raise HTTPException(status_code=400, detail="Query cannot be empty")
-
-    query, conversation_history, _ = anonymize_request(
-        anonymizer, request.model_copy(update={"query": query})
-    )
-
-    model_config = guard.sanitize_model_config(request.modelConfig, client, "/chat")
-    reservation = _reserve_or_429(
-        client, "/chat", query, conversation_history, model_config
+    query, conversation_history, attachments, model_config, reservation = _start_chat(
+        request, client, "/chat"
     )
     input_chars = 0
     output_chars = 0
@@ -515,7 +603,7 @@ def chat_endpoint(
         )
         sorted_chunks = get_top_k_chunks(retrieval_query)
 
-        if not sorted_chunks:
+        if not sorted_chunks and not attachments:
             polish_msg = "Przepraszam, nie znalazłem w bazie informacji na ten temat."
             final_msg = translate_text(polish_msg, lang) if lang != "pl" else polish_msg
 
@@ -541,8 +629,8 @@ def chat_endpoint(
             semester=str(request.semester) if request.semester else None,
             conversation_history=conversation_history,
             style_instruction=style_instruction,
-            # PDFs are not sent as base64: their masked text is already in the query
-            attachments=[],
+            # masked attachment text (and images) go into their own prompt section
+            attachments=attachments,
         )
         input_chars = messages_chars(messages)
 
@@ -589,21 +677,9 @@ def chat_stream_endpoint(
     Anonymization runs here, before the StreamingResponse is built, so a 503 can
     still be returned when the local model is unavailable.
     """
-    query = guard.limit_query(request.query, client, "/chat/stream")
     lang = request.language
-
-    if not query:
-        raise HTTPException(status_code=400, detail="Query cannot be empty")
-
-    query, conversation_history, _ = anonymize_request(
-        anonymizer, request.model_copy(update={"query": query})
-    )
-
-    model_config = guard.sanitize_model_config(
-        request.modelConfig, client, "/chat/stream"
-    )
-    reservation = _reserve_or_429(
-        client, "/chat/stream", query, conversation_history, model_config
+    query, conversation_history, attachments, model_config, reservation = _start_chat(
+        request, client, "/chat/stream"
     )
 
     try:
@@ -628,7 +704,7 @@ def chat_stream_endpoint(
                 seen.add(url)
                 sources.append(url)
 
-        if not sorted_chunks:
+        if not sorted_chunks and not attachments:
             polish_msg = "Przepraszam, nie znalazłem w bazie informacji na ten temat."
             final_msg = translate_text(polish_msg, lang) if lang != "pl" else polish_msg
             guard.settle(reservation, 0, 0)
@@ -649,8 +725,8 @@ def chat_stream_endpoint(
             semester=str(request.semester) if request.semester else None,
             conversation_history=conversation_history,
             style_instruction=style_instruction,
-            # PDFs are not sent as base64: their masked text is already in the query
-            attachments=[],
+            # masked attachment text (and images) go into their own prompt section
+            attachments=attachments,
         )
     except Exception:
         guard.settle(reservation, 0, 0)
@@ -717,39 +793,50 @@ def error_report_endpoint(payload: ErrorReportRequest) -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.post("/attachments")
+async def attachments_endpoint(
+    file: Annotated[UploadFile, File()],
+    client: Annotated[ClientId, Depends(chat_guard)],
+) -> dict[str, Any]:
+    """
+    Process one uploaded file for use as a chat attachment.
+
+    Supported: PDF, DOCX, XLSX, TXT/MD/CSV/JSON and JPEG/PNG/WEBP/GIF images.
+    Returns ``{filename, kind, text, images, truncated, pages, note}``; the
+    frontend sends this object back in ``attachments`` of ``/chat`` or
+    ``/chat/stream``, where the text is masked before it reaches the model.
+    Errors are returned as HTTP 413/415/422 with a Polish message in ``detail``.
+    Counts towards the same per-address request rate as the chat endpoints.
+    """
+    content = await file.read(MAX_UPLOAD_READ_BYTES)
+    try:
+        processed = process_file(file.filename or "plik", content)
+    except AttachmentError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    # file name and content are not logged (they can contain personal data)
+    logger.info(
+        "Processed attachment kind=%s chars=%d images=%d",
+        processed.kind,
+        len(processed.text or ""),
+        len(processed.images),
+    )
+    return processed.to_dict()
+
+
 @app.post("/extract-text")
 async def extract_text_endpoint(
     file: Annotated[UploadFile, File()],
+    client: Annotated[ClientId, Depends(chat_guard)],
 ) -> dict[str, str]:
-    """Extract plain text from an uploaded file (.txt, .md, .pdf). Used by the frontend to attach files to chat."""
-    content = await file.read()
-    filename = file.filename or ""
-    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-
-    if ext in ("txt", "md", "csv"):
-        try:
-            text = content.decode("utf-8")
-        except UnicodeDecodeError:
-            text = content.decode("latin-1", errors="replace")
-    elif ext == "pdf":
-        try:
-            from pypdf import PdfReader  # noqa: PLC0415
-
-            reader = PdfReader(io.BytesIO(content))
-            text = "\n".join(page.extract_text() or "" for page in reader.pages)
-        except Exception as exc:
-            raise HTTPException(
-                status_code=422, detail=f"PDF extraction failed: {exc}"
-            ) from exc
-    else:
-        raise HTTPException(status_code=415, detail=f"Unsupported file type: .{ext}")
-
-    if not text.strip():
-        raise HTTPException(
-            status_code=422, detail="File appears to be empty or unreadable."
-        )
-
-    return {"text": text, "filename": filename}
+    """Legacy endpoint kept for old frontends: returns only the extracted text."""
+    content = await file.read(MAX_UPLOAD_READ_BYTES)
+    try:
+        processed = process_file(file.filename or "plik", content)
+    except AttachmentError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    if not processed.text:
+        raise HTTPException(status_code=422, detail="Plik nie zawiera tekstu.")
+    return {"text": processed.text, "filename": processed.filename}
 
 
 @app.post("/feedback")
