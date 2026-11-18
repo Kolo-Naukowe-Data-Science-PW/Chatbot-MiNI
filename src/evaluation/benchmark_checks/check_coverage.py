@@ -23,7 +23,7 @@ from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 if str(PROJECT_ROOT) not in sys.path:
@@ -34,13 +34,14 @@ from src.evaluation.benchmark import (  # noqa: E402
     load_gold_filtered,
     normalize_url,
 )
+from src.evaluation.benchmark_checks._auth import internal_headers  # noqa: E402
 
 
 def _fetch_db_urls(api_base: str) -> frozenset[str]:
     """Fetch all unique URLs from the running API's /db-urls endpoint."""
     url = api_base.rstrip("/") + "/db-urls"
     print(f"  GET {url}")
-    with urlopen(url, timeout=120) as resp:
+    with urlopen(Request(url, headers=internal_headers()), timeout=120) as resp:
         data = json.loads(resp.read())
     raw_urls: list[str] = data["urls"]
     return frozenset(normalize_url(u) for u in raw_urls if u)

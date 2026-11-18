@@ -399,7 +399,7 @@ Kontrolowane przez `EXPERIMENT_DIM` w `.env` — w każdym pytaniu losowany jest
 
 | `EXPERIMENT_DIM` | Co się różni między A i B | Co jest stałe |
 |---|---|---|
-| `model` | Model LLM (losowane z 9-modelowego poola) | temperatura, persona |
+| `model` | Model LLM (losowane z 5-modelowego poola) | temperatura, persona |
 | `temperature` | Temperatura: niska (0.0–0.3) vs wysoka (0.6–0.9) | model, persona |
 | `persona` | Styl odpowiedzi (krótko / przyjaźnie / formalnie / wyczerpująco) | model, temperatura |
 
@@ -481,6 +481,9 @@ Via GitHub Actions: `text_metrics.yml` (workflow_dispatch, wymaga CSV z wygenero
 | `GET`  | `/experiment-config` | Current A/B experiment dimension + model pool |
 | `POST` | `/retrieval` | Direct retrieval endpoint — returns ranked URLs for a query |
 | `GET`  | `/db-urls` | Returns all unique source URLs indexed in Qdrant |
+| `GET`  | `/health` | Liveness probe (`{"status":"ok"}`) used by Docker and CI |
+
+`/retrieval` and `/db-urls` require the header `X-Internal-Key` (see *Abuse Protection*). `/docs`, `/redoc` and `/openapi.json` are disabled unless `ENABLE_DOCS=1`.
 
 ### `/retrieval` — direct retrieval
 
@@ -507,6 +510,34 @@ curl http://localhost:8000/db-urls
 Used internally by ablation scripts to compute coverage-corrected metrics without direct Qdrant access (avoids file-lock conflicts with the API process).
 
 ---
+
+## Abuse Protection
+
+The public chat endpoints are protected against bots that try to exhaust the LLM budget. Everything is configured through environment variables (defaults in brackets) and implemented in `src/api/security.py`.
+
+| Protection | Variables |
+|---|---|
+| Question length (longer text is truncated) | `QUERY_MAX_CHARS` (1000) |
+| Answer length cap | `MAX_TOKENS_CAP` (2048) |
+| Request rate per client address | `RATE_LIMIT_PER_MIN` (20), `RATE_LIMIT_PER_HOUR` (150) |
+| Hourly cost budget in USD, per address and global | `BUDGET_PER_IP_USD_HOUR` (0.50), `BUDGET_GLOBAL_USD_HOUR` (10), `BUDGET_WARN_RATIO` (0.8) |
+| Prices behind the cost estimate (USD per 1M tokens, flat extra per request) | `COST_INPUT_USD_PER_MTOK` (0.29), `COST_OUTPUT_USD_PER_MTOK` (1.14), `COST_OVERHEAD_USD_PER_REQUEST` (0.0005) |
+| Trusted reverse proxies in front of the API (Apache + Vite) | `TRUSTED_PROXY_HOPS` (2) |
+| Secret for `/retrieval` and `/db-urls` (header `X-Internal-Key`) | `INTERNAL_API_KEY` (required) |
+| Upper bound of `top_k` in `/retrieval` | `RETRIEVAL_TOP_K_MAX` (50) |
+| Interactive docs | `ENABLE_DOCS` (0) |
+| Models that external clients may use (any other is replaced by the default) | `MODEL_ALLOWLIST` (the 5 cheap pool models), `DEFAULT_MODEL` (`deepseek/deepseek-chat-v3-0324`) |
+| Throttle for repeated security log lines | `SECURITY_LOG_THROTTLE_SEC` (60) |
+
+How it behaves:
+
+- The client address is the `TRUSTED_PROXY_HOPS`-th entry of `X-Forwarded-For` counted from the right; entries further left can be forged and are ignored.
+- Requests **without** `X-Forwarded-For` come from inside the Docker network (our scripts) and are exempt from the rate limit and the budget. The API port must therefore never be published.
+- A model outside `MODEL_ALLOWLIST` sent by an external client is replaced by `DEFAULT_MODEL` (log event `model_replaced`); internal traffic may choose any model. Setting `MODEL_ALLOWLIST` to a single model makes the server use only that model.
+- Over the limit the API answers `429` with a `Retry-After` header; the frontend shows a localised message.
+- The cost of a request is estimated from character counts (about 3 characters per token) with the prices above. It is reserved before the model is called and settled afterwards.
+- Violations are logged as one JSON line each on the container log, for example `docker compose logs api | grep '"event"'`. Logs are lost when the containers are recreated by a deployment.
+- The scripts in `src/evaluation/benchmark_checks/` send `X-Internal-Key` from the `INTERNAL_API_KEY` environment variable.
 
 ## Ablation Studies
 

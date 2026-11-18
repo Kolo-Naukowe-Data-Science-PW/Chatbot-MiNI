@@ -1,6 +1,7 @@
 /* Author: Wiktoria Grodzka */
 import "./App.css";
 import { useState, useRef, useEffect } from "react";
+import { MAX_QUERY_CHARS, limitQuery } from "./queryLimit.js";
 
 // ============ API CONFIG ============
 // const API_URL = "http://127.0.0.1:8000/chat"; //
@@ -11,6 +12,9 @@ const API_URL = "/api/chat";
 const STREAM_API_URL = "/api/chat/stream";
 const FEEDBACK_API_URL = "/api/feedback";
 const ERROR_API_URL = "/api/errors";
+
+// Thrown when the API answers 429 (request rate or cost budget exceeded)
+class RateLimitError extends Error {}
 
 
 // Fallback used while /experiment-config is loading (mirrors .env defaults)
@@ -33,10 +37,6 @@ const DEFAULT_EXPERIMENT_CONFIG = {
     "deepseek/deepseek-chat-v3-0324",
     "mistralai/mistral-small-3.2-24b-instruct",
     "meta-llama/llama-3.1-70b-instruct",
-    // supermodels
-    "openai/gpt-5.5",
-    "anthropic/claude-opus-4.7",
-    "google/gemini-3.1-pro-preview-customtools",
   ],
 };
 
@@ -100,6 +100,8 @@ const translations = {
     sources: "Źródła",
     choose: "Wybierz",
     error: "Przepraszam, wystąpił błąd. Spróbuj ponownie.",
+    rateLimited: "Za dużo zapytań. Spróbuj ponownie za chwilę.",
+    queryTooLong: "Tekst był za długi (limit: 1000 znaków) i został skrócony.",
     errorReport: "Opisz błąd",
     errorPlaceholder: "Opisz, co poszło nie tak...",
     errorSent: "Dziękujemy za zgłoszenie!",
@@ -140,6 +142,8 @@ const translations = {
     sources: "Sources",
     choose: "Choose",
     error: "Sorry, an error occurred. Please try again.",
+    rateLimited: "Too many requests. Please try again in a moment.",
+    queryTooLong: "The text was too long (limit: 1000 characters) and has been shortened.",
     errorReport: "Report an issue",
     errorPlaceholder: "Describe what went wrong...",
     errorSent: "Thanks for reporting!",
@@ -180,6 +184,8 @@ const translations = {
     sources: "Джерела",
     choose: "Обрати",
     error: "Вибачте, сталася помилка. Спробуйте ще раз.",
+    rateLimited: "Забагато запитів. Спробуйте ще раз за хвилину.",
+    queryTooLong: "Текст був задовгий (ліміт: 1000 символів), його було скорочено.",
     errorReport: "Повідомити про помилку",
     errorPlaceholder: "Опишіть, що пішло не так...",
     errorSent: "Дякуємо за повідомлення!",
@@ -783,6 +789,7 @@ function MainContent({ language, version, userType, setUserType, selectedMajor, 
   const t = translations[language];
   const [inputValue, setInputValue] = useState('');
   const [attachedFile, setAttachedFile] = useState(null); // { name, text }
+  const [lengthNotice, setLengthNotice] = useState(false);
   const fileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
 
@@ -860,9 +867,11 @@ function MainContent({ language, version, userType, setUserType, selectedMajor, 
           mime_type: attachedFile.mimeType,
         }]);
       } else {
-        const textToSend = attachedFile
+        const composed = attachedFile
           ? `${inputValue}\n\n[Załącznik: ${attachedFile.name}]\n${attachedFile.text}`
           : inputValue;
+        const { text: textToSend, truncated } = limitQuery(composed);
+        setLengthNotice(truncated);
         onSendMessage(textToSend, []);
       }
       setInputValue('');
@@ -1034,6 +1043,18 @@ function MainContent({ language, version, userType, setUserType, selectedMajor, 
             <button type="button" onClick={() => setAttachedFile(null)} className="remove-attachment">✕</button>
           </div>
         )}
+        {(lengthNotice || inputValue.length >= MAX_QUERY_CHARS * 0.8) && (
+          <div
+            role="status"
+            style={{
+              color: lengthNotice ? "#b45309" : "#6b7280",
+              fontSize: "0.85rem",
+              margin: "0 0 6px",
+            }}
+          >
+            {lengthNotice ? t.queryTooLong : `${inputValue.length}/${MAX_QUERY_CHARS}`}
+          </div>
+        )}
         <form className="input-wrapper" onSubmit={handleSubmit}>
           <input
             type="file"
@@ -1053,7 +1074,11 @@ function MainContent({ language, version, userType, setUserType, selectedMajor, 
             placeholder={userType && selectedMajor && selectedSemester ? t.placeholder.replace("Najpierw podaj kierunek i semestr", "Zadaj pytanie...") : t.placeholder}
             disabled={!userType || !selectedMajor || !selectedSemester || isLoading}
             value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
+            maxLength={MAX_QUERY_CHARS}
+            onChange={(e) => {
+              setInputValue(e.target.value);
+              setLengthNotice(false);
+            }}
           />
 
           <button type="submit" className="send-btn" disabled={!userType || !selectedMajor || !selectedSemester || !inputValue.trim() || isLoading}>
@@ -1230,6 +1255,7 @@ export default function App() {
             attachments: attachments,
           })
         });
+        if (resp.status === 429) throw new RateLimitError();
         if (!resp.ok) throw new Error(`Stream API Error (${config.variant})`);
 
         const reader = resp.body.getReader();
@@ -1321,6 +1347,7 @@ export default function App() {
           })
         });
 
+        if (streamResponse.status === 429) throw new RateLimitError();
         if (!streamResponse.ok) throw new Error("Stream API Error");
 
         const reader = streamResponse.body.getReader();
@@ -1427,7 +1454,9 @@ export default function App() {
       const errorMessage = {
         id: Date.now() + 1,
         type: 'bot',
-        text: translations[language].error,
+        text: error instanceof RateLimitError
+          ? translations[language].rateLimited
+          : translations[language].error,
         timestamp: new Date(),
         canRate: false
       };

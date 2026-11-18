@@ -8,6 +8,7 @@ from openai import OpenAI
 from src.api.models import Message
 from src.api.prompt_builder import build_messages
 from src.api.retrieval import get_top_k_chunks
+from src.api.security import DEFAULT_MAX_TOKENS, clamp_max_tokens, load_settings
 
 load_dotenv()
 
@@ -25,11 +26,11 @@ client = OpenAI(
 
 
 MODEL_NAME = "openai/gpt-4o-mini"
+MAX_TOKENS_CAP = load_settings().max_tokens_cap
 
 AVAILABLE_MODELS = [
     "openai/gpt-4o-mini",
     "google/gemini-2.5-flash",
-    "meta-llama/llama-3-8b-instruct",
 ]
 
 
@@ -57,7 +58,9 @@ def query_llm_stream(messages: list[dict[str, str]], model_config: dict | None =
     config = model_config or {}
     chosen_model = config.get("model") or random.choice(AVAILABLE_MODELS)
     temperature = config.get("temperature", 0.0)
-    max_tokens = config.get("max_tokens", 1024)
+    max_tokens = clamp_max_tokens(
+        config.get("max_tokens", DEFAULT_MAX_TOKENS), MAX_TOKENS_CAP
+    )
     top_p = config.get("top_p", 1.0)
     frequency_penalty = config.get("frequency_penalty", 0.0)
     presence_penalty = config.get("presence_penalty", 0.0)
@@ -101,7 +104,9 @@ def query_llm(messages: list[dict[str, str]], model_config: dict | None = None) 
         chosen_model = random.choice(AVAILABLE_MODELS)
 
     temperature = config.get("temperature", 0.0)
-    max_tokens = config.get("max_tokens", 1024)
+    max_tokens = clamp_max_tokens(
+        config.get("max_tokens", DEFAULT_MAX_TOKENS), MAX_TOKENS_CAP
+    )
     top_p = config.get("top_p", 1.0)
     frequency_penalty = config.get("frequency_penalty", 0.0)
     presence_penalty = config.get("presence_penalty", 0.0)

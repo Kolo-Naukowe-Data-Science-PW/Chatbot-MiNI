@@ -214,7 +214,7 @@ jobs:
           set -euo pipefail
           for i in {1..60}; do
             if docker compose exec -T api micromamba run -n app python -c \
-              "from urllib.request import urlopen; urlopen('http://localhost:8000/docs', timeout=2)" >/dev/null 2>&1; then
+              "from urllib.request import urlopen; urlopen('http://localhost:8000/health', timeout=2)" >/dev/null 2>&1; then
               echo "API is ready"
               exit 0
             fi
