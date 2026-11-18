@@ -5,6 +5,10 @@ RUN micromamba create -y -n app -f /tmp/environment.yml && micromamba clean -a -
 
 SHELL ["micromamba", "run", "-n", "app", "/bin/bash", "-lc"]
 
+# Needed by pandas read_excel / to_markdown (ingest_manual_xlsx, describe_files).
+# Separate layer so the cached conda/pip environment above is not rebuilt.
+RUN /opt/conda/envs/app/bin/python -m pip install --no-cache-dir openpyxl tabulate
+
 WORKDIR /app
 COPY . /app
 
