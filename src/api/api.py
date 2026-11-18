@@ -1,23 +1,52 @@
 import csv
-import io
 import json
 import logging
 import os
+import threading
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from threading import Lock
 from typing import Annotated, Any
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from src.api.anonymizer import Anonymizer
+from src.api.attachments import (
+    IMAGE_BUDGET_CHARS,
+    MAX_FILE_BYTES,
+    MAX_FILES_PER_MESSAGE,
+    AttachmentError,
+    ensure_vision_model,
+    process_base64,
+    process_file,
+    validate_image_data_url,
+)
 from src.api.main import query_llm, query_llm_stream
-from src.api.models import Message
+from src.api.models import Attachment, Message
 from src.api.prompt_builder import build_messages
 from src.api.query_rewriter import rewrite_query
+from src.api.request_privacy import (
+    anonymize_request,
+    anonymize_text_or_http_error,
+    mask_attachments,
+    mask_history_attachments,
+)
 from src.api.retrieval import get_top_k_chunks
+from src.api.security import (
+    DEFAULT_MAX_TOKENS,
+    PROMPT_OVERHEAD_CHARS,
+    BudgetExceeded,
+    ClientId,
+    RateLimited,
+    SecurityGuard,
+    load_settings,
+    messages_chars,
+)
+from src.api.staff_names import load_staff_from_knowledge_base
 from src.api.translator import translate_text
 from src.utils.paths import get_data_dir
 
@@ -25,9 +54,42 @@ from src.utils.paths import get_data_dir
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI()
+settings = load_settings()
+guard = SecurityGuard(settings)
+guard.events.log_startup(settings)
+if not settings.internal_api_key:
+    logger.warning(
+        "INTERNAL_API_KEY is not set: /retrieval and /db-urls reject all requests"
+    )
+
+# Local anonymization of prompts before they reach OpenRouter (see src/api/ANONYMIZATION.md).
+# Configured from environment variables (ANONYMIZER_*).
+anonymizer = Anonymizer()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Names from the knowledge base (people the chatbot can answer about are never masked),
+    # then the NER model: seconds, minutes at the very first start (download). Done in the
+    # background so the API starts at once; until then /chat follows the fallback (503).
+    def _start_anonymizer() -> None:
+        anonymizer.add_staff(load_staff_from_knowledge_base())
+        anonymizer.warm_up()
+
+    threading.Thread(target=_start_anonymizer, daemon=True).start()
+    yield
+
+
+app = FastAPI(
+    lifespan=lifespan,
+    docs_url="/docs" if settings.enable_docs else None,
+    redoc_url="/redoc" if settings.enable_docs else None,
+    openapi_url="/openapi.json" if settings.enable_docs else None,
+)
 feedback_write_lock = Lock()
 feedback_file_path = Path(get_data_dir("feedback", "model_feedback.csv"))
+# read one byte more than allowed so oversized uploads are detected without loading them fully
+MAX_UPLOAD_READ_BYTES = MAX_FILE_BYTES + 1
 
 
 app.add_middleware(
@@ -39,10 +101,77 @@ app.add_middleware(
 )
 
 
-class FileAttachment(BaseModel):
-    filename: str
-    data: str  # base64-encoded file content
-    mime_type: str = "application/pdf"
+def get_client(raw: Request) -> ClientId:
+    """Identify the caller behind the reverse proxies (see `identify_client`)."""
+    peer = raw.client.host if raw.client else None
+    return guard.identify(raw.headers, peer)
+
+
+def chat_guard(
+    raw: Request, client: Annotated[ClientId, Depends(get_client)]
+) -> ClientId:
+    """Dependency of the chat endpoints: enforce the per-address request rate."""
+    try:
+        guard.check_rate(client, raw.url.path)
+    except RateLimited as exc:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many requests, try again later",
+            headers={"Retry-After": str(exc.retry_after)},
+        ) from exc
+    return client
+
+
+def internal_only(
+    raw: Request,
+    client: Annotated[ClientId, Depends(get_client)],
+    x_internal_key: Annotated[str | None, Header()] = None,
+) -> None:
+    """Dependency of the technical endpoints: require the ``X-Internal-Key`` header."""
+    if not guard.internal_key_ok(x_internal_key, client, raw.url.path):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+
+def _reserve_or_429(
+    client: ClientId,
+    endpoint: str,
+    query: str,
+    history: list[Message],
+    model_config: dict | None,
+    attachments: list[dict] | None = None,
+):
+    """Reserve the worst-case cost of a chat request or raise HTTP 429.
+
+    Attachment text (current message and history) and attached images count too,
+    otherwise a large file would bypass the budget.
+    """
+    history_chars = sum(
+        len(message.content) + sum(len(a.text or "") for a in message.attachments)
+        for message in history
+    )
+    for att in attachments or []:
+        history_chars += len(att.get("text") or "")
+        history_chars += IMAGE_BUDGET_CHARS * len(att.get("images") or [])
+    max_tokens = (model_config or {}).get("max_tokens", DEFAULT_MAX_TOKENS)
+    try:
+        return guard.reserve(
+            client,
+            endpoint,
+            input_chars=len(query) + history_chars + PROMPT_OVERHEAD_CHARS,
+            max_tokens=max_tokens,
+        )
+    except BudgetExceeded as exc:
+        raise HTTPException(
+            status_code=429,
+            detail="Usage budget exceeded, try again later",
+            headers={"Retry-After": str(exc.retry_after)},
+        ) from exc
+
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    """Liveness probe for Docker and CI; reveals nothing and costs nothing."""
+    return {"status": "ok"}
 
 
 class QueryRequest(BaseModel):
@@ -54,7 +183,10 @@ class QueryRequest(BaseModel):
                 - mode: Optional string indicating the frontend mode (e.g., "production", "testPro").
                 - variant: Optional string indicating the A/B test variant (e.g., "A", "B").
                 - modelConfig: Optional dictionary containing model parameters used for generating the response.
-                - attachments: Optional list of file attachments (e.g., PDFs) sent as base64 to the model.
+                - attachments: Optional list of attachments, preferably already processed by
+                  POST /attachments (text and/or image data URLs). Raw base64 files are still
+                  accepted. Their text is masked (regex) before it reaches the model, see
+                  ATTACHMENTS.md and ANONYMIZATION.md.
     """
 
     query: str
@@ -66,7 +198,7 @@ class QueryRequest(BaseModel):
     user_type: str | None = None
     major: str | None = None
     semester: str | None = None
-    attachments: list[FileAttachment] = []
+    attachments: list[Attachment] = []
 
 
 class FeedbackRequest(BaseModel):
@@ -278,10 +410,6 @@ _EXPERIMENT_MODEL_POOL = [
     "deepseek/deepseek-chat-v3-0324",
     "mistralai/mistral-small-3.2-24b-instruct",
     "meta-llama/llama-3.1-70b-instruct",
-    # supermodels
-    "openai/gpt-5.5",
-    "anthropic/claude-opus-4.7",
-    "google/gemini-3.1-pro-preview-customtools",
 ]
 
 
@@ -292,11 +420,17 @@ class RetrievalRequest(BaseModel):
     use_rewrite: bool = False
 
 
-@app.post("/retrieval")
-def retrieval_endpoint(request: RetrievalRequest) -> dict[str, Any]:
+@app.post("/retrieval", dependencies=[Depends(internal_only)])
+def retrieval_endpoint(
+    request: RetrievalRequest, client: Annotated[ClientId, Depends(get_client)]
+) -> dict[str, Any]:
     """Direct retrieval endpoint for ablation experiments (bypasses LLM generation)."""
-    q = rewrite_query(request.query) if request.use_rewrite else request.query
-    chunks = get_top_k_chunks(q, top_k=request.top_k, use_rerank=request.use_rerank)
+    query = anonymize_text_or_http_error(
+        anonymizer, guard.limit_query(request.query, client, "/retrieval")
+    )
+    top_k = guard.limit_top_k(request.top_k, client, "/retrieval")
+    q = rewrite_query(query) if request.use_rewrite else query
+    chunks = get_top_k_chunks(q, top_k=top_k, use_rerank=request.use_rerank)
     seen: set[str] = set()
     urls: list[str] = []
     for chunk in chunks:
@@ -307,7 +441,7 @@ def retrieval_endpoint(request: RetrievalRequest) -> dict[str, Any]:
     return {"retrieval_query": q, "urls": urls}
 
 
-@app.get("/db-urls")
+@app.get("/db-urls", dependencies=[Depends(internal_only)])
 def db_urls_endpoint() -> dict[str, Any]:
     """Return all unique source URLs stored in Qdrant. Used by coverage analysis."""
     from src.api.retrieval import _get_qdrant_client  # noqa: PLC0415
@@ -355,161 +489,248 @@ def experiment_config() -> dict:
     }
 
 
+DEFAULT_ATTACHMENT_QUERY = "Przeanalizuj załączone pliki i krótko podsumuj ich treść."
+
+
+def _prepare_attachments(raw_attachments: list[Attachment]) -> list[dict]:
+    """
+    Normalise attachments from a chat request into prompt-ready dicts.
+
+    - already processed attachments (from POST /attachments) are validated,
+    - legacy raw base64 attachments are processed with the same extractors,
+    - their text is then masked with the regex layer and file names are replaced
+      by neutral labels (``mask_attachments``), exactly like the policy for pasted
+      files in ANONYMIZATION.md.
+
+    Raises HTTPException with a user-facing (Polish) message on bad input.
+    """
+    if len(raw_attachments) > MAX_FILES_PER_MESSAGE:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Można dołączyć maksymalnie {MAX_FILES_PER_MESSAGE} plików do jednej wiadomości.",
+        )
+    prepared: list[dict] = []
+    for att in raw_attachments:
+        try:
+            if att.data and not att.text and not att.images:
+                processed = process_base64(att.filename, att.data).to_dict()
+            else:
+                processed = {
+                    "filename": att.filename,
+                    "kind": att.kind,
+                    "text": att.text,
+                    "images": [validate_image_data_url(u) for u in att.images],
+                    "note": att.note,
+                }
+        except AttachmentError as exc:
+            raise HTTPException(
+                status_code=exc.status_code, detail=f"{att.filename}: {exc}"
+            ) from exc
+        if not (processed.get("text") or "").strip() and not processed["images"]:
+            continue
+        prepared.append(processed)
+    masked, _ = mask_attachments(prepared)
+    return masked
+
+
+def _start_chat(request: "QueryRequest", client: ClientId, endpoint: str):
+    """
+    Shared prologue of /chat and /chat/stream: limits, attachments, anonymization,
+    model selection and budget reservation.
+
+    Returns (query, conversation_history, attachments, model_config, reservation).
+    """
+    query = guard.limit_query(request.query, client, endpoint)
+
+    attachments = _prepare_attachments(request.attachments)
+    if not query.strip() and not attachments:
+        raise HTTPException(status_code=400, detail="Query cannot be empty")
+    if not query.strip():
+        query = DEFAULT_ATTACHMENT_QUERY
+
+    # attachments are handled above, so the legacy PDF path in anonymize_request is skipped
+    query, conversation_history, _ = anonymize_request(
+        anonymizer, request.model_copy(update={"query": query, "attachments": []})
+    )
+    conversation_history = mask_history_attachments(conversation_history)
+
+    model_config = guard.sanitize_model_config(request.modelConfig, client, endpoint)
+    model_config = ensure_vision_model(
+        model_config, any(a["images"] for a in attachments)
+    )
+    reservation = _reserve_or_429(
+        client, endpoint, query, conversation_history, model_config, attachments
+    )
+    return query, conversation_history, attachments, model_config, reservation
+
+
 @app.post("/chat")
-def chat_endpoint(request: QueryRequest) -> dict[str, Any]:
+def chat_endpoint(
+    request: QueryRequest, client: Annotated[ClientId, Depends(chat_guard)]
+) -> dict[str, Any]:
     """
     Handles chat interactions by retrieving context and generating an LLM response.
-    1. Validates the input query.
-    2. Retrieves the top-k relevant text chunks from the vector database.
-    3. Builds a prompt using the retrieved context and conversation history.
-    4. Queries the LLM to generate an answer.
-    5. Returns the answer along with source URLs and updated conversation history.
+    1. Limits the input query and the answer length.
+    2. Anonymizes the query, history and attachments (503 if the local model is
+       unavailable); nothing below ever sees the raw prompt.
+    3. Reserves the estimated cost in the budget (HTTP 429 when it is used up).
+    4. Retrieves the top-k relevant text chunks from the vector database.
+    5. Builds a prompt using the retrieved context and conversation history.
+    6. Queries the LLM to generate an answer.
+    7. Returns the answer along with source URLs and updated conversation history.
     """
-    query = request.query
     lang = request.language
-    conversation_history = request.conversation_history
-
-    if not query:
-        raise HTTPException(status_code=400, detail="Query cannot be empty")
-
-    logger.info(
-        f"Received query: {query} | Target lang: {lang} | History length: {len(conversation_history)}"
+    query, conversation_history, attachments, model_config, reservation = _start_chat(
+        request, client, "/chat"
     )
+    input_chars = 0
+    output_chars = 0
+    try:
+        logger.info(
+            f"Received query: {query} | Target lang: {lang} | History length: {len(conversation_history)}"
+        )
 
-    processing_query = query
-    if lang != "pl":
-        processing_query = translate_text(query, target_lang_code="pl")
-        logger.info(f"Translated query to PL: '{processing_query}'")
+        processing_query = query
+        if lang != "pl":
+            processing_query = translate_text(query, target_lang_code="pl")
+            logger.info(f"Translated query to PL: '{processing_query}'")
 
-    retrieval_query = _enrich_retrieval_query(
-        rewrite_query(processing_query),
-        request.major,
-        request.semester,
-        original_query=processing_query,
-    )
-    sorted_chunks = get_top_k_chunks(retrieval_query)
+        retrieval_query = _enrich_retrieval_query(
+            rewrite_query(processing_query),
+            request.major,
+            request.semester,
+            original_query=processing_query,
+        )
+        sorted_chunks = get_top_k_chunks(retrieval_query)
 
-    if not sorted_chunks:
-        polish_msg = "Przepraszam, nie znalazłem w bazie informacji na ten temat."
-        final_msg = translate_text(polish_msg, lang) if lang != "pl" else polish_msg
+        if not sorted_chunks and not attachments:
+            polish_msg = "Przepraszam, nie znalazłem w bazie informacji na ten temat."
+            final_msg = translate_text(polish_msg, lang) if lang != "pl" else polish_msg
 
-        updated_history = conversation_history + [
-            Message(role="user", content=processing_query),
-            Message(role="assistant", content=polish_msg),
-        ]
+            updated_history = conversation_history + [
+                Message(role="user", content=processing_query),
+                Message(role="assistant", content=polish_msg),
+            ]
+
+            return {
+                "answer": final_msg,
+                "sources": [],
+                "conversation_history": updated_history,
+            }
+
+        text_only_chunks = [chunk["text_chunk"] for chunk in sorted_chunks]
+
+        style_instruction = (model_config or {}).get("styleInstruction")
+        messages = build_messages(
+            processing_query,
+            text_only_chunks,
+            user_type=request.user_type,
+            field_of_study=request.major,
+            semester=str(request.semester) if request.semester else None,
+            conversation_history=conversation_history,
+            style_instruction=style_instruction,
+            # masked attachment text (and images) go into their own prompt section
+            attachments=attachments,
+        )
+        input_chars = messages_chars(messages)
+
+        polish_answer = query_llm(messages, model_config)
+        output_chars = len(polish_answer)
+        final_answer = polish_answer
+        if lang != "pl":
+            logger.info(f"Translating answer from PL to {lang}...")
+            final_answer = translate_text(polish_answer, target_lang_code=lang)
+
+        seen: set[str] = set()
+        sources = []
+        for chunk in sorted_chunks:
+            url = chunk.get("source_url", "Unknown")
+            if url not in seen:
+                seen.add(url)
+                sources.append(url)
 
         return {
-            "answer": final_msg,
-            "sources": [],
-            "conversation_history": updated_history,
+            "answer": final_answer,
+            "sources": sources,
+            "retrieval_query": retrieval_query,
         }
-
-    text_only_chunks = [chunk["text_chunk"] for chunk in sorted_chunks]
-
-    style_instruction = (request.modelConfig or {}).get("styleInstruction")
-    messages = build_messages(
-        processing_query,
-        text_only_chunks,
-        user_type=request.user_type,
-        field_of_study=request.major,
-        semester=str(request.semester) if request.semester else None,
-        conversation_history=conversation_history,
-        style_instruction=style_instruction,
-        attachments=[
-            {"filename": a.filename, "data": a.data, "mime_type": a.mime_type}
-            for a in request.attachments
-        ],
-    )
-
-    polish_answer = query_llm(messages, request.modelConfig)
-    final_answer = polish_answer
-    if lang != "pl":
-        logger.info(f"Translating answer from PL to {lang}...")
-        final_answer = translate_text(polish_answer, target_lang_code=lang)
-
-    seen: set[str] = set()
-    sources = []
-    for chunk in sorted_chunks:
-        url = chunk.get("source_url", "Unknown")
-        if url not in seen:
-            seen.add(url)
-            sources.append(url)
-
-    return {
-        "answer": final_answer,
-        "sources": sources,
-        "retrieval_query": retrieval_query,
-    }
+    finally:
+        guard.settle(reservation, input_chars, output_chars)
 
 
 @app.post("/chat/stream")
-def chat_stream_endpoint(request: QueryRequest):
+def chat_stream_endpoint(
+    request: QueryRequest, client: Annotated[ClientId, Depends(chat_guard)]
+):
     """
     Streaming version of /chat using Server-Sent Events (SSE).
 
     Yields text chunks as they arrive from the LLM, then sends a final
-    JSON event with sources and the rewritten retrieval query.
+    JSON event with sources and the rewritten retrieval query. The same limits
+    and the same cost budget apply as in /chat.
 
     SSE event format
     ----------------
     - Text delta:  ``data: {token text}\\n\\n``
     - Final event: ``data: {"event":"done","sources":[...],"retrieval_query":"..."}\\n\\n``
 
-    The non-streaming ``/chat`` endpoint is preserved unchanged.
+    Anonymization runs here, before the StreamingResponse is built, so a 503 can
+    still be returned when the local model is unavailable.
     """
-    query = request.query
     lang = request.language
-    conversation_history = request.conversation_history
-
-    if not query:
-        raise HTTPException(status_code=400, detail="Query cannot be empty")
-
-    logger.info(f"[stream] query='{query}' lang={lang}")
-
-    processing_query = query
-    if lang != "pl":
-        processing_query = translate_text(query, target_lang_code="pl")
-
-    retrieval_query = _enrich_retrieval_query(
-        rewrite_query(processing_query),
-        request.major,
-        request.semester,
-        original_query=processing_query,
+    query, conversation_history, attachments, model_config, reservation = _start_chat(
+        request, client, "/chat/stream"
     )
-    sorted_chunks = get_top_k_chunks(retrieval_query)
-    seen: set[str] = set()
-    sources = []
-    for chunk in sorted_chunks:
-        url = chunk.get("source_url", "Unknown")
-        if url not in seen:
-            seen.add(url)
-            sources.append(url)
 
-    if not sorted_chunks:
-        polish_msg = "Przepraszam, nie znalazłem w bazie informacji na ten temat."
-        final_msg = translate_text(polish_msg, lang) if lang != "pl" else polish_msg
+    try:
+        logger.info(f"[stream] query='{query}' lang={lang}")
 
-        def _empty():
-            yield f"data: {final_msg}\n\n"
-            yield f"data: {json.dumps({'event': 'done', 'sources': [], 'retrieval_query': retrieval_query})}\n\n"
+        processing_query = query
+        if lang != "pl":
+            processing_query = translate_text(query, target_lang_code="pl")
 
-        return StreamingResponse(_empty(), media_type="text/event-stream")
+        retrieval_query = _enrich_retrieval_query(
+            rewrite_query(processing_query),
+            request.major,
+            request.semester,
+            original_query=processing_query,
+        )
+        sorted_chunks = get_top_k_chunks(retrieval_query)
+        seen: set[str] = set()
+        sources = []
+        for chunk in sorted_chunks:
+            url = chunk.get("source_url", "Unknown")
+            if url not in seen:
+                seen.add(url)
+                sources.append(url)
 
-    text_only_chunks = [chunk["text_chunk"] for chunk in sorted_chunks]
-    style_instruction = (request.modelConfig or {}).get("styleInstruction")
-    messages = build_messages(
-        processing_query,
-        text_only_chunks,
-        user_type=request.user_type,
-        field_of_study=request.major,
-        semester=str(request.semester) if request.semester else None,
-        conversation_history=conversation_history,
-        style_instruction=style_instruction,
-        attachments=[
-            {"filename": a.filename, "data": a.data, "mime_type": a.mime_type}
-            for a in request.attachments
-        ],
-    )
+        if not sorted_chunks and not attachments:
+            polish_msg = "Przepraszam, nie znalazłem w bazie informacji na ten temat."
+            final_msg = translate_text(polish_msg, lang) if lang != "pl" else polish_msg
+            guard.settle(reservation, 0, 0)
+
+            def _empty():
+                yield f"data: {final_msg}\n\n"
+                yield f"data: {json.dumps({'event': 'done', 'sources': [], 'retrieval_query': retrieval_query})}\n\n"
+
+            return StreamingResponse(_empty(), media_type="text/event-stream")
+
+        text_only_chunks = [chunk["text_chunk"] for chunk in sorted_chunks]
+        style_instruction = (model_config or {}).get("styleInstruction")
+        messages = build_messages(
+            processing_query,
+            text_only_chunks,
+            user_type=request.user_type,
+            field_of_study=request.major,
+            semester=str(request.semester) if request.semester else None,
+            conversation_history=conversation_history,
+            style_instruction=style_instruction,
+            # masked attachment text (and images) go into their own prompt section
+            attachments=attachments,
+        )
+    except Exception:
+        guard.settle(reservation, 0, 0)
+        raise
 
     def _sse(text: str) -> str:
         """Encode a text chunk as an SSE data line, escaping embedded newlines."""
@@ -517,19 +738,26 @@ def chat_stream_endpoint(request: QueryRequest):
 
     def _generate():
         polish_tokens: list[str] = []
-        for token in query_llm_stream(messages, request.modelConfig):
-            polish_tokens.append(token)
-            # Stream in the original language; if translation needed we accumulate
-            # and translate only the final answer (translation requires full text).
-            if lang == "pl":
-                yield _sse(token)
+        try:
+            for token in query_llm_stream(messages, model_config):
+                polish_tokens.append(token)
+                # Stream in the original language; if translation needed we accumulate
+                # and translate only the final answer (translation requires full text).
+                if lang == "pl":
+                    yield _sse(token)
 
-        if lang != "pl":
-            polish_answer = "".join(polish_tokens)
-            final_answer = translate_text(polish_answer, target_lang_code=lang)
-            yield _sse(final_answer)
+            if lang != "pl":
+                polish_answer = "".join(polish_tokens)
+                final_answer = translate_text(polish_answer, target_lang_code=lang)
+                yield _sse(final_answer)
 
-        yield f"data: {json.dumps({'event': 'done', 'sources': sources, 'retrieval_query': retrieval_query})}\n\n"
+            yield f"data: {json.dumps({'event': 'done', 'sources': sources, 'retrieval_query': retrieval_query})}\n\n"
+        finally:
+            guard.settle(
+                reservation,
+                messages_chars(messages),
+                sum(len(token) for token in polish_tokens),
+            )
 
     return StreamingResponse(
         _generate(),
@@ -565,39 +793,50 @@ def error_report_endpoint(payload: ErrorReportRequest) -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.post("/attachments")
+async def attachments_endpoint(
+    file: Annotated[UploadFile, File()],
+    client: Annotated[ClientId, Depends(chat_guard)],
+) -> dict[str, Any]:
+    """
+    Process one uploaded file for use as a chat attachment.
+
+    Supported: PDF, DOCX, XLSX, TXT/MD/CSV/JSON and JPEG/PNG/WEBP/GIF images.
+    Returns ``{filename, kind, text, images, truncated, pages, note}``; the
+    frontend sends this object back in ``attachments`` of ``/chat`` or
+    ``/chat/stream``, where the text is masked before it reaches the model.
+    Errors are returned as HTTP 413/415/422 with a Polish message in ``detail``.
+    Counts towards the same per-address request rate as the chat endpoints.
+    """
+    content = await file.read(MAX_UPLOAD_READ_BYTES)
+    try:
+        processed = process_file(file.filename or "plik", content)
+    except AttachmentError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    # file name and content are not logged (they can contain personal data)
+    logger.info(
+        "Processed attachment kind=%s chars=%d images=%d",
+        processed.kind,
+        len(processed.text or ""),
+        len(processed.images),
+    )
+    return processed.to_dict()
+
+
 @app.post("/extract-text")
 async def extract_text_endpoint(
     file: Annotated[UploadFile, File()],
+    client: Annotated[ClientId, Depends(chat_guard)],
 ) -> dict[str, str]:
-    """Extract plain text from an uploaded file (.txt, .md, .pdf). Used by the frontend to attach files to chat."""
-    content = await file.read()
-    filename = file.filename or ""
-    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-
-    if ext in ("txt", "md", "csv"):
-        try:
-            text = content.decode("utf-8")
-        except UnicodeDecodeError:
-            text = content.decode("latin-1", errors="replace")
-    elif ext == "pdf":
-        try:
-            from pypdf import PdfReader  # noqa: PLC0415
-
-            reader = PdfReader(io.BytesIO(content))
-            text = "\n".join(page.extract_text() or "" for page in reader.pages)
-        except Exception as exc:
-            raise HTTPException(
-                status_code=422, detail=f"PDF extraction failed: {exc}"
-            ) from exc
-    else:
-        raise HTTPException(status_code=415, detail=f"Unsupported file type: .{ext}")
-
-    if not text.strip():
-        raise HTTPException(
-            status_code=422, detail="File appears to be empty or unreadable."
-        )
-
-    return {"text": text, "filename": filename}
+    """Legacy endpoint kept for old frontends: returns only the extracted text."""
+    content = await file.read(MAX_UPLOAD_READ_BYTES)
+    try:
+        processed = process_file(file.filename or "plik", content)
+    except AttachmentError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    if not processed.text:
+        raise HTTPException(status_code=422, detail="Plik nie zawiera tekstu.")
+    return {"text": processed.text, "filename": processed.filename}
 
 
 @app.post("/feedback")

@@ -4,6 +4,8 @@ from src.ingestion.common import MODEL_WORKER, get_llm_client
 
 logger = logging.getLogger(__name__)
 
+TRANSLATOR_MAX_TOKENS = 4096
+
 
 def translate_text(text: str, target_lang_code: str) -> str:
     """
@@ -30,6 +32,7 @@ def translate_text(text: str, target_lang_code: str) -> str:
         "Politechnika Warszawska → Warsaw University of Technology, "
         "Koło Naukowe → student scientific club. "
         "Preserve the original meaning, tone, and formatting. "
+        "Keep every token in square brackets, e.g. [OSOBA] or [PESEL], exactly as it is (do not translate it). "
         "Return ONLY the translated text, without any additional comments or explanations."
     )
 
@@ -42,6 +45,7 @@ def translate_text(text: str, target_lang_code: str) -> str:
                 {"role": "user", "content": text},
             ],
             temperature=0.1,
+            max_tokens=TRANSLATOR_MAX_TOKENS,
         )
         translated_text = response.choices[0].message.content.strip()
         return translated_text

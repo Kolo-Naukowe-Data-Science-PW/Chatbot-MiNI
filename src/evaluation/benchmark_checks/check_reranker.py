@@ -39,6 +39,7 @@ from src.evaluation.benchmark import (  # noqa: E402
     normalize_url,
     recall_at_k,
 )
+from src.evaluation.benchmark_checks._auth import internal_headers  # noqa: E402
 
 KEY_METRICS = [
     "hit@3",
@@ -58,7 +59,7 @@ KEY_METRICS = [
 def _get_db_urls(api_base: str) -> set[str]:
     from urllib.request import Request, urlopen
 
-    req = Request(api_base.rstrip("/") + "/db-urls")
+    req = Request(api_base.rstrip("/") + "/db-urls", headers=internal_headers())
     with urlopen(req, timeout=30) as resp:
         data = json.loads(resp.read())
     return {normalize_url(u) for u in data["urls"]}
@@ -77,7 +78,11 @@ def _call_retrieval(
             "use_rewrite": use_rewrite,
         }
     ).encode()
-    req = Request(url, data=payload, headers={"Content-Type": "application/json"})
+    req = Request(
+        url,
+        data=payload,
+        headers=internal_headers({"Content-Type": "application/json"}),
+    )
     with urlopen(req, timeout=120) as resp:
         data = json.loads(resp.read())
     return [normalize_url(u) for u in data["urls"] if u]

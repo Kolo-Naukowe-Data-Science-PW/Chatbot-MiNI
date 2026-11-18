@@ -7,6 +7,7 @@ volumes:
   qdrant_subset_db:
   hf_cache:
   data_storage:
+  anonymizer_cache:
 
 x-env: &env
   PYTHONUNBUFFERED: "1"
@@ -18,6 +19,24 @@ x-env: &env
   QDRANT_DIR: /app/src/data/qdrant_db
   QDRANT_CHUNKS_DIR: /app/src/data/qdrant_chunks_db
   QDRANT_SUBSET_DIR: /app/src/data/qdrant_subset_db
+  # Abuse protection (see src/api/security.py and the README)
+  INTERNAL_API_KEY: ${INTERNAL_API_KEY:-}
+  ENABLE_DOCS: ${ENABLE_DOCS:-0}
+  QUERY_MAX_CHARS: ${QUERY_MAX_CHARS:-1000}
+  MAX_TOKENS_CAP: ${MAX_TOKENS_CAP:-2048}
+  RATE_LIMIT_PER_MIN: ${RATE_LIMIT_PER_MIN:-20}
+  RATE_LIMIT_PER_HOUR: ${RATE_LIMIT_PER_HOUR:-150}
+  BUDGET_PER_IP_USD_HOUR: ${BUDGET_PER_IP_USD_HOUR:-0.50}
+  BUDGET_GLOBAL_USD_HOUR: ${BUDGET_GLOBAL_USD_HOUR:-10}
+  BUDGET_WARN_RATIO: ${BUDGET_WARN_RATIO:-0.8}
+  TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-2}
+  RETRIEVAL_TOP_K_MAX: ${RETRIEVAL_TOP_K_MAX:-50}
+  COST_INPUT_USD_PER_MTOK: ${COST_INPUT_USD_PER_MTOK:-0.29}
+  COST_OUTPUT_USD_PER_MTOK: ${COST_OUTPUT_USD_PER_MTOK:-1.14}
+  COST_OVERHEAD_USD_PER_REQUEST: ${COST_OVERHEAD_USD_PER_REQUEST:-0.0005}
+  SECURITY_LOG_THROTTLE_SEC: ${SECURITY_LOG_THROTTLE_SEC:-60}
+  MODEL_ALLOWLIST: ${MODEL_ALLOWLIST:-}
+  DEFAULT_MODEL: ${DEFAULT_MODEL:-deepseek/deepseek-chat-v3-0324}
 
 services:
 
@@ -112,12 +131,18 @@ services:
       "--port",
       "8000"
     ]
-    environment: *env
+    environment:
+      <<: *env
+      # prompt anonymization (see src/api/ANONYMIZATION.md): model unavailable ->
+      # "block" = HTTP 503, the prompt is not sent; "regex" = sent with identifiers masked only
+      ANONYMIZER_FALLBACK: ${ANONYMIZER_FALLBACK:-block}
+      ANONYMIZER_CACHE_DIR: /root/.cache/anonymizer
     volumes:
       - data_storage:/app/src/data
       - qdrant_db:/app/src/data/qdrant_db
       - qdrant_chunks_db:/app/src/data/qdrant_chunks_db
       - qdrant_subset_db:/app/src/data/qdrant_subset_db
+      - anonymizer_cache:/root/.cache/anonymizer  # the NER model (~1.1 GB) survives deploys
     expose:
       - "8000"
     restart: always
@@ -150,7 +175,7 @@ services:
 
   api_test_health: #test
     image: curlimages/curl:8.12.1 #test
-    command: ["-sS", "-i", "http://api:8000/docs"] #test
+    command: ["-sS", "-i", "http://api:8000/health"] #test
     depends_on:
       - api
     profiles: ["test"] #test
