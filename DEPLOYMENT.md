@@ -133,7 +133,7 @@ przeglądarka
     ↓ port 8501
 frontend (Docker — npm run preview)
     ↓ /api/* → proxy → http://api:8000
-api (Docker — uvicorn)
+api (Docker — uvicorn; w środku anonimizacja promptów, model GLiNER na CPU)
     ↓
 qdrant_db (Docker volume)
 ```
@@ -152,3 +152,25 @@ nazwa serwisu w docker-compose.yml.
 4. **Zapisz logi przed wdrożeniem** (`docker compose logs api > api.log`): `docker compose down` usuwa kontenery razem z ich logami.
 5. **Opcjonalne limity** (zmienne w `.env`, wartości domyślne w README, sekcja *Abuse Protection*): `RATE_LIMIT_PER_MIN`, `RATE_LIMIT_PER_HOUR`, `BUDGET_PER_IP_USD_HOUR`, `BUDGET_GLOBAL_USD_HOUR` i pozostałe.
 6. **Zdarzenia bezpieczeństwa** (przekroczone limity, budżet, odrzucony klucz) trafiają do logów kontenera jako linie JSON: `docker compose logs api | grep '"event"'`.
+
+---
+
+## Anonimizacja promptów w `api`
+
+Przed wysłaniem zapytania do OpenRoutera `api` maskuje dane osobowe lokalnie
+(opis: [src/api/ANONYMIZATION.md](src/api/ANONYMIZATION.md)). Nie wymaga osobnego serwisu.
+
+| | |
+|---|---|
+| Model | `urchade/gliner_multi_pii-v1` (NER, ~1.1 GB), pobierany z Hugging Face przy pierwszym starcie do własnego wolumenu `anonymizer_cache`; wolumen przetrwa kolejne deploye |
+| Zasoby | ok. 1.5 GB RAM więcej w kontenerze `api`, tylko CPU |
+| Czas na VM | ok. 0.7 s na typowe pytanie, ok. 3 s na najdłuższe (pytanie jest wcześniej skracane do `QUERY_MAX_CHARS`, 1000 znaków; CPU VM bez AVX/SSE4, pomiar na 3 rdzeniach). Wcześniejsze wiadomości z historii są brane z cache |
+| Zależności | `numpy` musi zostać w wersji 1.26.4 (przypięty w `environment-linux.yml`): numpy ≥ 2.4 wymaga instrukcji x86-64-v2, których CPU VM nie ma, i nie uruchamia się |
+| Start | model ładuje się w tle po starcie `api` (przy pierwszym deployu ok. 1–2 min na pobranie 1.2 GB). W tym czasie `/chat` zwraca HTTP 503 („Filtr prywatności jest chwilowo niedostępny”) |
+
+Zmienne w `.env` (opcjonalne):
+
+| Zmienna | Domyślnie | Opis |
+|---------|-----------|------|
+| `ANONYMIZER_FALLBACK` | `block` | `block` — przy niedostępnym modelu prompt nie jest wysyłany (503); `regex` — wysyłany z zamaskowanymi tylko identyfikatorami |
+| `ANONYMIZER_STAFF_FILE` | — | dodatkowa lista pracowników bez strony w `links_extended.py` (np. dziekanat), jedno nazwisko na linię |

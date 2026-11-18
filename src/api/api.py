@@ -3,6 +3,8 @@ import io
 import json
 import logging
 import os
+import threading
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from threading import Lock
@@ -13,10 +15,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from src.api.anonymizer import Anonymizer
 from src.api.main import query_llm, query_llm_stream
 from src.api.models import Message
 from src.api.prompt_builder import build_messages
 from src.api.query_rewriter import rewrite_query
+from src.api.request_privacy import anonymize_request, anonymize_text_or_http_error
 from src.api.retrieval import get_top_k_chunks
 from src.api.security import (
     DEFAULT_MAX_TOKENS,
@@ -28,6 +32,7 @@ from src.api.security import (
     load_settings,
     messages_chars,
 )
+from src.api.staff_names import load_staff_from_knowledge_base
 from src.api.translator import translate_text
 from src.utils.paths import get_data_dir
 
@@ -43,7 +48,26 @@ if not settings.internal_api_key:
         "INTERNAL_API_KEY is not set: /retrieval and /db-urls reject all requests"
     )
 
+# Local anonymization of prompts before they reach OpenRouter (see src/api/ANONYMIZATION.md).
+# Configured from environment variables (ANONYMIZER_*).
+anonymizer = Anonymizer()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Names from the knowledge base (people the chatbot can answer about are never masked),
+    # then the NER model: seconds, minutes at the very first start (download). Done in the
+    # background so the API starts at once; until then /chat follows the fallback (503).
+    def _start_anonymizer() -> None:
+        anonymizer.add_staff(load_staff_from_knowledge_base())
+        anonymizer.warm_up()
+
+    threading.Thread(target=_start_anonymizer, daemon=True).start()
+    yield
+
+
 app = FastAPI(
+    lifespan=lifespan,
     docs_url="/docs" if settings.enable_docs else None,
     redoc_url="/redoc" if settings.enable_docs else None,
     openapi_url="/openapi.json" if settings.enable_docs else None,
@@ -138,7 +162,8 @@ class QueryRequest(BaseModel):
                 - mode: Optional string indicating the frontend mode (e.g., "production", "testPro").
                 - variant: Optional string indicating the A/B test variant (e.g., "A", "B").
                 - modelConfig: Optional dictionary containing model parameters used for generating the response.
-                - attachments: Optional list of file attachments (e.g., PDFs) sent as base64 to the model.
+                - attachments: Optional list of PDF attachments (base64). Only their text, with
+                  identifiers masked, is passed to the model (see ANONYMIZATION.md).
     """
 
     query: str
@@ -377,7 +402,9 @@ def retrieval_endpoint(
     request: RetrievalRequest, client: Annotated[ClientId, Depends(get_client)]
 ) -> dict[str, Any]:
     """Direct retrieval endpoint for ablation experiments (bypasses LLM generation)."""
-    query = guard.limit_query(request.query, client, "/retrieval")
+    query = anonymize_text_or_http_error(
+        anonymizer, guard.limit_query(request.query, client, "/retrieval")
+    )
     top_k = guard.limit_top_k(request.top_k, client, "/retrieval")
     q = rewrite_query(query) if request.use_rewrite else query
     chunks = get_top_k_chunks(q, top_k=top_k, use_rerank=request.use_rerank)
@@ -446,18 +473,23 @@ def chat_endpoint(
     """
     Handles chat interactions by retrieving context and generating an LLM response.
     1. Limits the input query and the answer length.
-    2. Reserves the estimated cost in the budget (HTTP 429 when it is used up).
-    3. Retrieves the top-k relevant text chunks from the vector database.
-    4. Builds a prompt using the retrieved context and conversation history.
-    5. Queries the LLM to generate an answer.
-    6. Returns the answer along with source URLs and updated conversation history.
+    2. Anonymizes the query, history and attachments (503 if the local model is
+       unavailable); nothing below ever sees the raw prompt.
+    3. Reserves the estimated cost in the budget (HTTP 429 when it is used up).
+    4. Retrieves the top-k relevant text chunks from the vector database.
+    5. Builds a prompt using the retrieved context and conversation history.
+    6. Queries the LLM to generate an answer.
+    7. Returns the answer along with source URLs and updated conversation history.
     """
     query = guard.limit_query(request.query, client, "/chat")
     lang = request.language
-    conversation_history = request.conversation_history
 
     if not query:
         raise HTTPException(status_code=400, detail="Query cannot be empty")
+
+    query, conversation_history, _ = anonymize_request(
+        anonymizer, request.model_copy(update={"query": query})
+    )
 
     model_config = guard.sanitize_model_config(request.modelConfig, client, "/chat")
     reservation = _reserve_or_429(
@@ -509,10 +541,8 @@ def chat_endpoint(
             semester=str(request.semester) if request.semester else None,
             conversation_history=conversation_history,
             style_instruction=style_instruction,
-            attachments=[
-                {"filename": a.filename, "data": a.data, "mime_type": a.mime_type}
-                for a in request.attachments
-            ],
+            # PDFs are not sent as base64: their masked text is already in the query
+            attachments=[],
         )
         input_chars = messages_chars(messages)
 
@@ -556,14 +586,18 @@ def chat_stream_endpoint(
     - Text delta:  ``data: {token text}\\n\\n``
     - Final event: ``data: {"event":"done","sources":[...],"retrieval_query":"..."}\\n\\n``
 
-    The non-streaming ``/chat`` endpoint is preserved unchanged.
+    Anonymization runs here, before the StreamingResponse is built, so a 503 can
+    still be returned when the local model is unavailable.
     """
     query = guard.limit_query(request.query, client, "/chat/stream")
     lang = request.language
-    conversation_history = request.conversation_history
 
     if not query:
         raise HTTPException(status_code=400, detail="Query cannot be empty")
+
+    query, conversation_history, _ = anonymize_request(
+        anonymizer, request.model_copy(update={"query": query})
+    )
 
     model_config = guard.sanitize_model_config(
         request.modelConfig, client, "/chat/stream"
@@ -615,10 +649,8 @@ def chat_stream_endpoint(
             semester=str(request.semester) if request.semester else None,
             conversation_history=conversation_history,
             style_instruction=style_instruction,
-            attachments=[
-                {"filename": a.filename, "data": a.data, "mime_type": a.mime_type}
-                for a in request.attachments
-            ],
+            # PDFs are not sent as base64: their masked text is already in the query
+            attachments=[],
         )
     except Exception:
         guard.settle(reservation, 0, 0)

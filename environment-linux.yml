@@ -42,3 +42,7 @@ dependencies:
       - openai
       - python-docx
       - facebook-scraper
+      # prompt anonymization (src/api/anonymizer.py): GLiNER NER model + its tokenizer deps
+      - gliner==0.2.30
+      - sentencepiece
+      - tiktoken

@@ -32,6 +32,7 @@ def translate_text(text: str, target_lang_code: str) -> str:
         "Politechnika Warszawska → Warsaw University of Technology, "
         "Koło Naukowe → student scientific club. "
         "Preserve the original meaning, tone, and formatting. "
+        "Keep every token in square brackets, e.g. [OSOBA] or [PESEL], exactly as it is (do not translate it). "
         "Return ONLY the translated text, without any additional comments or explanations."
     )
 

@@ -14,13 +14,7 @@ Każde zapytanie do modelu składa się z:
 [user message]     — kontekst RAG + bieżące pytanie
 ```
 
-Jeśli użytkownik załączył PDF, ostatnia wiadomość użytkownika jest multimodalna:
-```json
-{"role": "user", "content": [
-    {"type": "text",      "text": "<kontekst RAG + pytanie>"},
-    {"type": "image_url", "image_url": {"url": "data:application/pdf;base64,..."}}
-]}
-```
+Pytanie, historia i załączniki są wcześniej anonimizowane — patrz [ANONYMIZATION.md](ANONYMIZATION.md).
 
 ---
 
@@ -139,8 +133,9 @@ Parametry konfigurowalne przez `modelConfig` (frontend):
 ## Pliki PDF jako załączniki
 
 Gdy użytkownik dołączy PDF, frontend odczytuje go jako base64 i wysyła
-w polu `attachments` requesta. Backend umieszcza go w wiadomości użytkownika jako
-`image_url` z `data:application/pdf;base64,...`.
+w polu `attachments` requesta. Backend wyciąga z niego tekst (`pypdf`), maskuje identyfikatory
+i dołącza do pytania jako `[Załącznik]`. Sam plik nie jest wysyłany do modelu
+(`build_messages()` dostaje `attachments=[]`). PDF bez warstwy tekstu (skan) jest odrzucany (HTTP 422).
 
-Wymaga modelu wspierającego multimodalność (GPT-4o, Gemini 2.5, Claude Opus/Sonnet).
-Pliki tekstowe (.txt, .md, .csv) nadal parsowane po stronie serwera i wklejane jako tekst.
+Pliki tekstowe (.txt, .md, .csv) parsowane po stronie serwera (`/extract-text`) i wklejane do pytania jako tekst.
+Szczegóły: [ANONYMIZATION.md](ANONYMIZATION.md).

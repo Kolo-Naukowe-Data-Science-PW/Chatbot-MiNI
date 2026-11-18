@@ -7,6 +7,7 @@ volumes:
   qdrant_subset_db:
   hf_cache:
   data_storage:
+  anonymizer_cache:
 
 x-env: &env
   PYTHONUNBUFFERED: "1"
@@ -130,12 +131,18 @@ services:
       "--port",
       "8000"
     ]
-    environment: *env
+    environment:
+      <<: *env
+      # prompt anonymization (see src/api/ANONYMIZATION.md): model unavailable ->
+      # "block" = HTTP 503, the prompt is not sent; "regex" = sent with identifiers masked only
+      ANONYMIZER_FALLBACK: ${ANONYMIZER_FALLBACK:-block}
+      ANONYMIZER_CACHE_DIR: /root/.cache/anonymizer
     volumes:
       - data_storage:/app/src/data
       - qdrant_db:/app/src/data/qdrant_db
       - qdrant_chunks_db:/app/src/data/qdrant_chunks_db
       - qdrant_subset_db:/app/src/data/qdrant_subset_db
+      - anonymizer_cache:/root/.cache/anonymizer  # the NER model (~1.1 GB) survives deploys
     expose:
       - "8000"
     restart: always

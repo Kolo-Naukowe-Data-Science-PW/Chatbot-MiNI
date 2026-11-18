@@ -46,6 +46,10 @@ flowchart TD
 7. Answer translated back to user's language if needed
 7. Response + source URLs returned to frontend
 
+**Prompt anonymization:** before step 2, personal data in the query, history and attachments is masked locally
+(regex + a small NER model inside the API), so only the masked text is sent to OpenRouter.
+See [src/api/ANONYMIZATION.md](src/api/ANONYMIZATION.md).
+
 **Data flow (ingestion):**
 1. Firecrawl scrapes MiNI PW website (HTML + PDF)
 2. XLSX/DOCX files processed by `describe_files.py`
