@@ -115,7 +115,7 @@ if command -v python -m src.evaluation.statistical_comparison &> /dev/null; then
         echo "Running statistical comparison for: $metric"
         comparison_dir="${OUTPUT_DIR}/comparison_${metric}"
         mkdir -p "$comparison_dir"
-        
+
         python -m src.evaluation.statistical_comparison \
             --file1 "${OUTPUT_DIR}/llm_judge_metrics_model_a.csv" \
             --file2 "${OUTPUT_DIR}/llm_judge_metrics_model_b.csv" \
