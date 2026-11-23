@@ -49,7 +49,6 @@ from pathlib import Path
 from statistics import mean
 from urllib.parse import urlsplit, urlunsplit
 
-
 DEFAULT_GOLD_CSV = Path("src/evaluation/data/questions_with_links.csv")
 GOLD_COLUMNS = (
     "gold_link",
@@ -98,6 +97,7 @@ class KappaResult:
 # URL / source normalisation
 # ---------------------------------------------------------------------------
 
+
 def normalize_url(url: str) -> str:
     cleaned = (url or "").strip().strip('"').strip("'")
     if not cleaned:
@@ -141,6 +141,7 @@ def unique_source_ids(links: list[str]) -> list[str]:
 # Parsing helpers
 # ---------------------------------------------------------------------------
 
+
 def split_gold_links(raw: str) -> list[str]:
     text = (raw or "").strip()
     if not text:
@@ -180,7 +181,9 @@ def parse_returned_links(raw: str) -> list[str]:
 
 
 def normalized_row(raw: dict[str, str]) -> dict[str, str]:
-    return {(key or "").strip().lower(): (value or "").strip() for key, value in raw.items()}
+    return {
+        (key or "").strip().lower(): (value or "").strip() for key, value in raw.items()
+    }
 
 
 def extract_query(row: dict[str, str]) -> str:
@@ -210,7 +213,9 @@ def read_answers(path: Path) -> dict[str, AnswerRow]:
             query = extract_query(row)
             if not query:
                 continue
-            links = parse_returned_links(row.get("zwrocone_linki") or row.get("sources") or "")
+            links = parse_returned_links(
+                row.get("zwrocone_linki") or row.get("sources") or ""
+            )
             rows[query] = AnswerRow(links=links, gold_links=extract_gold_links(row))
     return rows
 
@@ -375,6 +380,7 @@ def rank_of_gold_link(links: list[str], gold_links: list[str]) -> int:
 # Goodman-Kruskal gamma
 # ---------------------------------------------------------------------------
 
+
 def compute_gamma(rank_pairs: list[tuple[int, int]]) -> GammaResult:
     """Compute Goodman-Kruskal gamma from (rank_A, rank_B) pairs.
 
@@ -410,8 +416,7 @@ def compute_gamma(rank_pairs: list[tuple[int, int]]) -> GammaResult:
     )
     classes = [str(i) for i in range(1, max_rank + 1)] + ["inf"]
     counts: dict[str, dict[str, int]] = {
-        row_label: {col_label: 0 for col_label in classes}
-        for row_label in classes
+        row_label: {col_label: 0 for col_label in classes} for row_label in classes
     }
     for a_rank, b_rank in rank_pairs:
         a_label = "inf" if a_rank == INF_RANK else str(a_rank)
@@ -433,6 +438,7 @@ def compute_gamma(rank_pairs: list[tuple[int, int]]) -> GammaResult:
 # ---------------------------------------------------------------------------
 # Cohen's kappa
 # ---------------------------------------------------------------------------
+
 
 def kappa_for_sets(
     set_a: set[str],
@@ -464,10 +470,10 @@ def kappa_for_sets(
         counts = {"a": 0, "b": 0, "c": 0, "d": 0, "universe": 0}
         return 1.0, 1.0, 1.0, counts
 
-    a = len(set_a & set_b)   # both retrieved
-    b = len(set_b - set_a)   # B retrieved, A did not  (row Z_B, col U\Z_A)
-    c = len(set_a - set_b)   # A retrieved, B did not  (row U\Z_B, col Z_A)
-    d = 0                    # neither retrieved -- always 0 since U = Z_A ∪ Z_B
+    a = len(set_a & set_b)  # both retrieved
+    b = len(set_b - set_a)  # B retrieved, A did not  (row Z_B, col U\Z_A)
+    c = len(set_a - set_b)  # A retrieved, B did not  (row U\Z_B, col Z_A)
+    d = 0  # neither retrieved -- always 0 since U = Z_A ∪ Z_B
 
     p_o = a / n
     p_e = (a * a + a * c + a * b + 2 * b * c) / (n * n)
@@ -504,6 +510,7 @@ def compute_kappa(rows: list[dict[str, object]]) -> KappaResult:
 # Output helpers
 # ---------------------------------------------------------------------------
 
+
 def format_float(value: float | None) -> str:
     if value is None or (isinstance(value, float) and math.isnan(value)):
         return "NA"
@@ -521,10 +528,10 @@ def write_per_query(path: Path, rows: list[dict[str, object]]) -> None:
         "kappa",
         "observed_agreement",
         "expected_agreement",
-        "a",   # both retrieved by A and B
-        "b",   # retrieved by B only
-        "c",   # retrieved by A only
-        "d",   # retrieved by neither
+        "a",  # both retrieved by A and B
+        "b",  # retrieved by B only
+        "c",  # retrieved by A only
+        "d",  # retrieved by neither
         "universe",
     ]
     with path.open("w", encoding="utf-8", newline="") as f:
@@ -551,12 +558,17 @@ def result_to_jsonable(result: object) -> object:
 # Main
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Goodman-Kruskal gamma and kappa agreement over returned links.",
     )
-    parser.add_argument("model_a_csv", type=Path, help="Generated answers CSV for model A.")
-    parser.add_argument("model_b_csv", type=Path, help="Generated answers CSV for model B.")
+    parser.add_argument(
+        "model_a_csv", type=Path, help="Generated answers CSV for model A."
+    )
+    parser.add_argument(
+        "model_b_csv", type=Path, help="Generated answers CSV for model B."
+    )
     parser.add_argument("--model-a-name", default="Model A")
     parser.add_argument("--model-b-name", default="Model B")
     parser.add_argument(
@@ -604,7 +616,9 @@ def main() -> None:
     common_queries = [q for q in answers_a if q in answers_b]
 
     if not common_queries:
-        print("ERROR: No common queries found between the two CSV files.", file=sys.stderr)
+        print(
+            "ERROR: No common queries found between the two CSV files.", file=sys.stderr
+        )
         sys.exit(1)
 
     per_query: list[dict[str, object]] = []
@@ -760,8 +774,10 @@ def main() -> None:
         hits_a = read_hit_metrics(args.metrics_a_csv)
         hits_b = read_hit_metrics(args.metrics_b_csv)
 
-        gamma_ni, kappa_ni, per_query_ni, filtered_queries = compute_link_agreement_without_inf(
-            common_queries, answers_a, answers_b, gold, hits_a, hits_b
+        gamma_ni, kappa_ni, per_query_ni, filtered_queries = (
+            compute_link_agreement_without_inf(
+                common_queries, answers_a, answers_b, gold, hits_a, hits_b
+            )
         )
 
         out_json_ni = args.output_dir / f"link_agreement_no_inf_{ts}.json"
